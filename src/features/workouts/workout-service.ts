@@ -173,20 +173,16 @@ async function syncPendingWorkoutSessionsImpl() {
       const desiredSessionId = String(session.local_id);
       const { data, error } = await supabase
         .from('workout_sessions')
-        .upsert(
-          {
-            id: desiredSessionId,
-            user_id: session.user_id,
-            name: session.name,
-            started_at: session.started_at,
-            completed_at: session.completed_at,
-            duration_seconds: session.duration_seconds,
-            notes: session.notes,
-          },
-          { onConflict: 'id' }
-        )
+        .update({
+          name: session.name,
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+          duration_seconds: session.duration_seconds,
+          notes: session.notes,
+        })
+        .eq('id', serverSessionId)
         .select('id')
-        .single();
+        .maybeSingle();
 
       if (error || !data?.id) {
         markWorkoutSessionFailed(session.local_id);
