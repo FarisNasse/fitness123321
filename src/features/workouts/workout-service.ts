@@ -1,6 +1,6 @@
 import * as Crypto from 'expo-crypto';
 
-import { db } from '@/src/lib/local-db';
+import { db, getSetsBySession } from '@/src/lib/local-db';
 import { supabase } from '@/src/lib/supabase';
 
 export function createLocalWorkoutSession(userId: string, name = 'Workout') {
@@ -80,7 +80,68 @@ export function completeLocalWorkoutSession(sessionLocalId: string) {
   );
 }
 
-export async function syncPendingWorkoutSessions() {
+function saveWorkoutSessionServerId(sessionLocalId: string, serverId: string) {
+  db.runSync(
+    `
+    update workout_sessions_local
+    set server_id = ?,
+        sync_status = 'pending'
+    where local_id = ?
+    `,
+    [serverId, sessionLocalId]
+  );
+}
+
+function markWorkoutSessionSynced(sessionLocalId: string, serverId: string) {
+  db.runSync(
+    `
+    update workout_sessions_local
+    set server_id = ?,
+        sync_status = 'synced'
+    where local_id = ?
+    `,
+    [serverId, sessionLocalId]
+  );
+}
+
+function markWorkoutSessionFailed(sessionLocalId: string) {
+  db.runSync(
+    `
+    update workout_sessions_local
+    set sync_status = 'failed'
+    where local_id = ?
+    `,
+    [sessionLocalId]
+  );
+}
+
+function markWorkoutSetSynced(setLocalId: string, serverId: string) {
+  db.runSync(
+    `
+    update workout_sets_local
+    set server_id = ?,
+        sync_status = 'synced'
+    where local_id = ?
+    `,
+    [serverId, setLocalId]
+  );
+}
+
+function markWorkoutSetFailed(setLocalId: string) {
+  db.runSync(
+    `
+    update workout_sets_local
+    set sync_status = 'failed'
+    where local_id = ?
+    `,
+    [setLocalId]
+  );
+}
+
+let syncInFlight: Promise<void> | null = null;
+let syncRequestedWhileInFlight = false;
+
+async function syncPendingWorkoutSessionsImpl() {
   const pendingSessions = db.getAllSync<any>(
     `
     select *
@@ -90,39 +151,127 @@ export async function syncPendingWorkoutSessions() {
   );
 
   for (const session of pendingSessions) {
-    const { data, error } = await supabase
-      .from('workout_sessions')
-      .insert({
-        user_id: session.user_id,
-        name: session.name,
-        started_at: session.started_at,
-        completed_at: session.completed_at,
-        duration_seconds: session.duration_seconds,
-        notes: session.notes,
-      })
-      .select('id')
-      .single();
+    let serverSessionId = session.server_id as string | null;
 
-    if (error || !data) {
-      db.runSync(
-        `
-        update workout_sessions_local
-        set sync_status = 'failed'
-        where local_id = ?
-        `,
-        [session.local_id]
-      );
+    if (serverSessionId) {
+      const { error } = await supabase
+        .from('workout_sessions')
+        .update({
+          name: session.name,
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+          duration_seconds: session.duration_seconds,
+          notes: session.notes,
+        })
+        .eq('id', serverSessionId);
+
+      if (error) {
+        markWorkoutSessionFailed(session.local_id);
+        continue;
+      }
+    } else {
+      const { data, error } = await supabase
+        .from('workout_sessions')
+        .insert({
+          user_id: session.user_id,
+          name: session.name,
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+          duration_seconds: session.duration_seconds,
+          notes: session.notes,
+        })
+        .select('id')
+        .single();
+
+      if (error || !data?.id) {
+        markWorkoutSessionFailed(session.local_id);
+        continue;
+      }
+
+      serverSessionId = String(data.id);
+      saveWorkoutSessionServerId(session.local_id, serverSessionId);
+    }
+
+    if (!serverSessionId) {
+      markWorkoutSessionFailed(session.local_id);
       continue;
     }
 
-    db.runSync(
-      `
-      update workout_sessions_local
-      set server_id = ?,
-          sync_status = 'synced'
-      where local_id = ?
-      `,
-      [data.id, session.local_id]
+    const setsToSync = getSetsBySession(session.local_id).filter(
+      (set) => set.sync_status === 'pending' || set.sync_status === 'failed'
     );
+
+    if (setsToSync.length === 0) {
+      markWorkoutSessionSynced(session.local_id, serverSessionId);
+      continue;
+    }
+
+    const setRows = setsToSync.map((set) => ({
+      session_id: serverSessionId,
+      exercise_id: set.exercise_id,
+      set_number: set.set_number,
+      reps: set.reps,
+      weight: set.weight,
+      completed: Boolean(set.completed),
+    }));
+
+    const { data: insertedSets, error: setsError } = await supabase
+      .from('workout_sets')
+      .insert(setRows)
+      .select('id');
+
+    if (setsError || !Array.isArray(insertedSets)) {
+      for (const set of setsToSync) {
+        markWorkoutSetFailed(set.local_id);
+      }
+      markWorkoutSessionFailed(session.local_id);
+      continue;
+    }
+
+    let failedSetCount = 0;
+
+    setsToSync.forEach((set, index) => {
+      const insertedSet = insertedSets[index];
+
+      if (insertedSet?.id) {
+        markWorkoutSetSynced(set.local_id, insertedSet.id);
+      } else {
+        markWorkoutSetFailed(set.local_id);
+        failedSetCount += 1;
+      }
+    });
+
+    if (failedSetCount > 0) {
+      markWorkoutSessionFailed(session.local_id);
+      continue;
+    }
+
+    markWorkoutSessionSynced(session.local_id, serverSessionId);
   }
+}
+
+async function drainWorkoutSyncQueue() {
+  do {
+    syncRequestedWhileInFlight = false;
+    await syncPendingWorkoutSessionsImpl();
+  } while (syncRequestedWhileInFlight);
+}
+
+export function syncPendingWorkoutSessions() {
+  if (syncInFlight) {
+    syncRequestedWhileInFlight = true;
+    return syncInFlight;
+  }
+
+  syncInFlight = drainWorkoutSyncQueue().then(
+    () => {
+      syncInFlight = null;
+    },
+    (error) => {
+      syncInFlight = null;
+      throw error;
+    }
+  );
+
+  return syncInFlight;
 }

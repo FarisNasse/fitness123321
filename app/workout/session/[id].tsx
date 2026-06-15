@@ -8,6 +8,7 @@ import { Screen } from '@/src/components/Screen';
 import {
   addLocalWorkoutSet,
   completeLocalWorkoutSession,
+  syncPendingWorkoutSessions,
 } from '@/src/features/workouts/workout-service';
 
 const placeholderExerciseId = '00000000-0000-0000-0000-000000000001';
@@ -53,7 +54,13 @@ export default function LiveWorkoutScreen() {
   function finishWorkout() {
     if (!sessionId) return;
     completeLocalWorkoutSession(sessionId);
-    Alert.alert('Workout complete', 'The workout was saved locally and is ready to sync.');
+    void syncPendingWorkoutSessions().catch((error) => {
+      console.warn('Failed to sync completed workout session.', error);
+    });
+    Alert.alert(
+      'Workout complete',
+      'The workout was saved locally and will sync automatically.'
+    );
     router.replace('/workouts');
   }
 
