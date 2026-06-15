@@ -170,16 +170,21 @@ async function syncPendingWorkoutSessionsImpl() {
         continue;
       }
     } else {
+      const desiredSessionId = String(session.local_id);
       const { data, error } = await supabase
         .from('workout_sessions')
-        .insert({
-          user_id: session.user_id,
-          name: session.name,
-          started_at: session.started_at,
-          completed_at: session.completed_at,
-          duration_seconds: session.duration_seconds,
-          notes: session.notes,
-        })
+        .upsert(
+          {
+            id: desiredSessionId,
+            user_id: session.user_id,
+            name: session.name,
+            started_at: session.started_at,
+            completed_at: session.completed_at,
+            duration_seconds: session.duration_seconds,
+            notes: session.notes,
+          },
+          { onConflict: 'id' }
+        )
         .select('id')
         .single();
 
@@ -207,6 +212,7 @@ async function syncPendingWorkoutSessionsImpl() {
     }
 
     const setRows = setsToSync.map((set) => ({
+      id: set.local_id,
       session_id: serverSessionId,
       exercise_id: set.exercise_id,
       set_number: set.set_number,
@@ -215,12 +221,12 @@ async function syncPendingWorkoutSessionsImpl() {
       completed: Boolean(set.completed),
     }));
 
-    const { data: insertedSets, error: setsError } = await supabase
+    const { data: syncedSets, error: setsError } = await supabase
       .from('workout_sets')
-      .insert(setRows)
+      .upsert(setRows, { onConflict: 'id' })
       .select('id');
 
-    if (setsError || !Array.isArray(insertedSets)) {
+    if (setsError || !Array.isArray(syncedSets)) {
       for (const set of setsToSync) {
         markWorkoutSetFailed(set.local_id);
       }
@@ -228,18 +234,21 @@ async function syncPendingWorkoutSessionsImpl() {
       continue;
     }
 
+    const syncedSetIds = new Set(
+      syncedSets
+        .map((set) => (set?.id ? String(set.id) : null))
+        .filter((id): id is string => Boolean(id))
+    );
     let failedSetCount = 0;
 
-    setsToSync.forEach((set, index) => {
-      const insertedSet = insertedSets[index];
-
-      if (insertedSet?.id) {
-        markWorkoutSetSynced(set.local_id, insertedSet.id);
+    for (const set of setsToSync) {
+      if (syncedSetIds.has(set.local_id)) {
+        markWorkoutSetSynced(set.local_id, set.local_id);
       } else {
         markWorkoutSetFailed(set.local_id);
         failedSetCount += 1;
       }
-    });
+    }
 
     if (failedSetCount > 0) {
       markWorkoutSessionFailed(session.local_id);
