@@ -1,6 +1,228 @@
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 
-export const db = SQLite.openDatabaseSync('fitness.db');
+export type DbAdapter = {
+  execSync: (sql: string) => void;
+  runSync: (sql: string, params?: unknown[]) => void;
+  getAllSync: <T = unknown>(sql: string, params?: unknown[]) => T[];
+};
+
+type WebStore = {
+  workout_sessions_local: Record<string, unknown>[];
+  workout_sets_local: Record<string, unknown>[];
+  meal_logs_local: Record<string, unknown>[];
+  meal_items_local: Record<string, unknown>[];
+  water_logs_local: Record<string, unknown>[];
+  mood_logs_local: Record<string, unknown>[];
+};
+
+const WEB_DB_STORAGE_KEY = 'fitness-app-web-db-v1';
+
+function createNativeDbAdapter(): DbAdapter {
+  const sqliteDb = SQLite.openDatabaseSync('fitness.db');
+
+  return {
+    execSync(sql) {
+      sqliteDb.execSync(sql);
+    },
+
+    runSync(sql, params = []) {
+      (sqliteDb as any).runSync(sql, params);
+    },
+
+    getAllSync<T = unknown>(sql: string, params: unknown[] = []) {
+      return (sqliteDb as any).getAllSync(sql, params) as T[];
+    },
+  };
+}
+
+function createEmptyWebStore(): WebStore {
+  return {
+    workout_sessions_local: [],
+    workout_sets_local: [],
+    meal_logs_local: [],
+    meal_items_local: [],
+    water_logs_local: [],
+    mood_logs_local: [],
+  };
+}
+
+function readWebStore(): WebStore {
+  if (typeof localStorage === 'undefined') {
+    return createEmptyWebStore();
+  }
+
+  const raw = localStorage.getItem(WEB_DB_STORAGE_KEY);
+
+  if (!raw) {
+    const empty = createEmptyWebStore();
+    localStorage.setItem(WEB_DB_STORAGE_KEY, JSON.stringify(empty));
+    return empty;
+  }
+
+  try {
+    return {
+      ...createEmptyWebStore(),
+      ...JSON.parse(raw),
+    };
+  } catch {
+    const empty = createEmptyWebStore();
+    localStorage.setItem(WEB_DB_STORAGE_KEY, JSON.stringify(empty));
+    return empty;
+  }
+}
+
+function writeWebStore(store: WebStore) {
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+
+  localStorage.setItem(WEB_DB_STORAGE_KEY, JSON.stringify(store));
+}
+
+function normalizeSql(sql: string) {
+  return sql.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function createWebDbAdapter(): DbAdapter {
+  return {
+    execSync() {
+      readWebStore();
+    },
+
+    runSync(sql, params = []) {
+      const normalized = normalizeSql(sql);
+      const store = readWebStore();
+
+      if (normalized.startsWith('insert into workout_sessions_local')) {
+        const [localId, userId, name, startedAt, updatedAt] = params;
+
+        store.workout_sessions_local.push({
+          local_id: localId,
+          server_id: null,
+          user_id: userId,
+          name,
+          started_at: startedAt,
+          completed_at: null,
+          duration_seconds: null,
+          notes: null,
+          sync_status: 'pending',
+          updated_at: updatedAt,
+        });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('insert into workout_sets_local')) {
+        const [
+          localId,
+          sessionLocalId,
+          exerciseId,
+          setNumber,
+          reps,
+          weight,
+          updatedAt,
+        ] = params;
+
+        store.workout_sets_local.push({
+          local_id: localId,
+          server_id: null,
+          session_local_id: sessionLocalId,
+          exercise_id: exerciseId,
+          set_number: setNumber,
+          reps,
+          weight,
+          completed: 1,
+          sync_status: 'pending',
+          updated_at: updatedAt,
+        });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sessions_local') &&
+        normalized.includes('set completed_at')
+      ) {
+        const [completedAt, durationNow, updatedAt, sessionLocalId] = params;
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId
+        );
+
+        if (session) {
+          const startedMs = Date.parse(String(session.started_at));
+          const completedMs = Date.parse(String(durationNow));
+
+          session.completed_at = completedAt;
+          session.duration_seconds =
+            Number.isFinite(startedMs) && Number.isFinite(completedMs)
+              ? Math.max(0, Math.round((completedMs - startedMs) / 1000))
+              : 0;
+          session.sync_status = 'pending';
+          session.updated_at = updatedAt;
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sessions_local') &&
+        normalized.includes("set sync_status = 'failed'")
+      ) {
+        const [sessionLocalId] = params;
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId
+        );
+
+        if (session) {
+          session.sync_status = 'failed';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sessions_local') &&
+        normalized.includes('set server_id = ?')
+      ) {
+        const [serverId, sessionLocalId] = params;
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId
+        );
+
+        if (session) {
+          session.server_id = serverId;
+          session.sync_status = 'synced';
+        }
+
+        writeWebStore(store);
+      }
+    },
+
+    getAllSync<T = unknown>(sql: string) {
+      const normalized = normalizeSql(sql);
+      const store = readWebStore();
+
+      if (
+        normalized.includes('from workout_sessions_local') &&
+        normalized.includes('sync_status')
+      ) {
+        return store.workout_sessions_local.filter((session) =>
+          ['pending', 'failed'].includes(String(session.sync_status))
+        ) as T[];
+      }
+
+      return [] as T[];
+    },
+  };
+}
+
+export const db: DbAdapter =
+  Platform.OS === 'web' ? createWebDbAdapter() : createNativeDbAdapter();
 
 export function initializeLocalDb() {
   db.execSync(`
