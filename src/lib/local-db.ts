@@ -7,6 +7,19 @@ export type DbAdapter = {
   getAllSync: <T = unknown>(sql: string, params?: unknown[]) => T[];
 };
 
+export type LocalWorkoutSet = {
+  local_id: string;
+  server_id: string | null;
+  session_local_id: string;
+  exercise_id: string;
+  set_number: number;
+  reps: number | null;
+  weight: number | null;
+  completed: number;
+  sync_status: 'pending' | 'synced' | 'failed';
+  updated_at: string;
+};
+
 type WebStore = {
   workout_sessions_local: Record<string, unknown>[];
   workout_sets_local: Record<string, unknown>[];
@@ -196,14 +209,52 @@ function createWebDbAdapter(): DbAdapter {
 
         if (session) {
           session.server_id = serverId;
-          session.sync_status = 'synced';
+          session.sync_status = normalized.includes("sync_status = 'pending'")
+            ? 'pending'
+            : 'synced';
         }
 
         writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sets_local') &&
+        normalized.includes("set sync_status = 'failed'")
+      ) {
+        const [setLocalId] = params;
+        const set = store.workout_sets_local.find(
+          (item) => item.local_id === setLocalId
+        );
+
+        if (set) {
+          set.sync_status = 'failed';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sets_local') &&
+        normalized.includes('set server_id = ?')
+      ) {
+        const [serverId, setLocalId] = params;
+        const set = store.workout_sets_local.find(
+          (item) => item.local_id === setLocalId
+        );
+
+        if (set) {
+          set.server_id = serverId;
+          set.sync_status = 'synced';
+        }
+
+        writeWebStore(store);
+        return;
       }
     },
 
-    getAllSync<T = unknown>(sql: string) {
+    getAllSync<T = unknown>(sql: string, params: unknown[] = []) {
       const normalized = normalizeSql(sql);
       const store = readWebStore();
 
@@ -216,6 +267,20 @@ function createWebDbAdapter(): DbAdapter {
         ) as T[];
       }
 
+      if (
+        normalized.includes('from workout_sets_local') &&
+        normalized.includes('session_local_id = ?')
+      ) {
+        const [sessionLocalId] = params;
+
+        return store.workout_sets_local
+          .filter((set) => set.session_local_id === sessionLocalId)
+          .sort(
+            (a, b) =>
+              Number(a.set_number ?? 0) - Number(b.set_number ?? 0)
+          ) as T[];
+      }
+
       return [] as T[];
     },
   };
@@ -223,6 +288,18 @@ function createWebDbAdapter(): DbAdapter {
 
 export const db: DbAdapter =
   Platform.OS === 'web' ? createWebDbAdapter() : createNativeDbAdapter();
+
+export function getSetsBySession(sessionLocalId: string) {
+  return db.getAllSync<LocalWorkoutSet>(
+    `
+    select *
+    from workout_sets_local
+    where session_local_id = ?
+    order by set_number asc
+    `,
+    [sessionLocalId]
+  );
+}
 
 export function initializeLocalDb() {
   db.execSync(`
