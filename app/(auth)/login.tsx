@@ -5,6 +5,7 @@ import { Alert, Text, TextInput, View } from 'react-native';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { Screen } from '@/src/components/Screen';
+import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
 
 export default function LoginScreen() {
@@ -13,24 +14,36 @@ export default function LoginScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleLogin() {
+    if (USE_DEV_AUTH) {
+      router.replace('/dashboard');
+      return;
+    }
+
     if (!email.trim() || !password.trim()) {
       Alert.alert('Missing info', 'Enter your email and password.');
       return;
     }
 
     setIsSubmitting(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    setIsSubmitting(false);
 
-    if (error) {
-      Alert.alert('Unable to sign in', error.message);
-      return;
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        Alert.alert('Unable to sign in', error.message);
+        return;
+      }
+
+      router.replace('/');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Check your Supabase configuration.';
+      Alert.alert('Unable to reach Supabase', message);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    router.replace('/');
   }
 
   return (
@@ -41,6 +54,11 @@ export default function LoginScreen() {
           <Text style={{ marginTop: 8, color: '#64748b' }}>
             Sign in to continue tracking workouts, meals, and progress.
           </Text>
+          {USE_DEV_AUTH ? (
+            <Text style={{ marginTop: 8, color: '#059669', fontWeight: '700' }}>
+              Local dev auth is on. The app will skip Supabase login and use a local demo user.
+            </Text>
+          ) : null}
         </View>
 
         <Card>
@@ -65,7 +83,7 @@ export default function LoginScreen() {
             />
 
             <Button
-              title={isSubmitting ? 'Signing in...' : 'Sign in'}
+              title={USE_DEV_AUTH ? 'Continue in local dev mode' : isSubmitting ? 'Signing in...' : 'Sign in'}
               onPress={handleLogin}
               disabled={isSubmitting}
             />

@@ -81,3 +81,39 @@ test('runtime flags keep nutrition local by default and enable Supabase explicit
   assert.match(flags, /EXPO_PUBLIC_NUTRITION_SYNC_SOURCE === 'supabase'/);
   assert.match(flags, /USE_SUPABASE_FOODS =\s*USE_REMOTE_NUTRITION_SYNC \|\| process\.env\.EXPO_PUBLIC_FOOD_SOURCE === 'supabase'/);
 });
+
+test('dashboard reads live nutrition totals, loads daily targets, prompts for defaults, and marks shipped flows', () => {
+  const dashboard = readProjectFile('app/(tabs)/dashboard.tsx');
+
+  assert.match(dashboard, /useFocusEffect/);
+  assert.match(dashboard, /getDailyNutritionSummary\(\)/);
+  assert.match(dashboard, /getDailyTargets\(\)/);
+  assert.match(dashboard, /subscribeToNutritionLogChanges\(refreshSummary\)/);
+  assert.match(dashboard, /DEFAULT_DAILY_TARGETS/);
+  assert.match(dashboard, /Set your targets/);
+  assert.match(dashboard, /<MetricCard\s+label="Calories"[\s\S]*summary\.totals\.calories[\s\S]*targets\.calories/);
+  assert.match(dashboard, /<MetricCard\s+label="Protein"[\s\S]*summary\.totals\.proteinG[\s\S]*targets\.proteinG/);
+  assert.match(dashboard, /<MetricCard label="Water" value=\{`\$\{waterLoggedLabel\}L \/ \$\{waterTargetLabel\}L`\}/);
+  assert.match(dashboard, /<MetricCard label="Steps" value=\{`0 \/ \$\{formatWholeNumber\(targets\.steps\)\}`\}/);
+  assert.match(dashboard, /<ChecklistItem label="Workout logging" done \/>/);
+  assert.match(dashboard, /<ChecklistItem label="Nutrition logging" done \/>/);
+  assert.match(dashboard, /<ChecklistItem label="Dashboard live totals" done \/>/);
+});
+
+test('nutrition service exposes daily target defaults, Supabase daily_targets fetch, and a log-change event emitter', () => {
+  const service = readProjectFile('src/features/nutrition/nutrition-service.ts');
+
+  assert.match(service, /export const DEFAULT_DAILY_TARGETS/);
+  assert.match(service, /calories: 2000/);
+  assert.match(service, /proteinG: 135/);
+  assert.match(service, /waterMl: 2000/);
+  assert.match(service, /steps: 8000/);
+  assert.match(service, /export async function getDailyTargets\(\): Promise<DailyTargetsState>/);
+  assert.match(service, /\.from\('daily_targets'\)\s*\.select\('calories, protein_g, carbs_g, fat_g, water_ml, steps'\)\s*\.eq\('user_id', authData\.user\.id\)\s*\.maybeSingle\(\)/s);
+  assert.match(service, /return mapDailyTargets\(data as DailyTargetsRow \| null\)/);
+  assert.match(service, /const nutritionLogListeners = new Set<\(\) => void>\(\)/);
+  assert.match(service, /export function subscribeToNutritionLogChanges\(listener: \(\) => void\)/);
+  assert.match(service, /function notifyNutritionLogChanged\(\)/);
+  assert.match(service, /insert into meal_items_local[\s\S]*notifyNutritionLogChanged\(\);/);
+  assert.match(service, /insert into water_logs_local[\s\S]*notifyNutritionLogChanged\(\);/);
+});

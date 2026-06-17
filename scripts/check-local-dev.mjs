@@ -6,6 +6,7 @@ const requiredFiles = [
   'src/features/workouts/seed-exercises.json',
   'src/features/workouts/exercise-service.ts',
   'src/features/workouts/workout-service.ts',
+  'src/features/auth/dev-auth.ts',
   'src/lib/runtime-flags.ts',
   'app/(tabs)/workouts.tsx',
   'app/workout/session/[id].tsx',
@@ -51,8 +52,25 @@ if (!Array.isArray(exercises) || exercises.length < 8) {
 
 const flags = readRequiredText('src/lib/runtime-flags.ts');
 
+if (flags && !flags.includes("EXPO_PUBLIC_AUTH_MODE ?? 'local'")) {
+  errors.push('Auth should default to local dev mode unless explicitly set to supabase.');
+}
+
 if (flags && !flags.includes("EXPO_PUBLIC_WORKOUT_SYNC_SOURCE === 'supabase'")) {
   errors.push('Workout sync should default to local unless explicitly set to supabase.');
+}
+
+
+const devAuth = readRequiredText('src/features/auth/dev-auth.ts');
+
+if (devAuth) {
+  if (!devAuth.includes('LOCAL_DEV_SESSION')) {
+    errors.push('Local dev auth should provide a synthetic session.');
+  }
+
+  if (!devAuth.includes('primary_goal')) {
+    errors.push('Local dev auth should provide an onboarded profile.');
+  }
 }
 
 const workoutsScreen = readRequiredText('app/(tabs)/workouts.tsx');
@@ -93,6 +111,7 @@ if (errors.length > 0) {
 
 console.log('Local MVP check passed.');
 console.log(`Seed exercises: ${exercises.length}`);
+console.log('Auth: local dev user signs in automatically unless EXPO_PUBLIC_AUTH_MODE=supabase.');
 console.log('Workout start: local user, no Supabase auth required.');
 console.log('Workout session: exercise picker + set logging wired locally.');
 console.log('Remote sync: off by default; enable with EXPO_PUBLIC_WORKOUT_SYNC_SOURCE=supabase.');
