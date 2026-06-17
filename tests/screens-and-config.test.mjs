@@ -113,6 +113,40 @@ test('workouts tab is wired to the local-first workout flow', () => {
   assert.match(workouts, /USE_REMOTE_WORKOUT_SYNC \? 'Cloud sync on' : 'Local mode'/);
 });
 
+
+test('live workout screen no longer depends on a placeholder exercise id', () => {
+  const live = readProjectFile('app/workout/session/[id].tsx');
+
+  assert.doesNotMatch(live, /placeholderExerciseId|placeholder-exercise/i);
+  assert.doesNotMatch(live, /exerciseId:\s*['"`][^'"`]+['"`]/);
+  assert.match(live, /const \[selectedExercise, setSelectedExercise\] = useState<Exercise \| null>\(null\)/);
+  assert.match(live, /function addSet\(\) \{\s*if \(!sessionId \|\| !selectedExercise\) return;/s);
+  assert.match(live, /<Button title="Add set" onPress=\{addSet\} disabled=\{!selectedExercise\} \/>/);
+  assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
+});
+
+test('live workout exercise picker modal wires ExerciseLibrary selection into session state', () => {
+  const live = readProjectFile('app/workout/session/[id].tsx');
+
+  assert.match(live, /const \[isPickerOpen, setIsPickerOpen\] = useState\(false\)/);
+  assert.match(live, /<Button title="Add exercise" onPress=\{\(\) => setIsPickerOpen\(true\)\} \/>/);
+  assert.match(live, /<Modal[\s\S]*visible=\{isPickerOpen\}[\s\S]*<ExerciseLibrary\s+onSelect=\{chooseExercise\}[\s\S]*selectButtonTitle="Use this exercise"/);
+  assert.match(live, /function chooseExercise\(exercise: Exercise\) \{[\s\S]*rememberExercises\(\[exercise\]\);[\s\S]*setExerciseLookup\(\(current\) => \(\{[\s\S]*\[exercise\.id\]: exercise,[\s\S]*\}\)\);/);
+  assert.match(live, /setExerciseSetMap\(\(current\) => \{\s*const nextMap = new Map\(current\);[\s\S]*if \(!nextMap\.has\(exercise\.id\)\) \{\s*nextMap\.set\(exercise\.id, \[\]\);\s*\}[\s\S]*return nextMap;\s*\}\);/);
+  assert.match(live, /rememberExerciseSelection\(exercise\);\s*setSelectedExercise\(exercise\);\s*setIsPickerOpen\(false\);/);
+});
+
+test('live workout screen groups logged sets by exercise and renders exercise cards', () => {
+  const live = readProjectFile('app/workout/session/[id].tsx');
+
+  assert.match(live, /function buildExerciseSetMap\(sets: LocalWorkoutSetRow\[\]\) \{[\s\S]*map\.get\(set\.exercise_id\) \?\? \[\];[\s\S]*map\.set\(set\.exercise_id, \[\.\.\.exerciseSets, set\]\);[\s\S]*new Map<string, LocalWorkoutSetRow\[\]>\(\)/);
+  assert.match(live, /const nextSets = getLocalWorkoutSets\(sessionId\);\s*const nextMap = buildExerciseSetMap\(nextSets\);\s*setSets\(nextSets\);\s*setExerciseSetMap\(nextMap\);/);
+  assert.match(live, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
+  assert.match(live, /selectedExercises\.map\(\(exercise\) => \{\s*const exerciseSets = exerciseSetMap\.get\(exercise\.id\) \?\? \[\];\s*const isActiveExercise = selectedExercise\?\.id === exercise\.id;/);
+  assert.match(live, /<Card key=\{exercise\.id\}>[\s\S]*\{exercise\.name\}[\s\S]*\{exerciseSets\.length === 0 \? \([\s\S]*No sets yet[\s\S]*\) : \([\s\S]*exerciseSets\.map\(\(set\) =>/);
+  assert.match(live, /<Pressable onPress=\{\(\) => setSelectedExercise\(exercise\)\}>[\s\S]*\{isActiveExercise \? 'Selected' : 'Log set'\}/);
+});
+
 test('live workout screen supports exercise picking, validation, set logging, PR estimate, and finish flow', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
