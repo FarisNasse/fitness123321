@@ -1,0 +1,159 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { fileExists, readProjectFile, readProjectJson } from './helpers/project.mjs';
+
+const appScreens = [
+  'app/index.tsx',
+  'app/_layout.tsx',
+  'app/(auth)/login.tsx',
+  'app/(auth)/register.tsx',
+  'app/(onboarding)/index.tsx',
+  'app/(tabs)/dashboard.tsx',
+  'app/(tabs)/nutrition.tsx',
+  'app/(tabs)/progress.tsx',
+  'app/(tabs)/wellness.tsx',
+  'app/(tabs)/workouts.tsx',
+  'app/workout/session/[id].tsx',
+  'app/workout/history/[id].tsx',
+];
+
+test('package exposes fast test commands without adding heavy native test dependencies', () => {
+  const pkg = readProjectJson('package.json');
+
+  assert.equal(pkg.scripts.test, 'node --test tests/*.test.mjs');
+  assert.equal(
+    pkg.scripts['test:all'],
+    'npm run test && npm run check:exercises && npm run check:local && npm run typecheck'
+  );
+
+  for (const dependency of ['jest', 'jest-expo', '@testing-library/react-native', 'react-test-renderer']) {
+    assert.equal(pkg.devDependencies?.[dependency], undefined, `${dependency} should not be required`);
+  }
+});
+
+test('routing and source files required by the app exist', () => {
+  for (const file of appScreens) {
+    assert.equal(fileExists(file), true, `missing screen ${file}`);
+  }
+
+  for (const file of [
+    'src/components/Button.tsx',
+    'src/components/Card.tsx',
+    'src/components/MetricCard.tsx',
+    'src/components/Screen.tsx',
+    'src/features/workouts/ExerciseLibrary.tsx',
+    'src/features/workouts/exercise-service.ts',
+    'src/features/workouts/workout-service.ts',
+    'src/features/workouts/pr-service.ts',
+    'src/lib/local-db.ts',
+    'src/lib/runtime-flags.ts',
+    'src/lib/supabase.ts',
+    'src/types/models.ts',
+  ]) {
+    assert.equal(fileExists(file), true, `missing implementation file ${file}`);
+  }
+});
+
+test('root layout initializes local persistence and syncs workout queue on app activation', () => {
+  const layout = readProjectFile('app/_layout.tsx');
+
+  assert.match(layout, /initializeLocalDb\(\);/);
+  assert.match(layout, /syncPendingWorkoutSessions\(\)/);
+  assert.match(layout, /AppState\.addEventListener\(\s*'change'/s);
+  assert.match(layout, /if \(state === 'active'\)/);
+  assert.match(layout, /<QueryClientProvider client=\{queryClient\}>/);
+  assert.match(layout, /<Stack\.Screen\s*name="workout\/session\/\[id\]"/);
+  assert.match(layout, /<Stack\.Screen\s*name="workout\/history\/\[id\]"/);
+});
+
+test('auth screens validate input, trim email, call Supabase, and route correctly', () => {
+  const login = readProjectFile('app/(auth)/login.tsx');
+  const register = readProjectFile('app/(auth)/register.tsx');
+
+  assert.match(login, /Alert\.alert\('Missing info', 'Enter your email and password\.'\)/);
+  assert.match(login, /signInWithPassword\(\{\s*email: email\.trim\(\),\s*password,/s);
+  assert.match(login, /Alert\.alert\('Unable to sign in', error\.message\)/);
+  assert.match(login, /router\.replace\('\/dashboard'\)/);
+
+  assert.match(register, /Alert\.alert\('Missing info', 'Enter your email and password\.'\)/);
+  assert.match(register, /signUp\(\{\s*email: email\.trim\(\),\s*password,/s);
+  assert.match(register, /display_name: displayName\.trim\(\)/);
+  assert.match(register, /from\('profiles'\)\.upsert\(\{/);
+  assert.match(register, /display_name: displayName\.trim\(\) \|\| null/);
+  assert.match(register, /router\.replace\('\/onboarding'\)/);
+});
+
+test('onboarding persists goal and level for the authenticated profile', () => {
+  const onboarding = readProjectFile('app/(onboarding)/index.tsx');
+
+  for (const goal of ['Lose weight', 'Build muscle', 'Improve endurance', 'Get healthier', 'Track performance']) {
+    assert.ok(onboarding.includes(goal), `missing onboarding goal ${goal}`);
+  }
+
+  for (const level of ['beginner', 'intermediate', 'advanced', 'athlete']) {
+    assert.ok(onboarding.includes(`'${level}'`), `missing fitness level ${level}`);
+  }
+
+  assert.match(onboarding, /supabase\.auth\.getUser\(\)/);
+  assert.match(onboarding, /primary_goal: goal/);
+  assert.match(onboarding, /fitness_level: level/);
+  assert.match(onboarding, /router\.replace\('\/dashboard'\)/);
+});
+
+test('workouts tab is wired to the local-first workout flow', () => {
+  const workouts = readProjectFile('app/(tabs)/workouts.tsx');
+
+  assert.match(workouts, /getWorkoutOwnerUserId\(\)/);
+  assert.match(workouts, /createLocalWorkoutSession\(userId, 'Quick workout'\)/);
+  assert.match(workouts, /router\.push\(`\/workout\/session\/\$\{sessionId\}`\)/);
+  assert.match(workouts, /getCompletedWorkoutSessions\(4\)/);
+  assert.match(workouts, /<ExerciseLibrary \/>/);
+  assert.match(workouts, /router\.push\(`\/workout\/history\/\$\{session\.local_id\}`\)/);
+  assert.match(workouts, /USE_REMOTE_WORKOUT_SYNC \? 'Cloud sync on' : 'Local mode'/);
+});
+
+test('live workout screen supports exercise picking, validation, set logging, PR estimate, and finish flow', () => {
+  const live = readProjectFile('app/workout/session/[id].tsx');
+
+  assert.match(live, /<ExerciseLibrary\s+onSelect=\{chooseExercise\}/s);
+  assert.match(live, /rememberExercises\(\[exercise\]\)/);
+  assert.match(live, /Alert\.alert\('Invalid reps', 'Enter a valid rep count\.'\)/);
+  assert.match(live, /Alert\.alert\('Invalid weight', 'Enter a valid weight\.'\)/);
+  assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
+  assert.match(live, /setNumber: selectedExerciseSets\.length \+ 1/);
+  assert.match(live, /estimatedOneRepMax\(Number\(set\.weight\), Number\(set\.reps\)\)/);
+  assert.match(live, /completeLocalWorkoutSession\(sessionId\)/);
+  assert.match(live, /syncPendingWorkoutSessions\(\)/);
+  assert.match(live, /router\.replace\('\/workouts'\)/);
+});
+
+test('workout history screen reads local session and groups sets by exercise', () => {
+  const history = readProjectFile('app/workout/history/[id].tsx');
+
+  assert.match(history, /getLocalWorkoutSession\(sessionId\)/);
+  assert.match(history, /getLocalWorkoutSets\(sessionId\)/);
+  assert.match(history, /getSeededExercises\(\)/);
+  assert.match(history, /getExerciseById\(set\.exercise_id\)/);
+  assert.match(history, /Unknown exercise/);
+  assert.match(history, /Workout not found/);
+  assert.match(history, /No sets logged/);
+});
+
+test('exercise library supports loading, searching, filtering, clearing, details, and optional selection callback', () => {
+  const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
+
+  for (const key of ['muscleGroup', 'equipment', 'movementType', 'difficulty']) {
+    assert.ok(library.includes(`key: '${key}'`), `missing ${key} filter`);
+  }
+
+  assert.match(library, /queryKey: \['exercises'\]/);
+  assert.match(library, /queryFn: fetchExercises/);
+  assert.match(library, /searchQuery\.trim\(\)\.toLowerCase\(\)/);
+  assert.match(library, /exercise\.name,[\s\S]*exercise\.muscleGroup,[\s\S]*exercise\.equipment,[\s\S]*exercise\.movementType,[\s\S]*exercise\.difficulty,/);
+  assert.match(library, /function clearFilters\(\)/);
+  assert.match(library, /setSearchQuery\(''\)/);
+  assert.match(library, /onSelect\?\.\(exercise\)/);
+  assert.match(library, /<Modal[\s\S]*visible=\{Boolean\(selectedExercise\)\}/);
+  assert.match(library, /Muscle diagram placeholder/);
+});
