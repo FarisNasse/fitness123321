@@ -1,6 +1,22 @@
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
+
+import { AuthLoadingState, useAuthSession } from '@/src/features/auth/auth-session-context';
 
 export default function TabsLayout() {
+  const { status } = useAuthSession();
+
+  if (status === 'loading') {
+    return <AuthLoadingState />;
+  }
+
+  if (status === 'signed-out') {
+    return <Redirect href="/login" />;
+  }
+
+  if (status === 'needs-onboarding') {
+    return <Redirect href="/onboarding" />;
+  }
+
   return (
     <Tabs
       screenOptions={{

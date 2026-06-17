@@ -42,6 +42,7 @@ test('routing and source files required by the app exist', () => {
     'src/components/Card.tsx',
     'src/components/MetricCard.tsx',
     'src/components/Screen.tsx',
+    'src/features/auth/auth-session-context.tsx',
     'src/features/workouts/ExerciseLibrary.tsx',
     'src/features/workouts/exercise-service.ts',
     'src/features/workouts/workout-service.ts',
@@ -67,6 +68,42 @@ test('root layout initializes local persistence and syncs workout queue on app a
   assert.match(layout, /<Stack\.Screen\s*name="workout\/history\/\[id\]"/);
 });
 
+
+test('auth session guard resolves Supabase session, profile onboarding state, and protected route redirects', () => {
+  const layout = readProjectFile('app/_layout.tsx');
+  const index = readProjectFile('app/index.tsx');
+  const authLayout = readProjectFile('app/(auth)/_layout.tsx');
+  const onboardingLayout = readProjectFile('app/(onboarding)/_layout.tsx');
+  const tabsLayout = readProjectFile('app/(tabs)/_layout.tsx');
+  const authContext = readProjectFile('src/features/auth/auth-session-context.tsx');
+
+  assert.match(layout, /supabase\.auth\.getSession\(\)/);
+  assert.match(layout, /supabase\.auth\.onAuthStateChange\(/);
+  assert.match(layout, /\.from\('profiles'\)\s*\.select\('id, primary_goal'\)/s);
+  assert.match(layout, /maybeSingle\(\)/);
+  assert.match(layout, /nextProfile\?\.primary_goal \? 'onboarded' : 'needs-onboarding'/);
+  assert.match(layout, /<AuthSessionContext\.Provider value=\{authContextValue\}>/);
+  assert.match(layout, /refreshProfile/);
+
+  assert.match(authContext, /export type AuthStatus = 'loading' \| 'signed-out' \| 'needs-onboarding' \| 'onboarded'/);
+  assert.match(authContext, /export function useAuthSession\(\)/);
+  assert.match(authContext, /export function routeForAuthStatus/);
+  assert.match(authContext, /export function AuthLoadingState/);
+
+  assert.match(index, /routeForAuthStatus\(status\)/);
+  assert.match(index, /<AuthLoadingState \/>/);
+  assert.match(index, /<Redirect href=\{route\} \/>/);
+  assert.doesNotMatch(index, /href=\"\/dashboard\"/);
+
+  assert.match(authLayout, /status === 'needs-onboarding'[\s\S]*<Redirect href=\"\/onboarding\" \/>/);
+  assert.match(authLayout, /status === 'onboarded'[\s\S]*<Redirect href=\"\/dashboard\" \/>/);
+  assert.match(onboardingLayout, /status === 'signed-out'[\s\S]*<Redirect href=\"\/login\" \/>/);
+  assert.match(onboardingLayout, /status === 'onboarded'[\s\S]*<Redirect href=\"\/dashboard\" \/>/);
+  assert.match(tabsLayout, /status === 'signed-out'[\s\S]*<Redirect href=\"\/login\" \/>/);
+  assert.match(tabsLayout, /status === 'needs-onboarding'[\s\S]*<Redirect href=\"\/onboarding\" \/>/);
+  assert.match(tabsLayout, /return \(\s*<Tabs/s);
+});
+
 test('auth screens validate input, trim email, call Supabase, and route correctly', () => {
   const login = readProjectFile('app/(auth)/login.tsx');
   const register = readProjectFile('app/(auth)/register.tsx');
@@ -74,7 +111,7 @@ test('auth screens validate input, trim email, call Supabase, and route correctl
   assert.match(login, /Alert\.alert\('Missing info', 'Enter your email and password\.'\)/);
   assert.match(login, /signInWithPassword\(\{\s*email: email\.trim\(\),\s*password,/s);
   assert.match(login, /Alert\.alert\('Unable to sign in', error\.message\)/);
-  assert.match(login, /router\.replace\('\/dashboard'\)/);
+  assert.match(login, /router\.replace\('\/'\)/);
 
   assert.match(register, /Alert\.alert\('Missing info', 'Enter your email and password\.'\)/);
   assert.match(register, /signUp\(\{\s*email: email\.trim\(\),\s*password,/s);
@@ -96,6 +133,8 @@ test('onboarding persists goal and level for the authenticated profile', () => {
   }
 
   assert.match(onboarding, /supabase\.auth\.getUser\(\)/);
+  assert.match(onboarding, /useAuthSession\(\)/);
+  assert.match(onboarding, /await refreshProfile\(\);/);
   assert.match(onboarding, /primary_goal: goal/);
   assert.match(onboarding, /fitness_level: level/);
   assert.match(onboarding, /router\.replace\('\/dashboard'\)/);
