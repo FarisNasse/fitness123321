@@ -108,7 +108,7 @@ test('workouts tab is wired to the local-first workout flow', () => {
   assert.match(workouts, /createLocalWorkoutSession\(userId, 'Quick workout'\)/);
   assert.match(workouts, /router\.push\(`\/workout\/session\/\$\{sessionId\}`\)/);
   assert.match(workouts, /getCompletedWorkoutSessions\(4\)/);
-  assert.match(workouts, /<ExerciseLibrary \/>/);
+  assert.match(workouts, /<ExerciseLibrary scrollMode="page" \/>/);
   assert.match(workouts, /router\.push\(`\/workout\/history\/\$\{session\.local_id\}`\)/);
   assert.match(workouts, /USE_REMOTE_WORKOUT_SYNC \? 'Cloud sync on' : 'Local mode'/);
 });
@@ -154,6 +154,11 @@ test('exercise library supports loading, searching, filtering, clearing, details
 
   assert.match(library, /queryKey: \['exercises'\]/);
   assert.match(library, /queryFn: fetchExercises/);
+  assert.match(library, /scrollMode\?: 'page' \| 'contained'/);
+  assert.match(library, /scrollMode = 'contained'/);
+  assert.match(library, /keyboardShouldPersistTaps="handled"/);
+  assert.match(library, /style=\{\{ maxHeight: '100%' \}\}/);
+  assert.match(library, /return <View style=\{\{ gap: 16 \}\}>\{libraryContent\}<\/View>/);
   assert.match(library, /searchQuery\.trim\(\)\.toLowerCase\(\)/);
   assert.match(library, /exercise\.name,[\s\S]*exercise\.muscleGroup,[\s\S]*exercise\.equipment,[\s\S]*exercise\.movementType,[\s\S]*exercise\.difficulty,/);
   assert.match(library, /function clearFilters\(\)/);

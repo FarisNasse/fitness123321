@@ -92,7 +92,7 @@ export default function WorkoutsScreen() {
         </Card>
 
         <Card>
-          <ExerciseLibrary />
+          <ExerciseLibrary scrollMode="page" />
         </Card>
 
         <Card>

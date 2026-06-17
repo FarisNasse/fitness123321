@@ -20,6 +20,7 @@ type FilterKey = 'muscleGroup' | 'equipment' | 'movementType' | 'difficulty';
 type ExerciseLibraryProps = {
   onSelect?: (exercise: Exercise) => void;
   selectButtonTitle?: string;
+  scrollMode?: 'page' | 'contained';
 };
 
 const FILTERS: { key: FilterKey; label: string; allLabel: string }[] = [
@@ -110,6 +111,7 @@ function FilterChip({
 export function ExerciseLibrary({
   onSelect,
   selectButtonTitle = 'Select exercise',
+  scrollMode = 'contained',
 }: ExerciseLibraryProps) {
   const [filters, setFilters] = useState(emptyFilters);
   const [searchQuery, setSearchQuery] = useState('');
@@ -182,8 +184,72 @@ export function ExerciseLibrary({
   const hasActiveFilters =
     Boolean(searchQuery.trim()) || FILTERS.some((filter) => filters[filter.key]);
 
-  return (
-    <View style={{ gap: 16 }}>
+  const renderedExercises = (
+    <View style={{ gap: 10 }}>
+      {filteredExercises.length === 0 ? (
+        <View
+          style={{
+            backgroundColor: '#f8fafc',
+            borderColor: '#e2e8f0',
+            borderRadius: 16,
+            borderWidth: 1,
+            padding: 16,
+          }}
+        >
+          <Text style={{ fontWeight: '900' }}>No exercises found</Text>
+          <Text style={{ color: '#64748b', marginTop: 6 }}>
+            Try clearing the search or one of the filters.
+          </Text>
+        </View>
+      ) : (
+        filteredExercises.map((exercise) => (
+          <Pressable
+            key={exercise.id}
+            onPress={() => setSelectedExercise(exercise)}
+            style={({ pressed }) => ({
+              backgroundColor: pressed ? '#f1f5f9' : '#ffffff',
+              borderColor: '#e2e8f0',
+              borderRadius: 18,
+              borderWidth: 1,
+              padding: 14,
+              gap: 10,
+            })}
+          >
+            <View
+              style={{
+                alignItems: 'flex-start',
+                flexDirection: 'row',
+                gap: 10,
+                justifyContent: 'space-between',
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 17, fontWeight: '900' }}>
+                  {exercise.name}
+                </Text>
+                <Text style={{ color: '#64748b', marginTop: 4 }}>
+                  {exercise.muscleGroup}
+                </Text>
+              </View>
+              {exercise.equipment ? <ExerciseBadge label={exercise.equipment} /> : null}
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {exercise.movementType ? (
+                <ExerciseBadge label={exercise.movementType} tone="slate" />
+              ) : null}
+              {exercise.difficulty ? (
+                <ExerciseBadge label={exercise.difficulty} tone="slate" />
+              ) : null}
+            </View>
+          </Pressable>
+        ))
+      )}
+    </View>
+  );
+
+  const libraryContent = (
+    <>
       <View style={{ gap: 12 }}>
         <View
           style={{
@@ -284,71 +350,7 @@ export function ExerciseLibrary({
             ) : null}
           </View>
 
-          <ScrollView
-            nestedScrollEnabled
-            style={{ maxHeight: 430 }}
-            contentContainerStyle={{ gap: 10, paddingBottom: 4 }}
-          >
-            {filteredExercises.length === 0 ? (
-              <View
-                style={{
-                  backgroundColor: '#f8fafc',
-                  borderColor: '#e2e8f0',
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  padding: 16,
-                }}
-              >
-                <Text style={{ fontWeight: '900' }}>No exercises found</Text>
-                <Text style={{ color: '#64748b', marginTop: 6 }}>
-                  Try clearing the search or one of the filters.
-                </Text>
-              </View>
-            ) : (
-              filteredExercises.map((exercise) => (
-                <Pressable
-                  key={exercise.id}
-                  onPress={() => setSelectedExercise(exercise)}
-                  style={({ pressed }) => ({
-                    backgroundColor: pressed ? '#f1f5f9' : '#ffffff',
-                    borderColor: '#e2e8f0',
-                    borderRadius: 18,
-                    borderWidth: 1,
-                    padding: 14,
-                    gap: 10,
-                  })}
-                >
-                  <View
-                    style={{
-                      alignItems: 'flex-start',
-                      flexDirection: 'row',
-                      gap: 10,
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 17, fontWeight: '900' }}>
-                        {exercise.name}
-                      </Text>
-                      <Text style={{ color: '#64748b', marginTop: 4 }}>
-                        {exercise.muscleGroup}
-                      </Text>
-                    </View>
-                    {exercise.equipment ? <ExerciseBadge label={exercise.equipment} /> : null}
-                  </View>
-
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {exercise.movementType ? (
-                      <ExerciseBadge label={exercise.movementType} tone="slate" />
-                    ) : null}
-                    {exercise.difficulty ? (
-                      <ExerciseBadge label={exercise.difficulty} tone="slate" />
-                    ) : null}
-                  </View>
-                </Pressable>
-              ))
-            )}
-          </ScrollView>
+          {renderedExercises}
         </>
       )}
 
@@ -453,6 +455,21 @@ export function ExerciseLibrary({
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </>
   );
+
+  if (scrollMode === 'contained') {
+    return (
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+        style={{ maxHeight: '100%' }}
+        contentContainerStyle={{ gap: 16, paddingBottom: 4 }}
+      >
+        {libraryContent}
+      </ScrollView>
+    );
+  }
+
+  return <View style={{ gap: 16 }}>{libraryContent}</View>;
 }
