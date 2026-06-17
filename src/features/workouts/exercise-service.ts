@@ -1,5 +1,8 @@
-import { supabase } from '@/src/lib/supabase';
 import type { Exercise } from '@/src/types/models';
+
+declare function require(path: string): unknown;
+
+const seededExercises = require('./seed-exercises.json') as Exercise[];
 
 type ExerciseRow = {
   id: string;
@@ -11,6 +14,9 @@ type ExerciseRow = {
   instructions: string | null;
   video_url: string | null;
 };
+
+const USE_SUPABASE_EXERCISES =
+  process.env.EXPO_PUBLIC_EXERCISE_SOURCE === 'supabase';
 
 function mapExercise(row: ExerciseRow): Exercise {
   return {
@@ -25,7 +31,25 @@ function mapExercise(row: ExerciseRow): Exercise {
   };
 }
 
-export async function fetchExercises() {
+function sortExercises(exercises: Exercise[]) {
+  return [...exercises].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function getSeededExercises() {
+  return sortExercises(seededExercises);
+}
+
+function getExerciseFetchMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message);
+  }
+
+  return 'Unknown Supabase error';
+}
+
+async function fetchSupabaseExercises() {
+  const { supabase } = await import('@/src/lib/supabase');
+
   const { data, error } = await supabase
     .from('exercises')
     .select(
@@ -34,8 +58,22 @@ export async function fetchExercises() {
     .order('name', { ascending: true });
 
   if (error) {
-    throw error;
+    throw new Error(getExerciseFetchMessage(error));
   }
 
   return ((data ?? []) as ExerciseRow[]).map(mapExercise);
+}
+
+export async function fetchExercises() {
+  if (!USE_SUPABASE_EXERCISES) {
+    return getSeededExercises();
+  }
+
+  try {
+    const remoteExercises = await fetchSupabaseExercises();
+    return remoteExercises.length > 0 ? remoteExercises : getSeededExercises();
+  } catch (error) {
+    console.warn('Failed to fetch exercises from Supabase. Using local seed data.', error);
+    return getSeededExercises();
+  }
 }

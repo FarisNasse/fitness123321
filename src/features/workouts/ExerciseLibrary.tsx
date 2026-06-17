@@ -109,7 +109,7 @@ export function ExerciseLibrary({
     error,
     isLoading,
     refetch,
-  } = useQuery({
+  } = useQuery<Exercise[], Error>({
     queryKey: ['exercises'],
     queryFn: fetchExercises,
   });
@@ -174,9 +174,14 @@ export function ExerciseLibrary({
             Could not load exercises.
           </Text>
           <Text style={{ color: '#64748b' }}>
-            Make sure you are signed in and that Supabase has the seeded
-            exercises from 0001_initial_schema.sql.
+            Run the latest Supabase migrations so public.exercises has the
+            exercise-library columns and read policy.
           </Text>
+          {error?.message ? (
+            <Text style={{ color: '#94a3b8', fontSize: 12 }}>
+              {error.message}
+            </Text>
+          ) : null}
           <Button title="Try again" onPress={() => void refetch()} />
         </View>
       ) : (

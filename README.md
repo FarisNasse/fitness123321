@@ -32,32 +32,27 @@ Do not start with AI, wearables, social features, or marketplace features. Those
 
 ```bash
 npm install
-cp .env.example .env
-npx expo start
+npm run check:exercises
+npx expo start -c
 ```
 
-Then fill in:
+The exercise library uses local seeded data by default, so you do not need a
+Supabase project just to run and test the workout screen from the terminal.
+
+## Optional Supabase setup
+
+Supabase is only needed once you want cloud auth/sync. Fill in `.env` and set
+`EXPO_PUBLIC_EXERCISE_SOURCE=supabase` only when you intentionally want the
+exercise library to read from Supabase instead of the local seed file.
 
 ```bash
 EXPO_PUBLIC_SUPABASE_URL=
 EXPO_PUBLIC_SUPABASE_ANON_KEY=
+EXPO_PUBLIC_EXERCISE_SOURCE=supabase
 ```
 
-## Supabase setup
-
-Create a Supabase project, then run:
-
-```bash
-supabase db push
-```
-
-or paste the SQL from:
-
-```txt
-supabase/migrations/0001_initial_schema.sql
-```
-
-into the Supabase SQL editor.
+Then run the migrations with the Supabase CLI or your preferred database
+workflow.
 
 ## App structure
 

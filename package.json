@@ -9,7 +9,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "check:exercises": "node scripts/check-exercise-library-data.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "latest",
