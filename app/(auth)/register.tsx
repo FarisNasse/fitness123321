@@ -5,6 +5,7 @@ import { Alert, Text, TextInput, View } from 'react-native';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { Screen } from '@/src/components/Screen';
+import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
 
 export default function RegisterScreen() {
@@ -14,37 +15,48 @@ export default function RegisterScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleRegister() {
+    if (USE_DEV_AUTH) {
+      router.replace('/dashboard');
+      return;
+    }
+
     if (!email.trim() || !password.trim()) {
       Alert.alert('Missing info', 'Enter your email and password.');
       return;
     }
 
     setIsSubmitting(true);
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
-          display_name: displayName.trim(),
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            display_name: displayName.trim(),
+          },
         },
-      },
-    });
-
-    if (error) {
-      setIsSubmitting(false);
-      Alert.alert('Unable to create account', error.message);
-      return;
-    }
-
-    if (data.user) {
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
-        display_name: displayName.trim() || null,
       });
-    }
 
-    setIsSubmitting(false);
-    router.replace('/onboarding');
+      if (error) {
+        Alert.alert('Unable to create account', error.message);
+        return;
+      }
+
+      if (data.user) {
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          display_name: displayName.trim() || null,
+        });
+      }
+
+      router.replace('/onboarding');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Check your Supabase configuration.';
+      Alert.alert('Unable to reach Supabase', message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -55,6 +67,11 @@ export default function RegisterScreen() {
           <Text style={{ marginTop: 8, color: '#64748b' }}>
             Start with the basics. You can refine goals later.
           </Text>
+          {USE_DEV_AUTH ? (
+            <Text style={{ marginTop: 8, color: '#059669', fontWeight: '700' }}>
+              Local dev auth is on. Account creation is skipped until Supabase auth is enabled.
+            </Text>
+          ) : null}
         </View>
 
         <Card>
@@ -87,7 +104,7 @@ export default function RegisterScreen() {
             />
 
             <Button
-              title={isSubmitting ? 'Creating...' : 'Create account'}
+              title={USE_DEV_AUTH ? 'Continue in local dev mode' : isSubmitting ? 'Creating...' : 'Create account'}
               onPress={handleRegister}
               disabled={isSubmitting}
             />

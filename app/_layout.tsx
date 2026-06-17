@@ -5,9 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { AuthSessionContext, type AuthProfile, type AuthStatus } from '@/src/features/auth/auth-session-context';
+import { LOCAL_DEV_PROFILE, LOCAL_DEV_SESSION } from '@/src/features/auth/dev-auth';
 import { syncPendingNutritionLogs } from '@/src/features/nutrition/nutrition-service';
 import { syncPendingWorkoutSessions } from '@/src/features/workouts/workout-service';
 import { initializeLocalDb } from '@/src/lib/local-db';
+import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
 
 const queryClient = new QueryClient();
@@ -18,6 +20,13 @@ export default function RootLayout() {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const sessionRef = useRef<Session | null>(null);
   const profileRequestRef = useRef(0);
+
+  const loadLocalDevSession = useCallback(() => {
+    sessionRef.current = LOCAL_DEV_SESSION;
+    setSession(LOCAL_DEV_SESSION);
+    setProfile(LOCAL_DEV_PROFILE);
+    setStatus('onboarded');
+  }, []);
 
   const loadProfile = useCallback(async (nextSession: Session | null) => {
     const requestId = profileRequestRef.current + 1;
@@ -53,8 +62,13 @@ export default function RootLayout() {
   }, []);
 
   const refreshProfile = useCallback(async () => {
+    if (USE_DEV_AUTH) {
+      loadLocalDevSession();
+      return;
+    }
+
     await loadProfile(sessionRef.current);
-  }, [loadProfile]);
+  }, [loadLocalDevSession, loadProfile]);
 
   useEffect(() => {
     initializeLocalDb();
@@ -88,6 +102,11 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    if (USE_DEV_AUTH) {
+      loadLocalDevSession();
+      return;
+    }
+
     let isSubscribed = true;
 
     void supabase.auth.getSession().then(({ data, error }) => {
@@ -115,7 +134,7 @@ export default function RootLayout() {
       isSubscribed = false;
       subscription.unsubscribe();
     };
-  }, [loadProfile]);
+  }, [loadLocalDevSession, loadProfile]);
 
   const authContextValue = useMemo(
     () => ({ session, profile, status, refreshProfile }),

@@ -6,6 +6,7 @@ import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { Screen } from '@/src/components/Screen';
 import { useAuthSession } from '@/src/features/auth/auth-session-context';
+import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
 
 const goals = [
@@ -26,6 +27,13 @@ export default function OnboardingScreen() {
 
   async function saveOnboarding() {
     setIsSubmitting(true);
+
+    if (USE_DEV_AUTH) {
+      await refreshProfile();
+      setIsSubmitting(false);
+      router.replace('/dashboard');
+      return;
+    }
 
     const {
       data: { user },

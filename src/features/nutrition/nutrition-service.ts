@@ -36,6 +36,29 @@ export type DailyNutritionSummary = {
   totals: DailyNutritionTotals;
 };
 
+export type DailyTargets = {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  waterMl: number;
+  steps: number;
+};
+
+export type DailyTargetsState = {
+  targets: DailyTargets;
+  hasRemoteTargets: boolean;
+};
+
+export const DEFAULT_DAILY_TARGETS: DailyTargets = {
+  calories: 2000,
+  proteinG: 135,
+  carbsG: 225,
+  fatG: 65,
+  waterMl: 2000,
+  steps: 8000,
+};
+
 type FoodRow = {
   id: string;
   name: string;
@@ -47,6 +70,15 @@ type FoodRow = {
   protein_g: number | null;
   carbs_g: number | null;
   fat_g: number | null;
+};
+
+type DailyTargetsRow = {
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  water_ml: number | null;
+  steps: number | null;
 };
 
 const FOOD_SELECT =
@@ -107,6 +139,40 @@ function getFoodMultiplier(food: Food, quantity: number, unit: string) {
   return unitsMatch ? quantity / servingSize : quantity;
 }
 
+const nutritionLogListeners = new Set<() => void>();
+
+export function subscribeToNutritionLogChanges(listener: () => void) {
+  nutritionLogListeners.add(listener);
+
+  return () => {
+    nutritionLogListeners.delete(listener);
+  };
+}
+
+function notifyNutritionLogChanged() {
+  for (const listener of nutritionLogListeners) {
+    listener();
+  }
+}
+
+function mapDailyTargets(row: DailyTargetsRow | null | undefined): DailyTargetsState {
+  if (!row) {
+    return { targets: DEFAULT_DAILY_TARGETS, hasRemoteTargets: false };
+  }
+
+  return {
+    hasRemoteTargets: true,
+    targets: {
+      calories: Number(row.calories ?? DEFAULT_DAILY_TARGETS.calories),
+      proteinG: Number(row.protein_g ?? DEFAULT_DAILY_TARGETS.proteinG),
+      carbsG: Number(row.carbs_g ?? DEFAULT_DAILY_TARGETS.carbsG),
+      fatG: Number(row.fat_g ?? DEFAULT_DAILY_TARGETS.fatG),
+      waterMl: Number(row.water_ml ?? DEFAULT_DAILY_TARGETS.waterMl),
+      steps: Number(row.steps ?? DEFAULT_DAILY_TARGETS.steps),
+    },
+  };
+}
+
 export function calculateLoggedFoodMacros(food: Food, quantity: number, unit: string) {
   const multiplier = getFoodMultiplier(food, quantity, unit);
 
@@ -131,6 +197,32 @@ export async function getNutritionOwnerUserId() {
   }
 
   return data.user.id;
+}
+
+export async function getDailyTargets(): Promise<DailyTargetsState> {
+  const { supabase } = await import('@/src/lib/supabase');
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !authData.user?.id) {
+    if (authError) {
+      console.warn('Failed to load current user for daily targets.', authError);
+    }
+
+    return { targets: DEFAULT_DAILY_TARGETS, hasRemoteTargets: false };
+  }
+
+  const { data, error } = await supabase
+    .from('daily_targets')
+    .select('calories, protein_g, carbs_g, fat_g, water_ml, steps')
+    .eq('user_id', authData.user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Failed to load daily targets.', error);
+    return { targets: DEFAULT_DAILY_TARGETS, hasRemoteTargets: false };
+  }
+
+  return mapDailyTargets(data as DailyTargetsRow | null);
 }
 
 export async function searchFoodsByName(query: string) {
@@ -259,6 +351,8 @@ export function addLocalMealItem(input: {
     ]
   );
 
+  notifyNutritionLogChanged();
+
   return { mealLogLocalId, mealItemLocalId };
 }
 
@@ -285,6 +379,8 @@ export function addLocalWaterLog(input: {
     `,
     [localId, input.userId, loggedAt, input.amountMl, now]
   );
+
+  notifyNutritionLogChanged();
 
   return localId;
 }

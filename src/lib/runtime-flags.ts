@@ -1,4 +1,8 @@
 export const LOCAL_DEV_USER_ID = '00000000-0000-0000-0000-000000000999';
+export const LOCAL_DEV_USER_EMAIL = 'local-dev@example.test';
+
+export const AUTH_MODE = process.env.EXPO_PUBLIC_AUTH_MODE ?? 'local';
+export const USE_DEV_AUTH = AUTH_MODE !== 'supabase';
 
 export const USE_REMOTE_WORKOUT_SYNC =
   process.env.EXPO_PUBLIC_WORKOUT_SYNC_SOURCE === 'supabase';

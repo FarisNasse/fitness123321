@@ -43,6 +43,7 @@ test('routing and source files required by the app exist', () => {
     'src/components/MetricCard.tsx',
     'src/components/Screen.tsx',
     'src/features/auth/auth-session-context.tsx',
+    'src/features/auth/dev-auth.ts',
     'src/features/workouts/ExerciseLibrary.tsx',
     'src/features/workouts/exercise-service.ts',
     'src/features/workouts/workout-service.ts',
@@ -102,6 +103,44 @@ test('auth session guard resolves Supabase session, profile onboarding state, an
   assert.match(tabsLayout, /status === 'signed-out'[\s\S]*<Redirect href=\"\/login\" \/>/);
   assert.match(tabsLayout, /status === 'needs-onboarding'[\s\S]*<Redirect href=\"\/onboarding\" \/>/);
   assert.match(tabsLayout, /return \(\s*<Tabs/s);
+});
+
+
+
+test('local dev auth bypasses Supabase sign in while keeping Supabase auth available by flag', () => {
+  const flags = readProjectFile('src/lib/runtime-flags.ts');
+  const layout = readProjectFile('app/_layout.tsx');
+  const devAuth = readProjectFile('src/features/auth/dev-auth.ts');
+  const login = readProjectFile('app/(auth)/login.tsx');
+  const register = readProjectFile('app/(auth)/register.tsx');
+  const onboarding = readProjectFile('app/(onboarding)/index.tsx');
+  const supabaseClient = readProjectFile('src/lib/supabase.ts');
+  const envExample = readProjectFile('.env.example');
+
+  assert.match(flags, /export const AUTH_MODE = process\.env\.EXPO_PUBLIC_AUTH_MODE \?\? 'local'/);
+  assert.match(flags, /export const USE_DEV_AUTH = AUTH_MODE !== 'supabase'/);
+  assert.match(flags, /LOCAL_DEV_USER_EMAIL = 'local-dev@example\.test'/);
+
+  assert.match(devAuth, /export const LOCAL_DEV_PROFILE/);
+  assert.match(devAuth, /primary_goal: 'Track performance'/);
+  assert.match(devAuth, /export const LOCAL_DEV_SESSION/);
+  assert.match(devAuth, /local-dev-access-token/);
+
+  assert.match(layout, /if \(USE_DEV_AUTH\) \{\s*loadLocalDevSession\(\);\s*return;\s*\}/s);
+  assert.match(layout, /setStatus\('onboarded'\)/);
+  assert.match(layout, /supabase\.auth\.getSession\(\)/);
+  assert.match(layout, /supabase\.auth\.onAuthStateChange\(/);
+
+  assert.match(login, /if \(USE_DEV_AUTH\) \{\s*router\.replace\('\/dashboard'\);\s*return;\s*\}/s);
+  assert.match(login, /Unable to reach Supabase/);
+  assert.match(register, /if \(USE_DEV_AUTH\) \{\s*router\.replace\('\/dashboard'\);\s*return;\s*\}/s);
+  assert.match(register, /Unable to reach Supabase/);
+  assert.match(onboarding, /if \(USE_DEV_AUTH\) \{\s*await refreshProfile\(\);\s*setIsSubmitting\(false\);\s*router\.replace\('\/dashboard'\);\s*return;\s*\}/s);
+
+  assert.match(supabaseClient, /Set EXPO_PUBLIC_AUTH_MODE=local/);
+  assert.match(supabaseClient, /fallbackSupabaseUrl/);
+  assert.match(envExample, /EXPO_PUBLIC_AUTH_MODE=local/);
+  assert.match(envExample, /EXPO_PUBLIC_AUTH_MODE=supabase/);
 });
 
 test('auth screens validate input, trim email, call Supabase, and route correctly', () => {
