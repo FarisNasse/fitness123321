@@ -1,0 +1,74 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "Bench Press",
+    "muscleGroup": "Chest",
+    "equipment": "Barbell",
+    "movementType": "Push",
+    "difficulty": "Intermediate",
+    "instructions": "Lie on a flat bench, lower the bar under control to the chest, then press upward."
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "name": "Squat",
+    "muscleGroup": "Legs",
+    "equipment": "Barbell",
+    "movementType": "Squat",
+    "difficulty": "Intermediate",
+    "instructions": "Brace your core, descend until your thighs are at least parallel, then drive upward."
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000003",
+    "name": "Deadlift",
+    "muscleGroup": "Back",
+    "equipment": "Barbell",
+    "movementType": "Hinge",
+    "difficulty": "Advanced",
+    "instructions": "Hinge at the hips, keep the bar close, and stand tall without overextending."
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000004",
+    "name": "Pull-Up",
+    "muscleGroup": "Back",
+    "equipment": "Bodyweight",
+    "movementType": "Pull",
+    "difficulty": "Intermediate",
+    "instructions": "Pull your chest toward the bar while keeping your core engaged."
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000005",
+    "name": "Overhead Press",
+    "muscleGroup": "Shoulders",
+    "equipment": "Barbell",
+    "movementType": "Push",
+    "difficulty": "Intermediate",
+    "instructions": "Press the bar overhead while keeping ribs down and core tight."
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000006",
+    "name": "Dumbbell Row",
+    "muscleGroup": "Back",
+    "equipment": "Dumbbell",
+    "movementType": "Pull",
+    "difficulty": "Beginner",
+    "instructions": "Support your torso and row the dumbbell toward your hip."
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000007",
+    "name": "Romanian Deadlift",
+    "muscleGroup": "Hamstrings",
+    "equipment": "Barbell",
+    "movementType": "Hinge",
+    "difficulty": "Intermediate",
+    "instructions": "Push hips back with a soft knee bend and feel a hamstring stretch."
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000008",
+    "name": "Push-Up",
+    "muscleGroup": "Chest",
+    "equipment": "Bodyweight",
+    "movementType": "Push",
+    "difficulty": "Beginner",
+    "instructions": "Maintain a straight line from head to heels and lower under control."
+  }
+]

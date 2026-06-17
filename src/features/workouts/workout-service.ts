@@ -1,7 +1,24 @@
 import * as Crypto from 'expo-crypto';
 
-import { db, getSetsBySession } from '@/src/lib/local-db';
-import { supabase } from '@/src/lib/supabase';
+import { db, getSetsBySession, type LocalWorkoutSession } from '@/src/lib/local-db';
+import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
+
+export type LocalWorkoutSessionRow = LocalWorkoutSession;
+
+export async function getWorkoutOwnerUserId() {
+  if (!USE_REMOTE_WORKOUT_SYNC) {
+    return LOCAL_DEV_USER_ID;
+  }
+
+  const { supabase } = await import('@/src/lib/supabase');
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error || !data.user?.id) {
+    throw new Error('Sign in before starting a cloud-synced workout.');
+  }
+
+  return data.user.id;
+}
 
 export function createLocalWorkoutSession(userId: string, name = 'Workout') {
   const localId = Crypto.randomUUID();
@@ -23,6 +40,36 @@ export function createLocalWorkoutSession(userId: string, name = 'Workout') {
   );
 
   return localId;
+}
+
+export function getLocalWorkoutSession(sessionLocalId: string) {
+  return (
+    db.getAllSync<LocalWorkoutSessionRow>(
+      `
+      select *
+      from workout_sessions_local
+      where local_id = ?
+      limit 1
+      `,
+      [sessionLocalId]
+    )[0] ?? null
+  );
+}
+
+export function getRecentLocalWorkoutSessions(limit = 5) {
+  return db.getAllSync<LocalWorkoutSessionRow>(
+    `
+    select *
+    from workout_sessions_local
+    order by started_at desc
+    limit ?
+    `,
+    [limit]
+  );
+}
+
+export function getLocalWorkoutSets(sessionLocalId: string) {
+  return getSetsBySession(sessionLocalId);
 }
 
 export function addLocalWorkoutSet(input: {
@@ -92,6 +139,18 @@ function saveWorkoutSessionServerId(sessionLocalId: string, serverId: string) {
   );
 }
 
+function clearWorkoutSessionServerId(sessionLocalId: string) {
+  db.runSync(
+    `
+    update workout_sessions_local
+    set server_id = null,
+        sync_status = 'pending'
+    where local_id = ?
+    `,
+    [sessionLocalId]
+  );
+}
+
 function markWorkoutSessionSynced(sessionLocalId: string, serverId: string) {
   db.runSync(
     `
@@ -142,35 +201,26 @@ let syncInFlight: Promise<void> | null = null;
 let syncRequestedWhileInFlight = false;
 
 async function syncPendingWorkoutSessionsImpl() {
-  const pendingSessions = db.getAllSync<any>(
+  if (!USE_REMOTE_WORKOUT_SYNC) {
+    return;
+  }
+
+  const { supabase } = await import('@/src/lib/supabase');
+
+  const pendingSessions = db.getAllSync<LocalWorkoutSessionRow>(
     `
     select *
     from workout_sessions_local
     where sync_status in ('pending', 'failed')
-    `
+      and user_id != ?
+    `,
+    [LOCAL_DEV_USER_ID]
   );
 
   for (const session of pendingSessions) {
     let serverSessionId = session.server_id as string | null;
 
     if (serverSessionId) {
-      const { error } = await supabase
-        .from('workout_sessions')
-        .update({
-          name: session.name,
-          started_at: session.started_at,
-          completed_at: session.completed_at,
-          duration_seconds: session.duration_seconds,
-          notes: session.notes,
-        })
-        .eq('id', serverSessionId);
-
-      if (error) {
-        markWorkoutSessionFailed(session.local_id);
-        continue;
-      }
-    } else {
-      const desiredSessionId = String(session.local_id);
       const { data, error } = await supabase
         .from('workout_sessions')
         .update({
@@ -181,6 +231,38 @@ async function syncPendingWorkoutSessionsImpl() {
           notes: session.notes,
         })
         .eq('id', serverSessionId)
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        markWorkoutSessionFailed(session.local_id);
+        continue;
+      }
+
+      if (!data?.id) {
+        // The remote row was deleted or never existed. Clear the stale server_id so
+        // this pass can recreate the session with the local id instead of failing forever.
+        clearWorkoutSessionServerId(session.local_id);
+        serverSessionId = null;
+      }
+    }
+
+    if (!serverSessionId) {
+      const desiredSessionId = String(session.local_id);
+      const { data, error } = await supabase
+        .from('workout_sessions')
+        .upsert(
+          {
+            id: desiredSessionId,
+            user_id: session.user_id,
+            name: session.name,
+            started_at: session.started_at,
+            completed_at: session.completed_at,
+            duration_seconds: session.duration_seconds,
+            notes: session.notes,
+          },
+          { onConflict: 'id' }
+        )
         .select('id')
         .maybeSingle();
 
@@ -263,6 +345,10 @@ async function drainWorkoutSyncQueue() {
 }
 
 export function syncPendingWorkoutSessions() {
+  if (!USE_REMOTE_WORKOUT_SYNC) {
+    return Promise.resolve();
+  }
+
   if (syncInFlight) {
     syncRequestedWhileInFlight = true;
     return syncInFlight;
