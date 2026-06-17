@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 
 import { Button } from '@/src/components/Button';
@@ -8,8 +8,8 @@ import { Screen } from '@/src/components/Screen';
 import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
 import {
   createLocalWorkoutSession,
+  getCompletedWorkoutSessions,
   getLocalWorkoutSets,
-  getRecentLocalWorkoutSessions,
   getWorkoutOwnerUserId,
   type LocalWorkoutSessionRow,
 } from '@/src/features/workouts/workout-service';
@@ -19,12 +19,14 @@ export default function WorkoutsScreen() {
   const [recentSessions, setRecentSessions] = useState<LocalWorkoutSessionRow[]>([]);
 
   function refreshRecentSessions() {
-    setRecentSessions(getRecentLocalWorkoutSessions(4));
+    setRecentSessions(getCompletedWorkoutSessions(4));
   }
 
-  useEffect(() => {
-    refreshRecentSessions();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      refreshRecentSessions();
+    }, [])
+  );
 
   const completedCount = useMemo(
     () => recentSessions.filter((session) => Boolean(session.completed_at)).length,
@@ -118,9 +120,9 @@ export default function WorkoutsScreen() {
                   padding: 16,
                 }}
               >
-                <Text style={{ fontWeight: '900' }}>No local workouts yet</Text>
+                <Text style={{ fontWeight: '900' }}>No completed workouts yet</Text>
                 <Text style={{ color: '#64748b', marginTop: 6, lineHeight: 20 }}>
-                  Start one above. After you finish, it will show here without a
+                  Start one above. Completed sessions will show here without a
                   remote database.
                 </Text>
               </View>
@@ -128,9 +130,11 @@ export default function WorkoutsScreen() {
               <View style={{ gap: 10 }}>
                 {recentSessions.map((session) => {
                   const setCount = getLocalWorkoutSets(session.local_id).length;
+
                   return (
-                    <View
+                    <Pressable
                       key={session.local_id}
+                      onPress={() => router.push(`/workout/history/${session.local_id}`)}
                       style={{
                         backgroundColor: '#f8fafc',
                         borderColor: '#e2e8f0',
@@ -153,17 +157,13 @@ export default function WorkoutsScreen() {
                             {formatDateTime(session.started_at)}
                           </Text>
                         </View>
-                        <StatusPill
-                          label={session.completed_at ? 'Finished' : 'In progress'}
-                        />
+                        <StatusPill label="Finished" />
                       </View>
                       <Text style={{ color: '#475569', fontWeight: '800', marginTop: 10 }}>
-                        {setCount} logged set{setCount === 1 ? '' : 's'}
-                        {session.duration_seconds
-                          ? ` • ${formatDuration(session.duration_seconds)}`
-                          : ''}
+                        {formatDuration(session.duration_seconds)} / {setCount} set
+                        {setCount === 1 ? '' : 's'}
                       </Text>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -229,7 +229,11 @@ function formatDateTime(value: string) {
   });
 }
 
-function formatDuration(seconds: number) {
+function formatDuration(seconds: number | null) {
+  if (!seconds) {
+    return 'Under 1 min';
+  }
+
   const minutes = Math.max(1, Math.round(seconds / 60));
   return `${minutes} min`;
 }
