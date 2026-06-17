@@ -453,50 +453,6 @@ export default function LiveWorkoutScreen() {
             );
           })
         )}
-                  {exerciseSets.length === 0 ? (
-                    <View
-                      style={{
-                        backgroundColor: '#f8fafc',
-                        borderColor: '#e2e8f0',
-                        borderRadius: 16,
-                        borderWidth: 1,
-                        padding: 14,
-                      }}
-                    >
-                      <Text style={{ fontWeight: '900' }}>No sets yet</Text>
-                      <Text style={{ color: '#64748b', marginTop: 6 }}>
-                        Select this exercise and add the first set.
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {exerciseSets.map((set) => (
-                        <View
-                          key={set.local_id}
-                          style={{
-                            alignItems: 'center',
-                            backgroundColor: '#f8fafc',
-                            borderColor: '#e2e8f0',
-                            borderRadius: 14,
-                            borderWidth: 1,
-                            flexDirection: 'row',
-                            justifyContent: 'space-between',
-                            padding: 12,
-                          }}
-                        >
-                          <Text style={{ fontWeight: '900' }}>Set {set.set_number}</Text>
-                          <Text style={{ color: '#475569', fontWeight: '800' }}>
-                            {set.reps ?? 0} reps × {set.weight ?? 0} lb
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              </Card>
-            );
-          })
-        )}
 
         <Button title="Finish workout" onPress={finishWorkout} />
       </View>

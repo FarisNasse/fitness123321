@@ -40,32 +40,34 @@ test('live workout screen keeps explicit state for the currently edited set and 
   assert.match(live, /const \[editWeight, setEditWeight\] = useState\(''\)/);
 });
 
-test('logged set UI replaces the old count-only experience with a real review section', () => {
+test('logged set UI replaces the old count-only experience with reviewable exercise cards', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
   assert.doesNotMatch(live, /Sets added:/, 'the old count-only label should not be the logged-set UI');
-  assertIncludes(live, 'Logged sets');
-  assertIncludes(live, 'No sets yet');
-  assertIncludes(live, 'Pick an exercise, enter reps/weight, then add your first set.');
+  assertIncludes(live, 'No exercises added');
+  assertIncludes(live, 'No sets logged for this exercise yet.');
   assertIncludes(live, '<StatBox label="This exercise" value={String(selectedExerciseSets.length)} />');
   assertIncludes(live, '<StatBox label="Total sets" value={String(sets.length)} />');
 });
 
-test('logged sets are grouped under exercise names with an unknown-exercise fallback', () => {
+test('logged sets are grouped by exercise and restore exercise cards from logged set data', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assert.match(live, /const groupedSets = useMemo\(\(\) => \{/);
-  assert.match(live, /sets\.reduce\(/);
-  assert.match(live, /const exercise = exerciseLookup\[set\.exercise_id\] \?\? getExerciseById\(set\.exercise_id\)/);
-  assert.match(live, /exerciseName: exercise\?\.name \?\? 'Unknown exercise'/);
-  assert.match(live, /Object\.entries\(groupedSets\)\.map\(\(\[exerciseId, group\]\) =>/);
-  assertIncludes(live, '{group.exerciseName}');
+  assert.match(live, /function buildExerciseSetMap\(sets: LocalWorkoutSetRow\[\]\) \{/);
+  assert.match(live, /sets\.reduce\(\(map, set\) => \{/);
+  assert.match(live, /const exerciseSets = map\.get\(set\.exercise_id\) \?\? \[\]/);
+  assert.match(live, /map\.set\(set\.exercise_id, \[\.\.\.exerciseSets, set\]\)/);
+  assert.match(live, /function resolveExercise\(exerciseId: string\) \{/);
+  assert.match(live, /exerciseLookup\[exerciseId\] \?\? getExerciseById\(exerciseId\) \?\? null/);
+  assert.match(live, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
+  assert.match(live, /selectedExercises\.map\(\(exercise\) => \{/);
+  assertIncludes(live, '{exercise.name}');
 });
 
 test('each logged set renders as a tappable row showing set number plus reps times weight', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assert.match(live, /group\.sets\.map\(\(set\) => \(/);
+  assert.match(live, /exerciseSets\.map\(\(set\) => \(/);
   assert.match(live, /<Pressable\s+key=\{set\.local_id\}\s+onPress=\{\(\) => openEditModal\(set\)\}/s);
   assertIncludes(live, 'Set {set.set_number}');
   assertIncludes(live, '{set.reps ?? 0} reps × {set.weight ?? 0} lb');
@@ -117,7 +119,7 @@ test('edit modal is wired to the editing state and uses the edit-specific input 
 test('delete control is separate from row editing and stops event propagation', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assert.match(live, /onPress=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*confirmDeleteSet\(set\.local_id\);\s*\}\}/s);
+  assert.match(live, /onPress=\{\((event|e)\) => \{\s*(event|e)\.stopPropagation\(\);\s*confirmDeleteSet\(set\.local_id\);\s*\}\}/s);
   assertIncludes(live, 'hitSlop={10}');
   assertIncludes(live, '✕');
 });
@@ -134,7 +136,7 @@ test('delete confirmation uses a destructive action that removes the set and ref
 test('new sets continue numbering within only the currently selected exercise', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assert.match(live, /const selectedExerciseSets = useMemo\(\(\) => \{[\s\S]*return sets\.filter\(\(set\) => set\.exercise_id === selectedExercise\.id\);[\s\S]*\}, \[selectedExercise, sets\]\);/);
+  assert.match(live, /const selectedExerciseSets = useMemo\(\(\) => \{[\s\S]*return exerciseSetMap\.get\(selectedExercise\.id\) \?\? \[\];[\s\S]*\}, \[exerciseSetMap, selectedExercise\]\);/);
   assert.match(live, /setNumber: selectedExerciseSets\.length \+ 1/);
 });
 
