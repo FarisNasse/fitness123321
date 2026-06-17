@@ -68,6 +68,19 @@ export function getRecentLocalWorkoutSessions(limit = 5) {
   );
 }
 
+export function getCompletedWorkoutSessions(limit = 5) {
+  return db.getAllSync<LocalWorkoutSessionRow>(
+    `
+    select *
+    from workout_sessions_local
+    where completed_at is not null
+    order by started_at desc
+    limit ?
+    `,
+    [limit]
+  );
+}
+
 export function getLocalWorkoutSets(sessionLocalId: string) {
   return getSetsBySession(sessionLocalId);
 }

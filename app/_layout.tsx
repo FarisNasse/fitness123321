@@ -43,6 +43,10 @@ export default function RootLayout() {
           name="workout/session/[id]"
           options={{ title: 'Live Workout' }}
         />
+        <Stack.Screen
+          name="workout/history/[id]"
+          options={{ title: 'Workout History' }}
+        />
       </Stack>
     </QueryClientProvider>
   );

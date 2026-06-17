@@ -324,8 +324,10 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('order by started_at desc')
       ) {
         const [limit = 5] = params;
+        const completedOnly = normalized.includes('completed_at is not null');
 
         return [...store.workout_sessions_local]
+          .filter((session) => !completedOnly || Boolean(session.completed_at))
           .sort(
             (a, b) =>
               Date.parse(String(b.started_at)) - Date.parse(String(a.started_at))
