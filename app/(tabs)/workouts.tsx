@@ -4,6 +4,7 @@ import { Alert, Text, View } from 'react-native';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { Screen } from '@/src/components/Screen';
+import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
 import { createLocalWorkoutSession } from '@/src/features/workouts/workout-service';
 import { supabase } from '@/src/lib/supabase';
 
@@ -37,11 +38,7 @@ export default function WorkoutsScreen() {
         <Button title="Start empty workout" onPress={startWorkout} />
 
         <Card>
-          <Text style={{ fontSize: 18, fontWeight: '800' }}>Exercise library</Text>
-          <Text style={{ marginTop: 8, color: '#64748b' }}>
-            Seeded exercises will appear here. Filters should support muscle,
-            equipment, movement type, and difficulty.
-          </Text>
+          <ExerciseLibrary />
         </Card>
 
         <Card>
