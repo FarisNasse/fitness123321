@@ -5,6 +5,7 @@ import { Alert, Pressable, Text, View } from 'react-native';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { Screen } from '@/src/components/Screen';
+import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import { supabase } from '@/src/lib/supabase';
 
 const goals = [
@@ -21,6 +22,7 @@ export default function OnboardingScreen() {
   const [goal, setGoal] = useState(goals[0]);
   const [level, setLevel] = useState<(typeof levels)[number]>('beginner');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { refreshProfile } = useAuthSession();
 
   async function saveOnboarding() {
     setIsSubmitting(true);
@@ -50,6 +52,7 @@ export default function OnboardingScreen() {
       return;
     }
 
+    await refreshProfile();
     router.replace('/dashboard');
   }
 
