@@ -207,12 +207,14 @@ async function syncPendingWorkoutSessionsImpl() {
 
   const { supabase } = await import('@/src/lib/supabase');
 
-  const pendingSessions = db.getAllSync<any>(
+  const pendingSessions = db.getAllSync<LocalWorkoutSessionRow>(
     `
     select *
     from workout_sessions_local
     where sync_status in ('pending', 'failed')
-    `
+      and user_id != ?
+    `,
+    [LOCAL_DEV_USER_ID]
   );
 
   for (const session of pendingSessions) {

@@ -61,6 +61,20 @@ if (workoutsScreen?.includes('supabase.auth.getUser')) {
   errors.push('Workouts screen still blocks local testing behind Supabase auth.');
 }
 
+const workoutService = readRequiredText('src/features/workouts/workout-service.ts');
+
+if (workoutService) {
+  if (!workoutService.includes('and user_id != ?')) {
+    errors.push(
+      'Remote workout sync should exclude LOCAL_DEV_USER_ID sessions from the sync queue.'
+    );
+  }
+
+  if (!workoutService.includes('[LOCAL_DEV_USER_ID]')) {
+    errors.push('Remote workout sync should pass LOCAL_DEV_USER_ID as the excluded owner.');
+  }
+}
+
 const sessionScreen = readRequiredText('app/workout/session/[id].tsx');
 
 if (sessionScreen) {

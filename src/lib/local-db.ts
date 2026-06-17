@@ -304,9 +304,19 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('from workout_sessions_local') &&
         normalized.includes('sync_status')
       ) {
-        return store.workout_sessions_local.filter((session) =>
-          ['pending', 'failed'].includes(String(session.sync_status))
-        ) as T[];
+        const excludedUserId = normalized.includes('user_id != ?')
+          ? String(params[0] ?? '')
+          : null;
+
+        return store.workout_sessions_local.filter((session) => {
+          const hasSyncStatus = ['pending', 'failed'].includes(
+            String(session.sync_status)
+          );
+          const hasSyncableOwner =
+            !excludedUserId || String(session.user_id) !== excludedUserId;
+
+          return hasSyncStatus && hasSyncableOwner;
+        }) as T[];
       }
 
       if (
