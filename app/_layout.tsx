@@ -1,4 +1,4 @@
-import './global.css';
+import '../global.css';
 
 import { Inter_400Regular, Inter_700Bold, Inter_900Black } from '@expo-google-fonts/inter';
 import { SpaceGrotesk_700Bold, useFonts } from '@expo-google-fonts/space-grotesk';
