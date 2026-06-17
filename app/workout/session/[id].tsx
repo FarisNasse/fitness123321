@@ -24,16 +24,28 @@ import {
 import type { LocalWorkoutSet } from '@/src/lib/local-db';
 import type { Exercise } from '@/src/types/models';
 
+type LocalWorkoutSetRow = ReturnType<typeof getLocalWorkoutSets>[number];
+
+function buildExerciseSetMap(sets: LocalWorkoutSetRow[]) {
+  return sets.reduce((map, set) => {
+    const exerciseSets = map.get(set.exercise_id) ?? [];
+    map.set(set.exercise_id, [...exerciseSets, set]);
+    return map;
+  }, new Map<string, LocalWorkoutSetRow[]>());
+}
+
 export default function LiveWorkoutScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const exercises = useMemo(() => getSeededExercises(), []);
-  const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(
-    exercises[0] ?? null
-  );
+  const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([]);
+  const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [reps, setReps] = useState('10');
   const [weight, setWeight] = useState('135');
   const [sets, setSets] = useState<ReturnType<typeof getLocalWorkoutSets>>([]);
+  const [exerciseSetMap, setExerciseSetMap] = useState<
+    Map<string, LocalWorkoutSetRow[]>
+  >(() => new Map());
   const [exerciseLookup, setExerciseLookup] = useState<Record<string, Exercise>>(
     () =>
       Object.fromEntries(
@@ -68,9 +80,45 @@ export default function LiveWorkoutScreen() {
       .join(' • ');
   }, [selectedExercise]);
 
+  function rememberExerciseSelection(exercise: Exercise) {
+    setSelectedExercises((current) => {
+      if (current.some((selected) => selected.id === exercise.id)) {
+        return current;
+      }
+
+      return [...current, exercise];
+    });
+  }
+
+  function resolveExercise(exerciseId: string) {
+    return exerciseLookup[exerciseId] ?? getExerciseById(exerciseId) ?? null;
+  }
+
   function refreshSets() {
     if (!sessionId) return;
-    setSets(getLocalWorkoutSets(sessionId));
+
+    const nextSets = getLocalWorkoutSets(sessionId);
+    const nextMap = buildExerciseSetMap(nextSets);
+
+    setSets(nextSets);
+    setExerciseSetMap(nextMap);
+
+    const exercisesFromLoggedSets = Array.from(nextMap.keys())
+      .map((exerciseId) => resolveExercise(exerciseId))
+      .filter((exercise): exercise is Exercise => Boolean(exercise));
+
+    if (exercisesFromLoggedSets.length > 0) {
+      setSelectedExercises((current) => {
+        const existingIds = new Set(current.map((exercise) => exercise.id));
+        const missingExercises = exercisesFromLoggedSets.filter(
+          (exercise) => !existingIds.has(exercise.id)
+        );
+
+        return missingExercises.length > 0
+          ? [...current, ...missingExercises]
+          : current;
+      });
+    }
   }
 
   useEffect(() => {
@@ -79,31 +127,8 @@ export default function LiveWorkoutScreen() {
 
   const selectedExerciseSets = useMemo(() => {
     if (!selectedExercise) return [];
-    return sets.filter((set) => set.exercise_id === selectedExercise.id);
-  }, [selectedExercise, sets]);
-
-  const groupedSets = useMemo(() => {
-    return sets.reduce(
-      (groups, set) => {
-        const exercise = exerciseLookup[set.exercise_id] ?? getExerciseById(set.exercise_id);
-        const key = set.exercise_id;
-
-        if (!groups[key]) {
-          groups[key] = {
-            exerciseName: exercise?.name ?? 'Unknown exercise',
-            sets: [],
-          };
-        }
-
-        groups[key].sets.push(set);
-        return groups;
-      },
-      {} as Record<
-        string,
-        { exerciseName: string; sets: ReturnType<typeof getLocalWorkoutSets> }
-      >
-    );
-  }, [exerciseLookup, sets]);
+    return exerciseSetMap.get(selectedExercise.id) ?? [];
+  }, [exerciseSetMap, selectedExercise]);
 
   const bestEstimatedMax = useMemo(() => {
     const estimates = sets
@@ -119,6 +144,16 @@ export default function LiveWorkoutScreen() {
       ...current,
       [exercise.id]: exercise,
     }));
+    setExerciseSetMap((current) => {
+      const nextMap = new Map(current);
+
+      if (!nextMap.has(exercise.id)) {
+        nextMap.set(exercise.id, []);
+      }
+
+      return nextMap;
+    });
+    rememberExerciseSelection(exercise);
     setSelectedExercise(exercise);
     setIsPickerOpen(false);
   }
@@ -227,20 +262,41 @@ export default function LiveWorkoutScreen() {
             >
               <View style={{ flex: 1 }}>
                 <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
-                  CURRENT EXERCISE
+                  EXERCISES
                 </Text>
                 <Text style={{ fontSize: 24, fontWeight: '900', marginTop: 4 }}>
-                  {selectedExercise?.name ?? 'Choose exercise'}
+                  {selectedExercises.length} added
                 </Text>
-                {selectedExerciseMetadata ? (
-                  <Text style={{ color: '#64748b', marginTop: 6 }}>
-                    {selectedExerciseMetadata}
-                  </Text>
-                ) : null}
+                <Text style={{ color: '#64748b', lineHeight: 21, marginTop: 6 }}>
+                  Add a real exercise from the library before logging sets.
+                </Text>
               </View>
               <Pressable onPress={() => setIsPickerOpen(true)}>
-                <Text style={{ color: '#0f172a', fontWeight: '900' }}>Change</Text>
+                <Text style={{ color: '#0f172a', fontWeight: '900' }}>Add exercise</Text>
               </Pressable>
+            </View>
+
+            <Button title="Add exercise" onPress={() => setIsPickerOpen(true)} />
+          </View>
+        </Card>
+
+        <Card>
+          <View style={{ gap: 16 }}>
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
+                LOG SET
+              </Text>
+              <Text style={{ fontSize: 24, fontWeight: '900' }}>
+                {selectedExercise?.name ?? 'Choose an exercise'}
+              </Text>
+              {selectedExerciseMetadata ? (
+                <Text style={{ color: '#64748b' }}>{selectedExerciseMetadata}</Text>
+              ) : (
+                <Text style={{ color: '#64748b', lineHeight: 21 }}>
+                  Select an exercise card below, or tap Add exercise to pick from the
+                  library.
+                </Text>
+              )}
             </View>
 
             {selectedExercise ? (
@@ -289,78 +345,158 @@ export default function LiveWorkoutScreen() {
             </View>
           </View>
         </Card>
+        {selectedExercises.length === 0 ? (
+          <Card>
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 20, fontWeight: '900' }}>No exercises added</Text>
+              <Text style={{ color: '#64748b', lineHeight: 21 }}>
+                Tap Add exercise to open the library, choose a movement, then log
+                reps and weight against that exercise.
+              </Text>
+            </View>
+          </Card>
+        ) : (
+          selectedExercises.map((exercise) => {
+            const exerciseSets = exerciseSetMap.get(exercise.id) ?? [];
+            const isActiveExercise = selectedExercise?.id === exercise.id;
 
-        <Card>
-          <View style={{ gap: 12 }}>
-            <Text style={{ fontSize: 20, fontWeight: '900' }}>Logged sets</Text>
-            {sets.length === 0 ? (
-              <View
-                style={{
-                  backgroundColor: '#f8fafc',
-                  borderColor: '#e2e8f0',
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  padding: 16,
-                }}
-              >
-                <Text style={{ fontWeight: '900' }}>No sets yet</Text>
-                <Text style={{ color: '#64748b', marginTop: 6 }}>
-                  Pick an exercise, enter reps/weight, then add your first set.
-                </Text>
-              </View>
-            ) : (
-              <View style={{ gap: 12 }}>
-                {Object.entries(groupedSets).map(([exerciseId, group]) => (
-                  <View key={exerciseId} style={{ gap: 6 }}>
-                    <Text style={{ color: '#0f172a', fontWeight: '900' }}>
-                      {group.exerciseName}
-                    </Text>
-                    {group.sets.map((set) => (
-                      <Pressable
-                        key={set.local_id}
-                        onPress={() => openEditModal(set)}
-                        style={({ pressed }) => ({
-                          alignItems: 'center',
-                          backgroundColor: pressed ? '#f1f5f9' : '#f8fafc',
-                          borderColor: '#e2e8f0',
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          flexDirection: 'row',
-                          justifyContent: 'space-between',
-                          padding: 12,
-                        })}
-                      >
-                        <Text style={{ fontWeight: '900', minWidth: 52 }}>
-                          Set {set.set_number}
-                        </Text>
-                        <Text style={{ color: '#475569', flex: 1, fontWeight: '800' }}>
-                          {set.reps ?? 0} reps × {set.weight ?? 0} lb
-                        </Text>
+            return (
+              <Card key={exercise.id}>
+                <View style={{ gap: 14 }}>
+                  <View
+                    style={{
+                      alignItems: 'flex-start',
+                      flexDirection: 'row',
+                      gap: 12,
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 22, fontWeight: '900' }}>
+                        {exercise.name}
+                      </Text>
+                      <Text style={{ color: '#64748b', lineHeight: 21, marginTop: 4 }}>
+                        {[exercise.muscleGroup, exercise.equipment, exercise.difficulty]
+                          .filter(Boolean)
+                          .join(' • ')}
+                      </Text>
+                    </View>
+                    <Pressable onPress={() => setSelectedExercise(exercise)}>
+                      <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                        {isActiveExercise ? 'Selected' : 'Log set'}
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  {exerciseSets.length === 0 ? (
+                    <View
+                      style={{
+                        backgroundColor: '#f8fafc',
+                        borderColor: '#e2e8f0',
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        padding: 14,
+                      }}
+                    >
+                      <Text style={{ color: '#64748b', fontWeight: '800' }}>
+                        No sets logged for this exercise yet.
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {exerciseSets.map((set) => (
                         <Pressable
-                          hitSlop={10}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            confirmDeleteSet(set.local_id);
-                          }}
+                          key={set.local_id}
+                          onPress={() => openEditModal(set)}
                           style={({ pressed }) => ({
-                            backgroundColor: pressed ? '#fee2e2' : '#fef2f2',
-                            borderRadius: 8,
-                            paddingHorizontal: 10,
-                            paddingVertical: 5,
+                            alignItems: 'center',
+                            backgroundColor: pressed ? '#f1f5f9' : '#f8fafc',
+                            borderColor: '#e2e8f0',
+                            borderRadius: 14,
+                            borderWidth: 1,
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            padding: 12,
                           })}
                         >
-                          <Text style={{ color: '#ef4444', fontSize: 15, fontWeight: '900' }}>
-                            ✕
+                          <Text style={{ fontWeight: '900', minWidth: 52 }}>
+                            Set {set.set_number}
                           </Text>
+
+                          <Text style={{ color: '#475569', flex: 1, fontWeight: '800' }}>
+                            {set.reps ?? 0} reps × {set.weight ?? 0} lb
+                          </Text>
+
+                          <Pressable
+                            hitSlop={10}
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              confirmDeleteSet(set.local_id);
+                            }}
+                            style={({ pressed }) => ({
+                              backgroundColor: pressed ? '#fee2e2' : '#fef2f2',
+                              borderRadius: 8,
+                              paddingHorizontal: 10,
+                              paddingVertical: 5,
+                            })}
+                          >
+                            <Text style={{ color: '#ef4444', fontSize: 15, fontWeight: '900' }}>
+                              ✕
+                            </Text>
+                          </Pressable>
                         </Pressable>
-                      </Pressable>
-                    ))}
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        </Card>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </Card>
+            );
+          })
+        )}
+                  {exerciseSets.length === 0 ? (
+                    <View
+                      style={{
+                        backgroundColor: '#f8fafc',
+                        borderColor: '#e2e8f0',
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        padding: 14,
+                      }}
+                    >
+                      <Text style={{ fontWeight: '900' }}>No sets yet</Text>
+                      <Text style={{ color: '#64748b', marginTop: 6 }}>
+                        Select this exercise and add the first set.
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {exerciseSets.map((set) => (
+                        <View
+                          key={set.local_id}
+                          style={{
+                            alignItems: 'center',
+                            backgroundColor: '#f8fafc',
+                            borderColor: '#e2e8f0',
+                            borderRadius: 14,
+                            borderWidth: 1,
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            padding: 12,
+                          }}
+                        >
+                          <Text style={{ fontWeight: '900' }}>Set {set.set_number}</Text>
+                          <Text style={{ color: '#475569', fontWeight: '800' }}>
+                            {set.reps ?? 0} reps × {set.weight ?? 0} lb
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </Card>
+            );
+          })
+        )}
 
         <Button title="Finish workout" onPress={finishWorkout} />
       </View>
