@@ -1,6 +1,6 @@
 import * as Crypto from 'expo-crypto';
 
-import { db, getSetsBySession, type LocalWorkoutSession } from '@/src/lib/local-db';
+import { db, getSetsBySession, type LocalWorkoutSession, type LocalWorkoutSet } from '@/src/lib/local-db';
 import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
 
 export type LocalWorkoutSessionRow = LocalWorkoutSession;
@@ -83,6 +83,73 @@ export function getCompletedWorkoutSessions(limit = 5) {
 
 export function getLocalWorkoutSets(sessionLocalId: string) {
   return getSetsBySession(sessionLocalId);
+}
+
+export function updateLocalWorkoutSet(
+  setLocalId: string,
+  reps: number,
+  weight: number
+) {
+  const now = new Date().toISOString();
+
+  db.runSync(
+    `
+    update workout_sets_local
+    set reps = ?,
+        weight = ?,
+        sync_status = 'pending',
+        updated_at = ?
+    where local_id = ?
+    `,
+    [reps, weight, now, setLocalId]
+  );
+}
+
+export function deleteLocalWorkoutSet(setLocalId: string) {
+  const deleted = db.getAllSync<LocalWorkoutSet>(
+    `
+    select *
+    from workout_sets_local
+    where local_id = ?
+    limit 1
+    `,
+    [setLocalId]
+  )[0];
+
+  if (!deleted) return;
+
+  db.runSync(
+    `
+    delete from workout_sets_local
+    where local_id = ?
+    `,
+    [setLocalId]
+  );
+
+  const now = new Date().toISOString();
+  const toRenumber = db.getAllSync<LocalWorkoutSet>(
+    `
+    select *
+    from workout_sets_local
+    where session_local_id = ?
+      and exercise_id = ?
+      and set_number > ?
+    order by set_number asc
+    `,
+    [deleted.session_local_id, deleted.exercise_id, deleted.set_number]
+  );
+
+  for (const s of toRenumber) {
+    db.runSync(
+      `
+      update workout_sets_local
+      set set_number = ?,
+          updated_at = ?
+      where local_id = ?
+      `,
+      [s.set_number - 1, now, s.local_id]
+    );
+  }
 }
 
 export function addLocalWorkoutSet(input: {

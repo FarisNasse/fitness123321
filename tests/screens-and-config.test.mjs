@@ -143,7 +143,7 @@ test('live workout screen groups logged sets by exercise and renders exercise ca
   assert.match(live, /const nextSets = getLocalWorkoutSets\(sessionId\);\s*const nextMap = buildExerciseSetMap\(nextSets\);\s*setSets\(nextSets\);\s*setExerciseSetMap\(nextMap\);/);
   assert.match(live, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
   assert.match(live, /selectedExercises\.map\(\(exercise\) => \{\s*const exerciseSets = exerciseSetMap\.get\(exercise\.id\) \?\? \[\];\s*const isActiveExercise = selectedExercise\?\.id === exercise\.id;/);
-  assert.match(live, /<Card key=\{exercise\.id\}>[\s\S]*\{exercise\.name\}[\s\S]*\{exerciseSets\.length === 0 \? \([\s\S]*No sets yet[\s\S]*\) : \([\s\S]*exerciseSets\.map\(\(set\) =>/);
+  assert.match(live, /<Card key=\{exercise\.id\}>[\s\S]*\{exercise\.name\}[\s\S]*\{exerciseSets\.length === 0 \? \([\s\S]*No sets logged for this exercise yet\.[\s\S]*\) : \([\s\S]*exerciseSets\.map\(\(set\) =>/);
   assert.match(live, /<Pressable onPress=\{\(\) => setSelectedExercise\(exercise\)\}>[\s\S]*\{isActiveExercise \? 'Selected' : 'Log set'\}/);
 });
 

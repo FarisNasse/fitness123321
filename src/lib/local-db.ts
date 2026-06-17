@@ -283,6 +283,54 @@ function createWebDbAdapter(): DbAdapter {
         writeWebStore(store);
         return;
       }
+
+      if (
+        normalized.startsWith('update workout_sets_local') &&
+        normalized.includes('set reps =')
+      ) {
+        const [reps, weight, updatedAt, setLocalId] = params;
+        const set = store.workout_sets_local.find(
+          (item) => item.local_id === setLocalId
+        );
+
+        if (set) {
+          set.reps = reps;
+          set.weight = weight;
+          set.sync_status = 'pending';
+          set.updated_at = updatedAt;
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sets_local') &&
+        normalized.includes('set set_number =')
+      ) {
+        const [setNumber, updatedAt, setLocalId] = params;
+        const set = store.workout_sets_local.find(
+          (item) => item.local_id === setLocalId
+        );
+
+        if (set) {
+          set.set_number = setNumber;
+          set.updated_at = updatedAt;
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('delete from workout_sets_local')) {
+        const [setLocalId] = params;
+        store.workout_sets_local = store.workout_sets_local.filter(
+          (item) => item.local_id !== setLocalId
+        );
+
+        writeWebStore(store);
+        return;
+      }
     },
 
     getAllSync<T = unknown>(sql: string, params: unknown[] = []) {
@@ -333,6 +381,37 @@ function createWebDbAdapter(): DbAdapter {
               Date.parse(String(b.started_at)) - Date.parse(String(a.started_at))
           )
           .slice(0, Number(limit)) as T[];
+      }
+
+      if (
+        normalized.includes('from workout_sets_local') &&
+        normalized.includes('where local_id = ?')
+      ) {
+        const [setLocalId] = params;
+
+        return store.workout_sets_local.filter(
+          (set) => set.local_id === setLocalId
+        ) as T[];
+      }
+
+      if (
+        normalized.includes('from workout_sets_local') &&
+        normalized.includes('session_local_id = ?') &&
+        normalized.includes('exercise_id = ?') &&
+        normalized.includes('set_number >')
+      ) {
+        const [sessionLocalId, exerciseId, setNumber] = params;
+
+        return store.workout_sets_local
+          .filter(
+            (set) =>
+              set.session_local_id === sessionLocalId &&
+              set.exercise_id === exerciseId &&
+              Number(set.set_number ?? 0) > Number(setNumber ?? 0)
+          )
+          .sort(
+            (a, b) => Number(a.set_number ?? 0) - Number(b.set_number ?? 0)
+          ) as T[];
       }
 
       if (

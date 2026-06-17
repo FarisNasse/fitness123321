@@ -15,10 +15,13 @@ import { estimatedOneRepMax } from '@/src/features/workouts/pr-service';
 import {
   addLocalWorkoutSet,
   completeLocalWorkoutSession,
+  deleteLocalWorkoutSet,
   getLocalWorkoutSession,
   getLocalWorkoutSets,
   syncPendingWorkoutSessions,
+  updateLocalWorkoutSet,
 } from '@/src/features/workouts/workout-service';
+import type { LocalWorkoutSet } from '@/src/lib/local-db';
 import type { Exercise } from '@/src/types/models';
 
 type LocalWorkoutSetRow = ReturnType<typeof getLocalWorkoutSets>[number];
@@ -49,6 +52,11 @@ export default function LiveWorkoutScreen() {
         exercises.map((exercise) => [exercise.id, exercise])
       ) as Record<string, Exercise>
   );
+
+  // Inline editing state
+  const [editingSet, setEditingSet] = useState<LocalWorkoutSet | null>(null);
+  const [editReps, setEditReps] = useState('');
+  const [editWeight, setEditWeight] = useState('');
 
   const sessionId = useMemo(() => {
     if (Array.isArray(id)) return id[0];
@@ -177,6 +185,47 @@ export default function LiveWorkoutScreen() {
     refreshSets();
   }
 
+  function openEditModal(set: LocalWorkoutSet) {
+    setEditingSet(set);
+    setEditReps(String(set.reps ?? ''));
+    setEditWeight(String(set.weight ?? ''));
+  }
+
+  function saveEditedSet() {
+    if (!editingSet) return;
+
+    const parsedReps = Number.parseInt(editReps, 10);
+    const parsedWeight = Number.parseFloat(editWeight);
+
+    if (!Number.isFinite(parsedReps) || parsedReps <= 0) {
+      Alert.alert('Invalid reps', 'Enter a valid rep count.');
+      return;
+    }
+
+    if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
+      Alert.alert('Invalid weight', 'Enter a valid weight.');
+      return;
+    }
+
+    updateLocalWorkoutSet(editingSet.local_id, parsedReps, parsedWeight);
+    setEditingSet(null);
+    refreshSets();
+  }
+
+  function confirmDeleteSet(setLocalId: string) {
+    Alert.alert('Remove set', 'Delete this set?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          deleteLocalWorkoutSet(setLocalId);
+          refreshSets();
+        },
+      },
+    ]);
+  }
+
   function finishWorkout() {
     if (!sessionId) return;
 
@@ -296,7 +345,6 @@ export default function LiveWorkoutScreen() {
             </View>
           </View>
         </Card>
-
         {selectedExercises.length === 0 ? (
           <Card>
             <View style={{ gap: 8 }}>
@@ -350,32 +398,53 @@ export default function LiveWorkoutScreen() {
                         padding: 14,
                       }}
                     >
-                      <Text style={{ fontWeight: '900' }}>No sets yet</Text>
-                      <Text style={{ color: '#64748b', marginTop: 6 }}>
-                        Select this exercise and add the first set.
+                      <Text style={{ color: '#64748b', fontWeight: '800' }}>
+                        No sets logged for this exercise yet.
                       </Text>
                     </View>
                   ) : (
                     <View style={{ gap: 8 }}>
                       {exerciseSets.map((set) => (
-                        <View
+                        <Pressable
                           key={set.local_id}
-                          style={{
+                          onPress={() => openEditModal(set)}
+                          style={({ pressed }) => ({
                             alignItems: 'center',
-                            backgroundColor: '#f8fafc',
+                            backgroundColor: pressed ? '#f1f5f9' : '#f8fafc',
                             borderColor: '#e2e8f0',
                             borderRadius: 14,
                             borderWidth: 1,
                             flexDirection: 'row',
                             justifyContent: 'space-between',
                             padding: 12,
-                          }}
+                          })}
                         >
-                          <Text style={{ fontWeight: '900' }}>Set {set.set_number}</Text>
-                          <Text style={{ color: '#475569', fontWeight: '800' }}>
+                          <Text style={{ fontWeight: '900', minWidth: 52 }}>
+                            Set {set.set_number}
+                          </Text>
+
+                          <Text style={{ color: '#475569', flex: 1, fontWeight: '800' }}>
                             {set.reps ?? 0} reps × {set.weight ?? 0} lb
                           </Text>
-                        </View>
+
+                          <Pressable
+                            hitSlop={10}
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              confirmDeleteSet(set.local_id);
+                            }}
+                            style={({ pressed }) => ({
+                              backgroundColor: pressed ? '#fee2e2' : '#fef2f2',
+                              borderRadius: 8,
+                              paddingHorizontal: 10,
+                              paddingVertical: 5,
+                            })}
+                          >
+                            <Text style={{ color: '#ef4444', fontSize: 15, fontWeight: '900' }}>
+                              ✕
+                            </Text>
+                          </Pressable>
+                        </Pressable>
                       ))}
                     </View>
                   )}
@@ -388,6 +457,7 @@ export default function LiveWorkoutScreen() {
         <Button title="Finish workout" onPress={finishWorkout} />
       </View>
 
+      {/* Exercise picker modal */}
       <Modal
         animationType="slide"
         onRequestClose={() => setIsPickerOpen(false)}
@@ -417,6 +487,90 @@ export default function LiveWorkoutScreen() {
               onSelect={chooseExercise}
               selectButtonTitle="Use this exercise"
             />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Inline set-edit modal */}
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setEditingSet(null)}
+        transparent
+        visible={Boolean(editingSet)}
+      >
+        <Pressable
+          onPress={() => setEditingSet(null)}
+          style={{
+            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            flex: 1,
+            justifyContent: 'flex-end',
+          }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              backgroundColor: '#ffffff',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              gap: 20,
+              padding: 24,
+              paddingBottom: 36,
+            }}
+          >
+            <Text style={{ fontSize: 20, fontWeight: '900' }}>
+              Edit Set {editingSet?.set_number}
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '800', marginBottom: 6 }}>Reps</Text>
+                <TextInput
+                  keyboardType="number-pad"
+                  value={editReps}
+                  onChangeText={setEditReps}
+                  style={inputStyle}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '800', marginBottom: 6 }}>Weight</Text>
+                <TextInput
+                  keyboardType="decimal-pad"
+                  value={editWeight}
+                  onChangeText={setEditWeight}
+                  style={inputStyle}
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <Pressable
+                onPress={() => setEditingSet(null)}
+                style={({ pressed }) => ({
+                  borderColor: '#e2e8f0',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  flex: 1,
+                  opacity: pressed ? 0.7 : 1,
+                  padding: 16,
+                  alignItems: 'center',
+                })}
+              >
+                <Text style={{ fontWeight: '900' }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={saveEditedSet}
+                style={({ pressed }) => ({
+                  backgroundColor: '#0f172a',
+                  borderRadius: 14,
+                  flex: 1,
+                  opacity: pressed ? 0.8 : 1,
+                  padding: 16,
+                  alignItems: 'center',
+                })}
+              >
+                <Text style={{ color: '#ffffff', fontWeight: '900' }}>Save</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
