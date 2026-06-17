@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
@@ -10,9 +10,10 @@ import {
   createLocalWorkoutSession,
   getLocalWorkoutSets,
   getRecentLocalWorkoutSessions,
+  getWorkoutOwnerUserId,
   type LocalWorkoutSessionRow,
 } from '@/src/features/workouts/workout-service';
-import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
+import { USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
 
 export default function WorkoutsScreen() {
   const [recentSessions, setRecentSessions] = useState<LocalWorkoutSessionRow[]>([]);
@@ -30,10 +31,18 @@ export default function WorkoutsScreen() {
     [recentSessions]
   );
 
-  function startWorkout() {
-    const sessionId = createLocalWorkoutSession(LOCAL_DEV_USER_ID, 'Quick workout');
-    refreshRecentSessions();
-    router.push(`/workout/session/${sessionId}`);
+  async function startWorkout() {
+    try {
+      const userId = await getWorkoutOwnerUserId();
+      const sessionId = createLocalWorkoutSession(userId, 'Quick workout');
+      refreshRecentSessions();
+      router.push(`/workout/session/${sessionId}`);
+    } catch (error) {
+      Alert.alert(
+        'Could not start workout',
+        error instanceof Error ? error.message : 'Try signing in again.'
+      );
+    }
   }
 
   return (

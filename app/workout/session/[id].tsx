@@ -6,7 +6,11 @@ import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { Screen } from '@/src/components/Screen';
 import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
-import { getExerciseById, getSeededExercises } from '@/src/features/workouts/exercise-service';
+import {
+  getExerciseById,
+  getSeededExercises,
+  rememberExercises,
+} from '@/src/features/workouts/exercise-service';
 import { estimatedOneRepMax } from '@/src/features/workouts/pr-service';
 import {
   addLocalWorkoutSet,
@@ -27,6 +31,12 @@ export default function LiveWorkoutScreen() {
   const [reps, setReps] = useState('10');
   const [weight, setWeight] = useState('135');
   const [sets, setSets] = useState<ReturnType<typeof getLocalWorkoutSets>>([]);
+  const [exerciseLookup, setExerciseLookup] = useState<Record<string, Exercise>>(
+    () =>
+      Object.fromEntries(
+        exercises.map((exercise) => [exercise.id, exercise])
+      ) as Record<string, Exercise>
+  );
 
   const sessionId = useMemo(() => {
     if (Array.isArray(id)) return id[0];
@@ -52,7 +62,7 @@ export default function LiveWorkoutScreen() {
   const groupedSets = useMemo(() => {
     return sets.reduce(
       (groups, set) => {
-        const exercise = getExerciseById(set.exercise_id);
+        const exercise = exerciseLookup[set.exercise_id] ?? getExerciseById(set.exercise_id);
         const key = set.exercise_id;
 
         if (!groups[key]) {
@@ -70,7 +80,7 @@ export default function LiveWorkoutScreen() {
         { exerciseName: string; sets: ReturnType<typeof getLocalWorkoutSets> }
       >
     );
-  }, [sets]);
+  }, [exerciseLookup, sets]);
 
   const bestEstimatedMax = useMemo(() => {
     const estimates = sets
@@ -81,6 +91,11 @@ export default function LiveWorkoutScreen() {
   }, [sets]);
 
   function chooseExercise(exercise: Exercise) {
+    rememberExercises([exercise]);
+    setExerciseLookup((current) => ({
+      ...current,
+      [exercise.id]: exercise,
+    }));
     setSelectedExercise(exercise);
     setIsPickerOpen(false);
   }

@@ -4,6 +4,7 @@ import type { Exercise } from '@/src/types/models';
 declare function require(path: string): unknown;
 
 const seededExercises = require('./seed-exercises.json') as Exercise[];
+let exerciseCache = seededExercises;
 
 type ExerciseRow = {
   id: string;
@@ -37,8 +38,18 @@ export function getSeededExercises() {
   return sortExercises(seededExercises);
 }
 
+export function rememberExercises(exercises: Exercise[]) {
+  const byId = new Map(exerciseCache.map((exercise) => [exercise.id, exercise]));
+
+  for (const exercise of exercises) {
+    byId.set(exercise.id, exercise);
+  }
+
+  exerciseCache = Array.from(byId.values());
+}
+
 export function getExerciseById(exerciseId: string) {
-  return getSeededExercises().find((exercise) => exercise.id === exerciseId) ?? null;
+  return exerciseCache.find((exercise) => exercise.id === exerciseId) ?? null;
 }
 
 function getExerciseFetchMessage(error: unknown) {
@@ -68,14 +79,20 @@ async function fetchSupabaseExercises() {
 
 export async function fetchExercises() {
   if (!USE_SUPABASE_EXERCISES) {
-    return getSeededExercises();
+    const exercises = getSeededExercises();
+    rememberExercises(exercises);
+    return exercises;
   }
 
   try {
     const remoteExercises = await fetchSupabaseExercises();
-    return remoteExercises.length > 0 ? remoteExercises : getSeededExercises();
+    const exercises = remoteExercises.length > 0 ? remoteExercises : getSeededExercises();
+    rememberExercises(exercises);
+    return exercises;
   } catch (error) {
     console.warn('Failed to fetch exercises from Supabase. Using local seed data.', error);
-    return getSeededExercises();
+    const exercises = getSeededExercises();
+    rememberExercises(exercises);
+    return exercises;
   }
 }

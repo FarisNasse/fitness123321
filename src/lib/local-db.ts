@@ -232,6 +232,24 @@ function createWebDbAdapter(): DbAdapter {
       }
 
       if (
+        normalized.startsWith('update workout_sessions_local') &&
+        normalized.includes('set server_id = null')
+      ) {
+        const [sessionLocalId] = params;
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId
+        );
+
+        if (session) {
+          session.server_id = null;
+          session.sync_status = 'pending';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
         normalized.startsWith('update workout_sets_local') &&
         normalized.includes("set sync_status = 'failed'")
       ) {

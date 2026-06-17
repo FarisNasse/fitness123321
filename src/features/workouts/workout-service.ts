@@ -1,20 +1,24 @@
 import * as Crypto from 'expo-crypto';
 
-import { db, getSetsBySession } from '@/src/lib/local-db';
-import { USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
+import { db, getSetsBySession, type LocalWorkoutSession } from '@/src/lib/local-db';
+import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
 
-export type LocalWorkoutSessionRow = {
-  local_id: string;
-  server_id: string | null;
-  user_id: string;
-  name: string;
-  started_at: string;
-  completed_at: string | null;
-  duration_seconds: number | null;
-  notes: string | null;
-  sync_status: 'pending' | 'synced' | 'failed';
-  updated_at: string;
-};
+export type LocalWorkoutSessionRow = LocalWorkoutSession;
+
+export async function getWorkoutOwnerUserId() {
+  if (!USE_REMOTE_WORKOUT_SYNC) {
+    return LOCAL_DEV_USER_ID;
+  }
+
+  const { supabase } = await import('@/src/lib/supabase');
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error || !data.user?.id) {
+    throw new Error('Sign in before starting a cloud-synced workout.');
+  }
+
+  return data.user.id;
+}
 
 export function createLocalWorkoutSession(userId: string, name = 'Workout') {
   const localId = Crypto.randomUUID();
@@ -135,6 +139,18 @@ function saveWorkoutSessionServerId(sessionLocalId: string, serverId: string) {
   );
 }
 
+function clearWorkoutSessionServerId(sessionLocalId: string) {
+  db.runSync(
+    `
+    update workout_sessions_local
+    set server_id = null,
+        sync_status = 'pending'
+    where local_id = ?
+    `,
+    [sessionLocalId]
+  );
+}
+
 function markWorkoutSessionSynced(sessionLocalId: string, serverId: string) {
   db.runSync(
     `
@@ -216,11 +232,20 @@ async function syncPendingWorkoutSessionsImpl() {
         .select('id')
         .maybeSingle();
 
-      if (error || !data?.id) {
+      if (error) {
         markWorkoutSessionFailed(session.local_id);
         continue;
       }
-    } else {
+
+      if (!data?.id) {
+        // The remote row was deleted or never existed. Clear the stale server_id so
+        // this pass can recreate the session with the local id instead of failing forever.
+        clearWorkoutSessionServerId(session.local_id);
+        serverSessionId = null;
+      }
+    }
+
+    if (!serverSessionId) {
       const desiredSessionId = String(session.local_id);
       const { data, error } = await supabase
         .from('workout_sessions')
