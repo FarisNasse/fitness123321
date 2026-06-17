@@ -1,9 +1,11 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Text, TextInput, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
 
+import { Badge } from '@/src/components/Badge';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
+import { Input } from '@/src/components/Input';
 import { Screen } from '@/src/components/Screen';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
@@ -61,67 +63,60 @@ export default function RegisterScreen() {
 
   return (
     <Screen>
-      <View style={{ gap: 16 }}>
-        <View>
-          <Text style={{ fontSize: 32, fontWeight: '800' }}>Create account</Text>
-          <Text style={{ marginTop: 8, color: '#64748b' }}>
-            Start with the basics. You can refine goals later.
+      <View className="gap-6">
+        <View className="gap-3">
+          <Text className="text-base font-bold uppercase tracking-widest text-primary">
+            Start strong
+          </Text>
+          <Text className="text-4xl font-display text-base-content">Create account</Text>
+          <Text className="text-sm font-body leading-6 text-base-muted">
+            Set up the basics now. Goals and targets can be refined later.
           </Text>
           {USE_DEV_AUTH ? (
-            <Text style={{ marginTop: 8, color: '#059669', fontWeight: '700' }}>
-              Local dev auth is on. Account creation is skipped until Supabase auth is enabled.
-            </Text>
+            <View className="items-start">
+              <Badge label="Account creation skipped locally" variant="success" />
+            </View>
           ) : null}
         </View>
 
-        <Card>
-          <View style={{ gap: 12 }}>
-            <Text style={{ fontWeight: '700' }}>Display name</Text>
-            <TextInput
-              placeholder="Faris"
-              value={displayName}
-              onChangeText={setDisplayName}
-              style={inputStyle}
-            />
+        <Card variant="highlighted" className="gap-4">
+          <Input
+            label="Display name"
+            placeholder="Faris"
+            value={displayName}
+            onChangeText={setDisplayName}
+          />
+          <Input
+            autoCapitalize="none"
+            keyboardType="email-address"
+            label="Email"
+            placeholder="you@example.com"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <Input
+            label="Password"
+            placeholder="At least 8 characters"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
 
-            <Text style={{ fontWeight: '700' }}>Email</Text>
-            <TextInput
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              style={inputStyle}
-            />
-
-            <Text style={{ fontWeight: '700' }}>Password</Text>
-            <TextInput
-              placeholder="At least 8 characters"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              style={inputStyle}
-            />
-
-            <Button
-              title={USE_DEV_AUTH ? 'Continue in local dev mode' : isSubmitting ? 'Creating...' : 'Create account'}
-              onPress={handleRegister}
-              disabled={isSubmitting}
-            />
-          </View>
+          <Button
+            title={USE_DEV_AUTH ? 'Continue in local dev mode' : isSubmitting ? 'Creating...' : 'Create account'}
+            onPress={handleRegister}
+            disabled={isSubmitting}
+            loading={isSubmitting}
+          />
         </Card>
 
-        <Text style={{ textAlign: 'center' }}>
-          Already have an account? <Link href="/login">Sign in</Link>
+        <Text className="text-center text-sm font-body text-base-muted">
+          Already have an account?{' '}
+          <Link href="/login" className="font-bold text-primary">
+            Sign in
+          </Link>
         </Text>
       </View>
     </Screen>
   );
 }
-
-const inputStyle = {
-  borderWidth: 1,
-  borderColor: '#cbd5e1',
-  borderRadius: 12,
-  padding: 12,
-};

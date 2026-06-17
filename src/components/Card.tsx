@@ -1,21 +1,22 @@
 import type { PropsWithChildren } from 'react';
 import { View } from 'react-native';
 
-export function Card({ children }: PropsWithChildren) {
+type CardVariant = 'default' | 'highlighted' | 'ghost';
+
+type CardProps = PropsWithChildren<{
+  variant?: CardVariant;
+  className?: string;
+}>;
+
+const variantClasses: Record<CardVariant, string> = {
+  default: 'bg-base-200 border border-base-300',
+  highlighted: 'bg-base-200 border border-primary/40',
+  ghost: 'bg-transparent border border-base-300',
+};
+
+export function Card({ children, variant = 'default', className = '' }: CardProps) {
   return (
-    <View
-      style={{
-        backgroundColor: '#ffffff',
-        borderWidth: 1,
-        borderColor: '#e2e8f0',
-        borderRadius: 18,
-        padding: 16,
-        shadowColor: '#000',
-        shadowOpacity: 0.06,
-        shadowRadius: 10,
-        elevation: 2,
-      }}
-    >
+    <View className={`rounded-card p-4 ${variantClasses[variant]} ${className}`}>
       {children}
     </View>
   );

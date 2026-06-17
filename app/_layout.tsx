@@ -1,8 +1,14 @@
+import './global.css';
+
+import { Inter_400Regular, Inter_700Bold, Inter_900Black } from '@expo-google-fonts/inter';
+import { SpaceGrotesk_700Bold, useFonts } from '@expo-google-fonts/space-grotesk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Session } from '@supabase/supabase-js';
+import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthSessionContext, type AuthProfile, type AuthStatus } from '@/src/features/auth/auth-session-context';
 import { LOCAL_DEV_PROFILE, LOCAL_DEV_SESSION } from '@/src/features/auth/dev-auth';
@@ -11,10 +17,19 @@ import { syncPendingWorkoutSessions } from '@/src/features/workouts/workout-serv
 import { initializeLocalDb } from '@/src/lib/local-db';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
+import { ThemeProvider } from '@/src/lib/theme-context';
 
 const queryClient = new QueryClient();
 
+void SplashScreen.preventAutoHideAsync();
+
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    SpaceGrotesk_700Bold,
+    Inter_400Regular,
+    Inter_700Bold,
+    Inter_900Black,
+  });
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -141,24 +156,56 @@ export default function RootLayout() {
     [profile, refreshProfile, session, status]
   );
 
+  useEffect(() => {
+    if (fontsLoaded) {
+      void SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthSessionContext.Provider value={authContextValue}>
-        <Stack>
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="workout/session/[id]"
-            options={{ title: 'Live Workout' }}
-          />
-          <Stack.Screen
-            name="workout/history/[id]"
-            options={{ title: 'Workout History' }}
-          />
-        </Stack>
-      </AuthSessionContext.Provider>
-    </QueryClientProvider>
+    <GestureHandlerRootView className="flex-1">
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthSessionContext.Provider value={authContextValue}>
+            <Stack>
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="workout/session/[id]"
+                options={{
+                  title: 'Live Workout',
+                  headerStyle: { backgroundColor: '#0d1117' },
+                  headerTintColor: '#a3e635',
+                  headerTitleStyle: {
+                    color: '#e6edf3',
+                    fontFamily: 'SpaceGrotesk_700Bold',
+                  },
+                  headerShadowVisible: false,
+                }}
+              />
+              <Stack.Screen
+                name="workout/history/[id]"
+                options={{
+                  title: 'Workout History',
+                  headerStyle: { backgroundColor: '#0d1117' },
+                  headerTintColor: '#a3e635',
+                  headerTitleStyle: {
+                    color: '#e6edf3',
+                    fontFamily: 'SpaceGrotesk_700Bold',
+                  },
+                  headerShadowVisible: false,
+                }}
+              />
+            </Stack>
+          </AuthSessionContext.Provider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

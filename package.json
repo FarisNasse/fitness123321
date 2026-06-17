@@ -16,18 +16,26 @@
     "test:all": "npm run test && npm run check:exercises && npm run check:local && npm run typecheck"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/space-grotesk": "^0.4.1",
+    "@expo/vector-icons": "^15.1.1",
+    "@gorhom/bottom-sheet": "^5.2.14",
     "@react-native-async-storage/async-storage": "latest",
     "@supabase/supabase-js": "latest",
     "@tanstack/react-query": "latest",
     "expo": "latest",
     "expo-constants": "latest",
     "expo-crypto": "latest",
+    "expo-haptics": "^56.0.3",
+    "expo-linear-gradient": "^56.0.4",
     "expo-linking": "latest",
     "expo-notifications": "latest",
     "expo-router": "latest",
     "expo-secure-store": "latest",
+    "expo-splash-screen": "^56.0.10",
     "expo-sqlite": "latest",
     "expo-status-bar": "latest",
+    "nativewind": "^4.2.5",
     "react": "latest",
     "react-dom": "latest",
     "react-hook-form": "latest",
@@ -47,6 +55,8 @@
     "@types/react": "latest",
     "babel-plugin-module-resolver": "latest",
     "eslint": "latest",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^3.4.17",
     "typescript": "6.0.3"
   }
 }

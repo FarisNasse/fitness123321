@@ -1,9 +1,12 @@
 import { useLocalSearchParams, router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, Text, TextInput, View } from 'react-native';
 
+import { Badge } from '@/src/components/Badge';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
+import { ProgressBar } from '@/src/components/ProgressBar';
 import { Screen } from '@/src/components/Screen';
 import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
 import {
@@ -26,6 +29,8 @@ import type { Exercise } from '@/src/types/models';
 
 type LocalWorkoutSetRow = ReturnType<typeof getLocalWorkoutSets>[number];
 
+const REST_DURATION_SECONDS = 90;
+
 function buildExerciseSetMap(sets: LocalWorkoutSetRow[]) {
   return sets.reduce((map, set) => {
     const exerciseSets = map.get(set.exercise_id) ?? [];
@@ -43,6 +48,8 @@ export default function LiveWorkoutScreen() {
   const [reps, setReps] = useState('10');
   const [weight, setWeight] = useState('135');
   const [sets, setSets] = useState<ReturnType<typeof getLocalWorkoutSets>>([]);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [restSeconds, setRestSeconds] = useState<number | null>(null);
   const [exerciseSetMap, setExerciseSetMap] = useState<
     Map<string, LocalWorkoutSetRow[]>
   >(() => new Map());
@@ -125,6 +132,34 @@ export default function LiveWorkoutScreen() {
     refreshSets();
   }, [sessionId]);
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsedSeconds((current) => current + 1);
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (restSeconds === null) return undefined;
+
+    if (restSeconds <= 0) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setRestSeconds(null);
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setRestSeconds((current) => (current === null ? null : current - 1));
+    }, 1000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [restSeconds]);
+
   const selectedExerciseSets = useMemo(() => {
     if (!selectedExercise) return [];
     return exerciseSetMap.get(selectedExercise.id) ?? [];
@@ -183,6 +218,7 @@ export default function LiveWorkoutScreen() {
     });
 
     refreshSets();
+    setRestSeconds(REST_DURATION_SECONDS);
   }
 
   function openEditModal(set: LocalWorkoutSet) {
@@ -229,6 +265,7 @@ export default function LiveWorkoutScreen() {
   function finishWorkout() {
     if (!sessionId) return;
 
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     completeLocalWorkoutSession(sessionId);
     void syncPendingWorkoutSessions().catch((error) => {
       console.warn('Failed to sync completed workout session.', error);
@@ -243,6 +280,9 @@ export default function LiveWorkoutScreen() {
       <View style={{ gap: 18 }}>
         <View style={{ gap: 8 }}>
           <Text style={{ fontSize: 34, fontWeight: '900' }}>Live Workout</Text>
+          <Text style={{ color: '#a3e635', fontSize: 18, fontWeight: '900' }}>
+            {formatClock(elapsedSeconds)}
+          </Text>
           <Text style={{ color: '#64748b', lineHeight: 21 }}>
             {session?.name ?? 'Quick workout'} • {sets.length} set
             {sets.length === 1 ? '' : 's'} logged
@@ -290,7 +330,11 @@ export default function LiveWorkoutScreen() {
                 {selectedExercise?.name ?? 'Choose an exercise'}
               </Text>
               {selectedExerciseMetadata ? (
-                <Text style={{ color: '#64748b' }}>{selectedExerciseMetadata}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {selectedExerciseMetadata.split(' â€¢ ').map((item) => (
+                    <Badge key={item} label={item} variant="neutral" />
+                  ))}
+                </View>
               ) : (
                 <Text style={{ color: '#64748b', lineHeight: 21 }}>
                   Select an exercise card below, or tap Add exercise to pick from the
@@ -338,6 +382,18 @@ export default function LiveWorkoutScreen() {
             </View>
 
             <Button title="Add set" onPress={addSet} disabled={!selectedExercise} />
+
+            {restSeconds !== null ? (
+              <View style={{ gap: 8 }}>
+                <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
+                  REST TIMER
+                </Text>
+                <Text style={{ color: '#e6edf3', fontSize: 24, fontWeight: '900' }}>
+                  Next set in {formatClock(restSeconds).slice(3)}
+                </Text>
+                <ProgressBar value={restSeconds / REST_DURATION_SECONDS} />
+              </View>
+            ) : null}
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <StatBox label="This exercise" value={String(selectedExerciseSets.length)} />
@@ -606,3 +662,13 @@ const inputStyle = {
   fontWeight: '800' as const,
   padding: 14,
 };
+
+function formatClock(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [hours, minutes, seconds]
+    .map((value) => String(value).padStart(2, '0'))
+    .join(':');
+}

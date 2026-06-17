@@ -2,9 +2,14 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 
+import { Badge } from '@/src/components/Badge';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
+import { EmptyState } from '@/src/components/EmptyState';
 import { Screen } from '@/src/components/Screen';
+import { SectionHeader } from '@/src/components/SectionHeader';
+import { WeekStrip } from '@/src/components/WeekStrip';
+import { WorkoutHistoryCard } from '@/src/components/WorkoutHistoryCard';
 import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
 import {
   createLocalWorkoutSession,
@@ -49,126 +54,78 @@ export default function WorkoutsScreen() {
 
   return (
     <Screen>
-      <View style={{ gap: 18 }}>
-        <View style={{ gap: 12 }}>
-          <View
-            style={{
-              alignItems: 'flex-start',
-              flexDirection: 'row',
-              gap: 12,
-              justifyContent: 'space-between',
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 34, fontWeight: '900' }}>Workouts</Text>
-              <Text style={{ marginTop: 8, color: '#64748b', lineHeight: 21 }}>
-                Start a local workout, pick exercises, log sets, and finish the
-                session without needing Supabase setup.
+      <View className="gap-5">
+        <View className="gap-4">
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 gap-2">
+              <Text className="text-4xl font-display text-base-content">Train</Text>
+              <Text className="text-sm font-body leading-6 text-base-muted">
+                Start a local workout, pick real exercises, log sets, and finish
+                without needing Supabase setup.
               </Text>
             </View>
-            <StatusPill
+            <Badge
               label={USE_REMOTE_WORKOUT_SYNC ? 'Cloud sync on' : 'Local mode'}
+              variant={USE_REMOTE_WORKOUT_SYNC ? 'info' : 'primary'}
             />
           </View>
 
-          <View style={{ flexDirection: 'row', gap: 10 }}>
+          <WeekStrip />
+
+          <View className="flex-row gap-3">
             <MiniStat label="Sessions" value={String(recentSessions.length)} />
             <MiniStat label="Completed" value={String(completedCount)} />
             <MiniStat label="Sync" value={USE_REMOTE_WORKOUT_SYNC ? 'On' : 'Off'} />
           </View>
         </View>
 
-        <Card>
-          <View style={{ gap: 14 }}>
-            <View>
-              <Text style={{ fontSize: 20, fontWeight: '900' }}>Quick start</Text>
-              <Text style={{ color: '#64748b', marginTop: 6, lineHeight: 21 }}>
-                This is now a terminal-testable vertical slice: press start, add
-                real exercises, log sets, finish, and see local data persist.
-              </Text>
-            </View>
-            <Button title="Start workout" onPress={startWorkout} />
+        <Card variant="highlighted" className="gap-4">
+          <View className="gap-2">
+            <Text className="text-2xl font-black text-base-content">Quick start</Text>
+            <Text className="text-sm font-body leading-6 text-base-muted">
+              Press start, add exercises, log sets, finish, and see local data persist.
+            </Text>
           </View>
+          <Button title="Start workout" onPress={startWorkout} size="lg" />
         </Card>
 
-        <Card>
+        <Card className="gap-4">
           <ExerciseLibrary scrollMode="page" />
         </Card>
 
-        <Card>
-          <View style={{ gap: 12 }}>
-            <View
-              style={{
-                alignItems: 'center',
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-              }}
-            >
-              <Text style={{ fontSize: 20, fontWeight: '900' }}>Recent workouts</Text>
+        <Card className="gap-4">
+          <SectionHeader
+            title="Recent workouts"
+            action={
               <Pressable onPress={refreshRecentSessions}>
-                <Text style={{ color: '#0f172a', fontWeight: '900' }}>Refresh</Text>
+                <Text className="text-sm font-bold text-primary">Refresh</Text>
               </Pressable>
+            }
+          />
+
+          {recentSessions.length === 0 ? (
+            <EmptyState
+              title="No completed workouts yet"
+              message="Start one above. Completed sessions will show here without a remote database."
+            />
+          ) : (
+            <View className="gap-3">
+              {recentSessions.map((session) => {
+                const setCount = getLocalWorkoutSets(session.local_id).length;
+
+                return (
+                  <WorkoutHistoryCard
+                    key={session.local_id}
+                    name={session.name}
+                    startedAt={formatDateTime(session.started_at)}
+                    durationLabel={formatDuration(session.duration_seconds)}
+                    setCount={setCount}
+                    onPress={() => router.push(`/workout/history/${session.local_id}`)}
+                  />
+                );
+              })}
             </View>
-
-            {recentSessions.length === 0 ? (
-              <View
-                style={{
-                  backgroundColor: '#f8fafc',
-                  borderColor: '#e2e8f0',
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  padding: 16,
-                }}
-              >
-                <Text style={{ fontWeight: '900' }}>No completed workouts yet</Text>
-                <Text style={{ color: '#64748b', marginTop: 6, lineHeight: 20 }}>
-                  Start one above. Completed sessions will show here without a
-                  remote database.
-                </Text>
-              </View>
-            ) : (
-              <View style={{ gap: 10 }}>
-                {recentSessions.map((session) => {
-                  const setCount = getLocalWorkoutSets(session.local_id).length;
-
-                  return (
-                    <Pressable
-                      key={session.local_id}
-                      onPress={() => router.push(`/workout/history/${session.local_id}`)}
-                      style={{
-                        backgroundColor: '#f8fafc',
-                        borderColor: '#e2e8f0',
-                        borderRadius: 16,
-                        borderWidth: 1,
-                        padding: 14,
-                      }}
-                    >
-                      <View
-                        style={{
-                          alignItems: 'flex-start',
-                          flexDirection: 'row',
-                          gap: 12,
-                          justifyContent: 'space-between',
-                        }}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontWeight: '900' }}>{session.name}</Text>
-                          <Text style={{ color: '#64748b', marginTop: 4 }}>
-                            {formatDateTime(session.started_at)}
-                          </Text>
-                        </View>
-                        <StatusPill label="Finished" />
-                      </View>
-                      <Text style={{ color: '#475569', fontWeight: '800', marginTop: 10 }}>
-                        {formatDuration(session.duration_seconds)} / {setCount} set
-                        {setCount === 1 ? '' : 's'}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-          </View>
+          )}
         </Card>
       </View>
     </Screen>
@@ -177,39 +134,11 @@ export default function WorkoutsScreen() {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <View
-      style={{
-        backgroundColor: '#ffffff',
-        borderColor: '#e2e8f0',
-        borderRadius: 16,
-        borderWidth: 1,
-        flex: 1,
-        padding: 12,
-      }}
-    >
-      <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '800' }}>
+    <View className="flex-1 rounded-card border border-base-300 bg-base-200 p-3">
+      <Text className="text-xs font-bold uppercase tracking-widest text-base-muted">
         {label}
       </Text>
-      <Text style={{ fontSize: 18, fontWeight: '900', marginTop: 4 }}>{value}</Text>
-    </View>
-  );
-}
-
-function StatusPill({ label }: { label: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#ecfeff',
-        borderColor: '#a5f3fc',
-        borderRadius: 999,
-        borderWidth: 1,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-      }}
-    >
-      <Text style={{ color: '#155e75', fontSize: 12, fontWeight: '900' }}>
-        {label}
-      </Text>
+      <Text className="mt-1 text-xl font-black text-base-content">{value}</Text>
     </View>
   );
 }

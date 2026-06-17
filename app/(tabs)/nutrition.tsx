@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
+import { EmptyState } from '@/src/components/EmptyState';
+import { Input } from '@/src/components/Input';
 import { MetricCard } from '@/src/components/MetricCard';
+import { ProgressBar } from '@/src/components/ProgressBar';
 import { Screen } from '@/src/components/Screen';
+import { SectionHeader } from '@/src/components/SectionHeader';
 import {
+  DEFAULT_DAILY_TARGETS,
   addLocalMealItem,
   addLocalWaterLog,
   createFood,
@@ -60,15 +57,9 @@ function formatMacro(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function inputStyle() {
-  return {
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#ffffff',
-  };
+function progress(current: number, target: number) {
+  if (target <= 0) return 0;
+  return Math.min(1, current / target);
 }
 
 export default function NutritionScreen() {
@@ -152,6 +143,9 @@ export default function NutritionScreen() {
   }, [summary.entries]);
 
   const hasFoodEntries = summary.entries.length > 0;
+  const calorieProgress = progress(summary.totals.calories, DEFAULT_DAILY_TARGETS.calories);
+  const proteinProgress = progress(summary.totals.proteinG, DEFAULT_DAILY_TARGETS.proteinG);
+  const waterProgress = progress(summary.totals.waterMl, DEFAULT_DAILY_TARGETS.waterMl);
 
   function resetAddFoodForm() {
     setMealType('breakfast');
@@ -285,66 +279,66 @@ export default function NutritionScreen() {
 
   return (
     <Screen>
-      <View style={{ gap: 16 }}>
-        <View>
-          <Text style={{ fontSize: 32, fontWeight: '800' }}>Nutrition</Text>
-          <Text style={{ marginTop: 8, color: '#64748b' }}>
+      <View className="gap-5">
+        <View className="gap-2">
+          <Text className="text-base font-bold uppercase tracking-widest text-primary">
+            Eat
+          </Text>
+          <Text className="text-4xl font-display text-base-content">Nutrition</Text>
+          <Text className="text-sm font-body leading-6 text-base-muted">
             Track meals, macros, calories, and water intake.
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <MetricCard label="Calories" value={String(summary.totals.calories)} />
-          <MetricCard label="Protein" value={`${formatMacro(summary.totals.proteinG)}g`} />
+        <View className="flex-row gap-3">
+          <MetricCard label="Calories" value={String(summary.totals.calories)} progress={calorieProgress} />
+          <MetricCard label="Protein" value={`${formatMacro(summary.totals.proteinG)}g`} progress={proteinProgress} />
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 12 }}>
+        <View className="flex-row gap-3">
           <MetricCard label="Carbs" value={`${formatMacro(summary.totals.carbsG)}g`} />
           <MetricCard label="Fat" value={`${formatMacro(summary.totals.fatG)}g`} />
         </View>
 
-        <Card>
-          <Text style={{ fontSize: 18, fontWeight: '800' }}>Food logger</Text>
-          <Text style={{ marginTop: 8, color: '#64748b' }}>
-            Search or create a food, pick a meal, and log the quantity.
-          </Text>
-          <View style={{ marginTop: 12 }}>
-            <Button title="Add food" onPress={() => setIsAddFoodOpen(true)} />
-          </View>
+        <Card variant="highlighted" className="gap-4">
+          <SectionHeader eyebrow="Daily macros" title="Targets" />
+          <MacroProgress label="Calories" value={String(summary.totals.calories)} progress={calorieProgress} />
+          <MacroProgress label="Protein" value={`${formatMacro(summary.totals.proteinG)}g`} progress={proteinProgress} />
+          <MacroProgress label="Water" value={`${summary.totals.waterMl} ml`} progress={waterProgress} />
         </Card>
 
-        <Card>
-          <Text style={{ fontSize: 18, fontWeight: '800' }}>Water</Text>
-          <Text style={{ marginTop: 8, color: '#64748b' }}>
+        <Card className="gap-3">
+          <SectionHeader title="Food logger" />
+          <Text className="text-sm font-body leading-6 text-base-muted">
+            Search or create a food, pick a meal, and log the quantity.
+          </Text>
+          <Button title="Add food" onPress={() => setIsAddFoodOpen(true)} />
+        </Card>
+
+        <Card className="gap-3">
+          <SectionHeader title="Water" />
+          <Text className="text-sm font-body text-base-muted">
             {summary.totals.waterMl} ml logged today
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+          <View className="flex-row flex-wrap gap-2">
             {waterPresets.map((amountMl) => (
               <Pressable
                 key={amountMl}
                 onPress={() => void handleQuickAddWater(amountMl)}
-                style={({ pressed }) => ({
-                  backgroundColor: '#e0f2fe',
-                  borderRadius: 999,
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                  opacity: pressed ? 0.75 : 1,
-                })}
+                className="rounded-pill border border-info bg-info/20 px-4 py-3 active:opacity-75"
               >
-                <Text style={{ color: '#075985', fontWeight: '800' }}>+{amountMl} ml</Text>
+                <Text className="text-sm font-bold text-info">+{amountMl} ml</Text>
               </Pressable>
             ))}
           </View>
         </Card>
 
-        <Card>
-          <Text style={{ fontSize: 18, fontWeight: '800' }}>Today&apos;s entries</Text>
+        <Card className="gap-4">
+          <SectionHeader title="Today's entries" />
           {!hasFoodEntries ? (
-            <Text style={{ marginTop: 8, color: '#64748b' }}>
-              No foods logged today.
-            </Text>
+            <EmptyState title="No foods logged today" message="Add a meal or snack to start building today's log." />
           ) : (
-            <View style={{ gap: 16, marginTop: 12 }}>
+            <View className="gap-5">
               {mealTypes.map((meal) => {
                 const entries = entriesByMealType[meal.value];
 
@@ -356,29 +350,25 @@ export default function NutritionScreen() {
                 );
 
                 return (
-                  <View key={meal.value} style={{ gap: 8 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '800' }}>
-                      {meal.label} · {Math.round(mealCalories)} kcal
+                  <View key={meal.value} className="gap-3">
+                    <Text className="text-base font-bold text-base-content">
+                      {meal.label} / {Math.round(mealCalories)} kcal
                     </Text>
                     {entries.map((entry) => (
                       <View
                         key={entry.local_id}
-                        style={{
-                          borderWidth: 1,
-                          borderColor: '#e2e8f0',
-                          borderRadius: 12,
-                          padding: 12,
-                          gap: 4,
-                        }}
+                        className="gap-1 rounded-card border border-base-300 bg-base-100 p-3"
                       >
-                        <Text style={{ fontWeight: '800' }}>{entry.food_name}</Text>
-                        <Text style={{ color: '#64748b' }}>
-                          {formatMacro(Number(entry.quantity))} {entry.unit ?? ''} ·{' '}
+                        <Text className="text-base font-bold text-base-content">
+                          {entry.food_name}
+                        </Text>
+                        <Text className="text-sm font-body text-base-muted">
+                          {formatMacro(Number(entry.quantity))} {entry.unit ?? ''} /{' '}
                           {Math.round(Number(entry.calories))} kcal
                         </Text>
-                        <Text style={{ color: '#64748b' }}>
-                          P {formatMacro(Number(entry.protein_g))}g · C{' '}
-                          {formatMacro(Number(entry.carbs_g))}g · F{' '}
+                        <Text className="text-sm font-body text-base-muted">
+                          P {formatMacro(Number(entry.protein_g))}g / C{' '}
+                          {formatMacro(Number(entry.carbs_g))}g / F{' '}
                           {formatMacro(Number(entry.fat_g))}g
                         </Text>
                       </View>
@@ -396,19 +386,22 @@ export default function NutritionScreen() {
         visible={isAddFoodOpen}
         onRequestClose={() => setIsAddFoodOpen(false)}
       >
-        <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
-          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
-            <View style={{ gap: 16 }}>
-              <View>
-                <Text style={{ fontSize: 28, fontWeight: '900' }}>Add food</Text>
-                <Text style={{ marginTop: 8, color: '#64748b' }}>
+        <View className="flex-1 bg-base-100">
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerClassName="px-5 pt-5 pb-12"
+          >
+            <View className="gap-5">
+              <View className="gap-2">
+                <Text className="text-4xl font-display text-base-content">Add food</Text>
+                <Text className="text-sm font-body leading-6 text-base-muted">
                   Choose a meal, select or create a food, then log the amount.
                 </Text>
               </View>
 
-              <Card>
-                <Text style={{ fontSize: 18, fontWeight: '800' }}>Meal</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+              <Card className="gap-3">
+                <Text className="text-xl font-bold text-base-content">Meal</Text>
+                <View className="flex-row flex-wrap gap-2">
                   {mealTypes.map((meal) => {
                     const isSelected = mealType === meal.value;
 
@@ -416,18 +409,16 @@ export default function NutritionScreen() {
                       <Pressable
                         key={meal.value}
                         onPress={() => setMealType(meal.value)}
-                        style={{
-                          borderRadius: 999,
-                          paddingHorizontal: 14,
-                          paddingVertical: 10,
-                          backgroundColor: isSelected ? '#0f172a' : '#e2e8f0',
-                        }}
+                        className={`rounded-pill border px-4 py-3 ${
+                          isSelected
+                            ? 'border-primary bg-primary'
+                            : 'border-base-300 bg-base-100'
+                        }`}
                       >
                         <Text
-                          style={{
-                            color: isSelected ? '#ffffff' : '#0f172a',
-                            fontWeight: '800',
-                          }}
+                          className={`text-sm font-bold ${
+                            isSelected ? 'text-primary-content' : 'text-base-content'
+                          }`}
                         >
                           {meal.label}
                         </Text>
@@ -437,9 +428,9 @@ export default function NutritionScreen() {
                 </View>
               </Card>
 
-              <Card>
-                <Text style={{ fontSize: 18, fontWeight: '800' }}>Food search</Text>
-                <TextInput
+              <Card className="gap-3">
+                <Text className="text-xl font-bold text-base-content">Food search</Text>
+                <Input
                   value={searchQuery}
                   onChangeText={(value) => {
                     setSearchQuery(value);
@@ -448,14 +439,13 @@ export default function NutritionScreen() {
                   }}
                   placeholder="Search food name..."
                   autoCapitalize="words"
-                  style={{ ...inputStyle(), marginTop: 12 }}
                 />
-                <Text style={{ marginTop: 8, color: '#64748b' }}>
+                <Text className="text-xs font-bold text-base-muted">
                   {isSearching ? 'Searching foods...' : 'Search public.foods by name.'}
                 </Text>
 
                 {foodResults.length > 0 ? (
-                  <View style={{ gap: 8, marginTop: 12 }}>
+                  <View className="gap-2">
                     {foodResults.map((food) => {
                       const isSelected = selectedFood?.id === food.id;
 
@@ -463,20 +453,20 @@ export default function NutritionScreen() {
                         <Pressable
                           key={food.id}
                           onPress={() => chooseFood(food)}
-                          style={{
-                            borderWidth: 1,
-                            borderColor: isSelected ? '#0f172a' : '#e2e8f0',
-                            borderRadius: 12,
-                            padding: 12,
-                            backgroundColor: isSelected ? '#f1f5f9' : '#ffffff',
-                          }}
+                          className={`gap-1 rounded-card border p-3 ${
+                            isSelected
+                              ? 'border-primary bg-primary/10'
+                              : 'border-base-300 bg-base-100'
+                          }`}
                         >
-                          <Text style={{ fontWeight: '900' }}>{food.name}</Text>
-                          <Text style={{ marginTop: 4, color: '#64748b' }}>
-                            {Math.round(food.calories)} kcal · P {formatMacro(food.proteinG)}g · C{' '}
-                            {formatMacro(food.carbsG)}g · F {formatMacro(food.fatG)}g
+                          <Text className="text-base font-bold text-base-content">
+                            {food.name}
                           </Text>
-                          <Text style={{ marginTop: 4, color: '#64748b' }}>
+                          <Text className="text-sm font-body text-base-muted">
+                            {Math.round(food.calories)} kcal / P {formatMacro(food.proteinG)}g / C{' '}
+                            {formatMacro(food.carbsG)}g / F {formatMacro(food.fatG)}g
+                          </Text>
+                          <Text className="text-sm font-body text-base-muted">
                             Per {formatMacro(food.servingSize ?? 1)} {food.servingUnit ?? 'serving'}
                           </Text>
                         </Pressable>
@@ -487,102 +477,100 @@ export default function NutritionScreen() {
               </Card>
 
               {searchQuery.trim() ? (
-                <Card>
-                  <Text style={{ fontSize: 18, fontWeight: '800' }}>Create new food</Text>
-                  <Text style={{ marginTop: 8, color: '#64748b' }}>
+                <Card className="gap-3">
+                  <Text className="text-xl font-bold text-base-content">Create new food</Text>
+                  <Text className="text-sm font-body leading-6 text-base-muted">
                     Use this fallback if the food is not in search results.
                   </Text>
-                  <View style={{ gap: 10, marginTop: 12 }}>
-                    <TextInput
-                      value={newFoodName}
-                      onChangeText={setNewFoodName}
-                      placeholder="Food name"
-                      style={inputStyle()}
+                  <Input
+                    value={newFoodName}
+                    onChangeText={setNewFoodName}
+                    placeholder="Food name"
+                  />
+                  <View className="flex-row gap-3">
+                    <Input
+                      value={servingSize}
+                      onChangeText={setServingSize}
+                      keyboardType="numeric"
+                      placeholder="Serving size"
+                      containerClassName="flex-1"
                     />
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <TextInput
-                        value={servingSize}
-                        onChangeText={setServingSize}
-                        keyboardType="numeric"
-                        placeholder="Serving size"
-                        style={{ ...inputStyle(), flex: 1 }}
-                      />
-                      <TextInput
-                        value={servingUnit}
-                        onChangeText={setServingUnit}
-                        placeholder="Unit"
-                        style={{ ...inputStyle(), flex: 1 }}
-                      />
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <TextInput
-                        value={calories}
-                        onChangeText={setCalories}
-                        keyboardType="numeric"
-                        placeholder="Calories"
-                        style={{ ...inputStyle(), flex: 1 }}
-                      />
-                      <TextInput
-                        value={protein}
-                        onChangeText={setProtein}
-                        keyboardType="numeric"
-                        placeholder="Protein"
-                        style={{ ...inputStyle(), flex: 1 }}
-                      />
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <TextInput
-                        value={carbs}
-                        onChangeText={setCarbs}
-                        keyboardType="numeric"
-                        placeholder="Carbs"
-                        style={{ ...inputStyle(), flex: 1 }}
-                      />
-                      <TextInput
-                        value={fat}
-                        onChangeText={setFat}
-                        keyboardType="numeric"
-                        placeholder="Fat"
-                        style={{ ...inputStyle(), flex: 1 }}
-                      />
-                    </View>
-                    <Button title="Create new food" onPress={() => void handleCreateFood()} />
+                    <Input
+                      value={servingUnit}
+                      onChangeText={setServingUnit}
+                      placeholder="Unit"
+                      containerClassName="flex-1"
+                    />
                   </View>
+                  <View className="flex-row gap-3">
+                    <Input
+                      value={calories}
+                      onChangeText={setCalories}
+                      keyboardType="numeric"
+                      placeholder="Calories"
+                      containerClassName="flex-1"
+                    />
+                    <Input
+                      value={protein}
+                      onChangeText={setProtein}
+                      keyboardType="numeric"
+                      placeholder="Protein"
+                      containerClassName="flex-1"
+                    />
+                  </View>
+                  <View className="flex-row gap-3">
+                    <Input
+                      value={carbs}
+                      onChangeText={setCarbs}
+                      keyboardType="numeric"
+                      placeholder="Carbs"
+                      containerClassName="flex-1"
+                    />
+                    <Input
+                      value={fat}
+                      onChangeText={setFat}
+                      keyboardType="numeric"
+                      placeholder="Fat"
+                      containerClassName="flex-1"
+                    />
+                  </View>
+                  <Button title="Create new food" onPress={() => void handleCreateFood()} />
                 </Card>
               ) : null}
 
-              <Card>
-                <Text style={{ fontSize: 18, fontWeight: '800' }}>Quantity</Text>
+              <Card className="gap-3">
+                <Text className="text-xl font-bold text-base-content">Quantity</Text>
                 {selectedFood ? (
-                  <Text style={{ marginTop: 8, color: '#64748b' }}>
+                  <Text className="text-sm font-body text-base-muted">
                     Selected: {selectedFood.name}
                   </Text>
                 ) : (
-                  <Text style={{ marginTop: 8, color: '#64748b' }}>
+                  <Text className="text-sm font-body text-base-muted">
                     Select or create a food first.
                   </Text>
                 )}
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-                  <TextInput
+                <View className="flex-row gap-3">
+                  <Input
                     value={quantity}
                     onChangeText={setQuantity}
                     keyboardType="numeric"
                     placeholder="Quantity"
-                    style={{ ...inputStyle(), flex: 1 }}
+                    containerClassName="flex-1"
                   />
-                  <TextInput
+                  <Input
                     value={unit}
                     onChangeText={setUnit}
                     placeholder="Unit"
-                    style={{ ...inputStyle(), flex: 1 }}
+                    containerClassName="flex-1"
                   />
                 </View>
               </Card>
 
-              <View style={{ gap: 10 }}>
+              <View className="gap-3">
                 <Button title="Log food" onPress={() => void handleLogFood()} disabled={!selectedFood} />
                 <Button
                   title="Cancel"
+                  variant="ghost"
                   onPress={() => {
                     resetAddFoodForm();
                     setIsAddFoodOpen(false);
@@ -594,5 +582,27 @@ export default function NutritionScreen() {
         </View>
       </Modal>
     </Screen>
+  );
+}
+
+function MacroProgress({
+  label,
+  value,
+  progress: progressValue,
+}: {
+  label: string;
+  value: string;
+  progress: number;
+}) {
+  return (
+    <View className="gap-2">
+      <View className="flex-row items-center justify-between">
+        <Text className="text-xs font-bold uppercase tracking-widest text-base-muted">
+          {label}
+        </Text>
+        <Text className="text-xs font-bold text-base-content">{value}</Text>
+      </View>
+      <ProgressBar value={progressValue} />
+    </View>
   );
 }

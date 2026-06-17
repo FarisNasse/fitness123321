@@ -8,6 +8,8 @@ module.exports = function (api) {
         'module-resolver',
         { alias: { '@': './' } },
       ],
+      'nativewind/babel',
+      'react-native-reanimated/plugin',
     ],
   };
 };

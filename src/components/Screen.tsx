@@ -1,17 +1,37 @@
 import type { PropsWithChildren } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export function Screen({ children }: PropsWithChildren) {
+type ScreenProps = PropsWithChildren<{
+  scrollable?: boolean;
+  className?: string;
+  contentClassName?: string;
+}>;
+
+export function Screen({
+  children,
+  scrollable = true,
+  className = '',
+  contentClassName = '',
+}: ScreenProps) {
+  const content = <View className={`flex-1 ${className}`}>{children}</View>;
+
+  if (!scrollable) {
+    return (
+      <SafeAreaView className="flex-1 bg-base-100">
+        {content}
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+    <SafeAreaView className="flex-1 bg-base-100">
       <ScrollView
-        contentContainerStyle={{
-          padding: 20,
-          paddingBottom: 40,
-        }}
+        contentContainerClassName={`px-5 pt-5 pb-12 ${contentClassName}`}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {children}
+        {content}
       </ScrollView>
     </SafeAreaView>
   );

@@ -2,8 +2,10 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 
+import { Badge } from '@/src/components/Badge';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
+import { ProgressBar } from '@/src/components/ProgressBar';
 import { Screen } from '@/src/components/Screen';
 import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
@@ -66,19 +68,23 @@ export default function OnboardingScreen() {
 
   return (
     <Screen>
-      <View style={{ gap: 16 }}>
-        <View>
-          <Text style={{ fontSize: 32, fontWeight: '800' }}>Set your starting point</Text>
-          <Text style={{ marginTop: 8, color: '#64748b' }}>
+      <View className="gap-6">
+        <View className="gap-3">
+          <View className="items-start">
+            <Badge label="Step 1 of 1" variant="primary" />
+          </View>
+          <Text className="text-4xl font-display text-base-content">
+            Set your starting point
+          </Text>
+          <Text className="text-sm font-body leading-6 text-base-muted">
             Keep this short. The app should be usable in under 3 minutes.
           </Text>
+          <ProgressBar value={1} />
         </View>
 
-        <Card>
-          <Text style={{ fontSize: 18, fontWeight: '800', marginBottom: 12 }}>
-            Primary goal
-          </Text>
-          <View style={{ gap: 8 }}>
+        <Card className="gap-3">
+          <Text className="text-xl font-bold text-base-content">Primary goal</Text>
+          <View className="gap-2">
             {goals.map((item) => (
               <Option
                 key={item}
@@ -90,11 +96,9 @@ export default function OnboardingScreen() {
           </View>
         </Card>
 
-        <Card>
-          <Text style={{ fontSize: 18, fontWeight: '800', marginBottom: 12 }}>
-            Fitness level
-          </Text>
-          <View style={{ gap: 8 }}>
+        <Card className="gap-3">
+          <Text className="text-xl font-bold text-base-content">Fitness level</Text>
+          <View className="gap-2">
             {levels.map((item) => (
               <Option
                 key={item}
@@ -110,6 +114,8 @@ export default function OnboardingScreen() {
           title={isSubmitting ? 'Saving...' : 'Finish onboarding'}
           onPress={saveOnboarding}
           disabled={isSubmitting}
+          loading={isSubmitting}
+          size="lg"
         />
       </View>
     </Screen>
@@ -128,15 +134,15 @@ function Option({
   return (
     <Pressable
       onPress={onPress}
-      style={{
-        borderWidth: 1,
-        borderColor: selected ? '#0f172a' : '#cbd5e1',
-        backgroundColor: selected ? '#f1f5f9' : '#ffffff',
-        padding: 12,
-        borderRadius: 12,
-      }}
+      className={`rounded-input border p-4 active:opacity-75 ${
+        selected
+          ? 'border-primary bg-primary/10'
+          : 'border-base-300 bg-base-100'
+      }`}
     >
-      <Text style={{ fontWeight: selected ? '800' : '500' }}>{label}</Text>
+      <Text className={`font-bold ${selected ? 'text-primary' : 'text-base-content'}`}>
+        {label}
+      </Text>
     </Pressable>
   );
 }

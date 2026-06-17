@@ -1,9 +1,11 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Text, TextInput, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
 
+import { Badge } from '@/src/components/Badge';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
+import { Input } from '@/src/components/Input';
 import { Screen } from '@/src/components/Screen';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
@@ -48,59 +50,54 @@ export default function LoginScreen() {
 
   return (
     <Screen>
-      <View style={{ gap: 16 }}>
-        <View>
-          <Text style={{ fontSize: 32, fontWeight: '800' }}>Welcome back</Text>
-          <Text style={{ marginTop: 8, color: '#64748b' }}>
-            Sign in to continue tracking workouts, meals, and progress.
+      <View className="gap-6">
+        <View className="gap-3">
+          <Text className="text-base font-bold uppercase tracking-widest text-primary">
+            All-in-one fitness
+          </Text>
+          <Text className="text-4xl font-display text-base-content">Welcome back</Text>
+          <Text className="text-sm font-body leading-6 text-base-muted">
+            Sign in to continue tracking workouts, meals, recovery, and progress.
           </Text>
           {USE_DEV_AUTH ? (
-            <Text style={{ marginTop: 8, color: '#059669', fontWeight: '700' }}>
-              Local dev auth is on. The app will skip Supabase login and use a local demo user.
-            </Text>
+            <View className="items-start">
+              <Badge label="Local dev mode" variant="success" />
+            </View>
           ) : null}
         </View>
 
-        <Card>
-          <View style={{ gap: 12 }}>
-            <Text style={{ fontWeight: '700' }}>Email</Text>
-            <TextInput
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              style={inputStyle}
-            />
+        <Card variant="highlighted" className="gap-4">
+          <Input
+            autoCapitalize="none"
+            keyboardType="email-address"
+            label="Email"
+            placeholder="you@example.com"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <Input
+            label="Password"
+            placeholder="Password"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
 
-            <Text style={{ fontWeight: '700' }}>Password</Text>
-            <TextInput
-              placeholder="Password"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              style={inputStyle}
-            />
-
-            <Button
-              title={USE_DEV_AUTH ? 'Continue in local dev mode' : isSubmitting ? 'Signing in...' : 'Sign in'}
-              onPress={handleLogin}
-              disabled={isSubmitting}
-            />
-          </View>
+          <Button
+            title={USE_DEV_AUTH ? 'Continue in local dev mode' : isSubmitting ? 'Signing in...' : 'Sign in'}
+            onPress={handleLogin}
+            disabled={isSubmitting}
+            loading={isSubmitting}
+          />
         </Card>
 
-        <Text style={{ textAlign: 'center' }}>
-          New here? <Link href="/register">Create an account</Link>
+        <Text className="text-center text-sm font-body text-base-muted">
+          New here?{' '}
+          <Link href="/register" className="font-bold text-primary">
+            Create an account
+          </Link>
         </Text>
       </View>
     </Screen>
   );
 }
-
-const inputStyle = {
-  borderWidth: 1,
-  borderColor: '#cbd5e1',
-  borderRadius: 12,
-  padding: 12,
-};
