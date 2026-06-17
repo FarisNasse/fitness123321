@@ -47,6 +47,6 @@
     "@types/react": "latest",
     "babel-plugin-module-resolver": "latest",
     "eslint": "latest",
-    "typescript": "latest"
+    "typescript": "6.0.3"
   }
 }
