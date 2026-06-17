@@ -117,6 +117,11 @@ test('live workout screen supports exercise picking, validation, set logging, PR
   const live = readProjectFile('app/workout/session/[id].tsx');
 
   assert.match(live, /<ExerciseLibrary\s+onSelect=\{chooseExercise\}/s);
+  assert.match(live, /useState<Exercise\[\]>\(\[\]\)/);
+  assert.match(live, /Map<string, LocalWorkoutSetRow\[\]>/);
+  assert.match(live, /Button title="Add exercise"/);
+  assert.match(live, /selectedExercises\.map\(\(exercise\) =>/);
+  assert.match(live, /exerciseSetMap\.get\(exercise\.id\)/);
   assert.match(live, /rememberExercises\(\[exercise\]\)/);
   assert.match(live, /Alert\.alert\('Invalid reps', 'Enter a valid rep count\.'\)/);
   assert.match(live, /Alert\.alert\('Invalid weight', 'Enter a valid weight\.'\)/);
