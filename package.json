@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "check:exercises": "node scripts/check-exercise-library-data.mjs"
+    "check:exercises": "node scripts/check-exercise-library-data.mjs",
+    "check:local": "node scripts/check-local-dev.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "latest",

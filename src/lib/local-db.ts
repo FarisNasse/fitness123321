@@ -7,6 +7,19 @@ export type DbAdapter = {
   getAllSync: <T = unknown>(sql: string, params?: unknown[]) => T[];
 };
 
+export type LocalWorkoutSession = {
+  local_id: string;
+  server_id: string | null;
+  user_id: string;
+  name: string;
+  started_at: string;
+  completed_at: string | null;
+  duration_seconds: number | null;
+  notes: string | null;
+  sync_status: 'pending' | 'synced' | 'failed';
+  updated_at: string;
+};
+
 export type LocalWorkoutSet = {
   local_id: string;
   server_id: string | null;
@@ -260,11 +273,36 @@ function createWebDbAdapter(): DbAdapter {
 
       if (
         normalized.includes('from workout_sessions_local') &&
+        normalized.includes('where local_id = ?')
+      ) {
+        const [sessionLocalId] = params;
+
+        return store.workout_sessions_local.filter(
+          (session) => session.local_id === sessionLocalId
+        ) as T[];
+      }
+
+      if (
+        normalized.includes('from workout_sessions_local') &&
         normalized.includes('sync_status')
       ) {
         return store.workout_sessions_local.filter((session) =>
           ['pending', 'failed'].includes(String(session.sync_status))
         ) as T[];
+      }
+
+      if (
+        normalized.includes('from workout_sessions_local') &&
+        normalized.includes('order by started_at desc')
+      ) {
+        const [limit = 5] = params;
+
+        return [...store.workout_sessions_local]
+          .sort(
+            (a, b) =>
+              Date.parse(String(b.started_at)) - Date.parse(String(a.started_at))
+          )
+          .slice(0, Number(limit)) as T[];
       }
 
       if (

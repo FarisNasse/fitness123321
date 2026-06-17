@@ -1,7 +1,20 @@
 import * as Crypto from 'expo-crypto';
 
 import { db, getSetsBySession } from '@/src/lib/local-db';
-import { supabase } from '@/src/lib/supabase';
+import { USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
+
+export type LocalWorkoutSessionRow = {
+  local_id: string;
+  server_id: string | null;
+  user_id: string;
+  name: string;
+  started_at: string;
+  completed_at: string | null;
+  duration_seconds: number | null;
+  notes: string | null;
+  sync_status: 'pending' | 'synced' | 'failed';
+  updated_at: string;
+};
 
 export function createLocalWorkoutSession(userId: string, name = 'Workout') {
   const localId = Crypto.randomUUID();
@@ -23,6 +36,36 @@ export function createLocalWorkoutSession(userId: string, name = 'Workout') {
   );
 
   return localId;
+}
+
+export function getLocalWorkoutSession(sessionLocalId: string) {
+  return (
+    db.getAllSync<LocalWorkoutSessionRow>(
+      `
+      select *
+      from workout_sessions_local
+      where local_id = ?
+      limit 1
+      `,
+      [sessionLocalId]
+    )[0] ?? null
+  );
+}
+
+export function getRecentLocalWorkoutSessions(limit = 5) {
+  return db.getAllSync<LocalWorkoutSessionRow>(
+    `
+    select *
+    from workout_sessions_local
+    order by started_at desc
+    limit ?
+    `,
+    [limit]
+  );
+}
+
+export function getLocalWorkoutSets(sessionLocalId: string) {
+  return getSetsBySession(sessionLocalId);
 }
 
 export function addLocalWorkoutSet(input: {
@@ -142,6 +185,12 @@ let syncInFlight: Promise<void> | null = null;
 let syncRequestedWhileInFlight = false;
 
 async function syncPendingWorkoutSessionsImpl() {
+  if (!USE_REMOTE_WORKOUT_SYNC) {
+    return;
+  }
+
+  const { supabase } = await import('@/src/lib/supabase');
+
   const pendingSessions = db.getAllSync<any>(
     `
     select *
@@ -154,23 +203,6 @@ async function syncPendingWorkoutSessionsImpl() {
     let serverSessionId = session.server_id as string | null;
 
     if (serverSessionId) {
-      const { error } = await supabase
-        .from('workout_sessions')
-        .update({
-          name: session.name,
-          started_at: session.started_at,
-          completed_at: session.completed_at,
-          duration_seconds: session.duration_seconds,
-          notes: session.notes,
-        })
-        .eq('id', serverSessionId);
-
-      if (error) {
-        markWorkoutSessionFailed(session.local_id);
-        continue;
-      }
-    } else {
-      const desiredSessionId = String(session.local_id);
       const { data, error } = await supabase
         .from('workout_sessions')
         .update({
@@ -181,6 +213,29 @@ async function syncPendingWorkoutSessionsImpl() {
           notes: session.notes,
         })
         .eq('id', serverSessionId)
+        .select('id')
+        .maybeSingle();
+
+      if (error || !data?.id) {
+        markWorkoutSessionFailed(session.local_id);
+        continue;
+      }
+    } else {
+      const desiredSessionId = String(session.local_id);
+      const { data, error } = await supabase
+        .from('workout_sessions')
+        .upsert(
+          {
+            id: desiredSessionId,
+            user_id: session.user_id,
+            name: session.name,
+            started_at: session.started_at,
+            completed_at: session.completed_at,
+            duration_seconds: session.duration_seconds,
+            notes: session.notes,
+          },
+          { onConflict: 'id' }
+        )
         .select('id')
         .maybeSingle();
 
@@ -263,6 +318,10 @@ async function drainWorkoutSyncQueue() {
 }
 
 export function syncPendingWorkoutSessions() {
+  if (!USE_REMOTE_WORKOUT_SYNC) {
+    return Promise.resolve();
+  }
+
   if (syncInFlight) {
     syncRequestedWhileInFlight = true;
     return syncInFlight;

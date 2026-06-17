@@ -1,3 +1,4 @@
+import { USE_SUPABASE_EXERCISES } from '@/src/lib/runtime-flags';
 import type { Exercise } from '@/src/types/models';
 
 declare function require(path: string): unknown;
@@ -14,9 +15,6 @@ type ExerciseRow = {
   instructions: string | null;
   video_url: string | null;
 };
-
-const USE_SUPABASE_EXERCISES =
-  process.env.EXPO_PUBLIC_EXERCISE_SOURCE === 'supabase';
 
 function mapExercise(row: ExerciseRow): Exercise {
   return {
@@ -37,6 +35,10 @@ function sortExercises(exercises: Exercise[]) {
 
 export function getSeededExercises() {
   return sortExercises(seededExercises);
+}
+
+export function getExerciseById(exerciseId: string) {
+  return getSeededExercises().find((exercise) => exercise.id === exerciseId) ?? null;
 }
 
 function getExerciseFetchMessage(error: unknown) {

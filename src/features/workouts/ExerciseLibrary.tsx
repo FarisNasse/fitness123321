@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
   type GestureResponderEvent,
 } from 'react-native';
@@ -22,10 +23,10 @@ type ExerciseLibraryProps = {
 };
 
 const FILTERS: { key: FilterKey; label: string; allLabel: string }[] = [
-  { key: 'muscleGroup', label: 'Muscle', allLabel: 'All muscles' },
-  { key: 'equipment', label: 'Equipment', allLabel: 'All equipment' },
-  { key: 'movementType', label: 'Movement', allLabel: 'All movements' },
-  { key: 'difficulty', label: 'Difficulty', allLabel: 'All levels' },
+  { key: 'muscleGroup', label: 'Muscle', allLabel: 'All' },
+  { key: 'equipment', label: 'Equipment', allLabel: 'All' },
+  { key: 'movementType', label: 'Movement', allLabel: 'All' },
+  { key: 'difficulty', label: 'Level', allLabel: 'All' },
 ];
 
 const emptyFilters: Record<FilterKey, string | null> = {
@@ -45,17 +46,26 @@ function uniqueValues(exercises: Exercise[], key: FilterKey) {
   ).sort((a, b) => a.localeCompare(b));
 }
 
-function ExerciseBadge({ label }: { label: string }) {
+function ExerciseBadge({ label, tone = 'blue' }: { label: string; tone?: 'blue' | 'slate' }) {
+  const isBlue = tone === 'blue';
   return (
     <View
       style={{
-        backgroundColor: '#e0f2fe',
+        backgroundColor: isBlue ? '#e0f2fe' : '#f1f5f9',
+        borderColor: isBlue ? '#bae6fd' : '#e2e8f0',
         borderRadius: 999,
+        borderWidth: 1,
         paddingHorizontal: 10,
         paddingVertical: 5,
       }}
     >
-      <Text style={{ color: '#0369a1', fontSize: 12, fontWeight: '800' }}>
+      <Text
+        style={{
+          color: isBlue ? '#0369a1' : '#475569',
+          fontSize: 12,
+          fontWeight: '900',
+        }}
+      >
         {label}
       </Text>
     </View>
@@ -88,7 +98,7 @@ function FilterChip({
         style={{
           color: selected ? '#ffffff' : '#334155',
           fontSize: 13,
-          fontWeight: '800',
+          fontWeight: '900',
         }}
       >
         {label}
@@ -102,6 +112,7 @@ export function ExerciseLibrary({
   selectButtonTitle = 'Select exercise',
 }: ExerciseLibraryProps) {
   const [filters, setFilters] = useState(emptyFilters);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
 
   const {
@@ -125,13 +136,31 @@ export function ExerciseLibrary({
   }, [exercises]);
 
   const filteredExercises = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+
     return exercises.filter((exercise) => {
-      return FILTERS.every((filter) => {
+      const matchesFilters = FILTERS.every((filter) => {
         const selected = filters[filter.key];
         return !selected || exercise[filter.key] === selected;
       });
+
+      if (!matchesFilters) return false;
+
+      if (!normalizedSearch) return true;
+
+      return [
+        exercise.name,
+        exercise.muscleGroup,
+        exercise.equipment,
+        exercise.movementType,
+        exercise.difficulty,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedSearch);
     });
-  }, [exercises, filters]);
+  }, [exercises, filters, searchQuery]);
 
   function setFilter(key: FilterKey, value: string | null) {
     setFilters((current) => ({
@@ -142,6 +171,7 @@ export function ExerciseLibrary({
 
   function clearFilters() {
     setFilters(emptyFilters);
+    setSearchQuery('');
   }
 
   function selectExercise(exercise: Exercise) {
@@ -149,38 +179,64 @@ export function ExerciseLibrary({
     setSelectedExercise(null);
   }
 
-  const hasActiveFilters = FILTERS.some((filter) => filters[filter.key]);
+  const hasActiveFilters =
+    Boolean(searchQuery.trim()) || FILTERS.some((filter) => filters[filter.key]);
 
   return (
     <View style={{ gap: 16 }}>
-      <View>
-        <Text style={{ fontSize: 18, fontWeight: '800' }}>Exercise library</Text>
-        <Text style={{ marginTop: 8, color: '#64748b' }}>
-          Browse the seeded exercises and filter by muscle, equipment, movement,
-          or difficulty.
-        </Text>
+      <View style={{ gap: 12 }}>
+        <View
+          style={{
+            alignItems: 'flex-start',
+            flexDirection: 'row',
+            gap: 12,
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 22, fontWeight: '900' }}>Exercise library</Text>
+            <Text style={{ marginTop: 6, color: '#64748b', lineHeight: 21 }}>
+              Browse seeded exercises, filter instantly, and open details before
+              adding one to a workout.
+            </Text>
+          </View>
+          <ExerciseBadge label={`${exercises.length} moves`} tone="slate" />
+        </View>
+
+        <TextInput
+          autoCapitalize="none"
+          placeholder="Search exercise, muscle, equipment..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={{
+            backgroundColor: '#f8fafc',
+            borderColor: '#cbd5e1',
+            borderRadius: 16,
+            borderWidth: 1,
+            fontSize: 16,
+            padding: 14,
+          }}
+        />
       </View>
 
       {isLoading ? (
         <View style={{ alignItems: 'center', gap: 10, paddingVertical: 28 }}>
           <ActivityIndicator />
-          <Text style={{ color: '#64748b', fontWeight: '700' }}>
+          <Text style={{ color: '#64748b', fontWeight: '800' }}>
             Loading exercises…
           </Text>
         </View>
       ) : error ? (
         <View style={{ gap: 12 }}>
-          <Text style={{ color: '#b91c1c', fontWeight: '800' }}>
+          <Text style={{ color: '#b91c1c', fontWeight: '900' }}>
             Could not load exercises.
           </Text>
-          <Text style={{ color: '#64748b' }}>
-            Run the latest Supabase migrations so public.exercises has the
-            exercise-library columns and read policy.
+          <Text style={{ color: '#64748b', lineHeight: 20 }}>
+            The local exercise seed file could not be read. Run npm run
+            check:exercises to verify the seed data.
           </Text>
           {error?.message ? (
-            <Text style={{ color: '#94a3b8', fontSize: 12 }}>
-              {error.message}
-            </Text>
+            <Text style={{ color: '#94a3b8', fontSize: 12 }}>{error.message}</Text>
           ) : null}
           <Button title="Try again" onPress={() => void refetch()} />
         </View>
@@ -189,7 +245,7 @@ export function ExerciseLibrary({
           <View style={{ gap: 12 }}>
             {FILTERS.map((filter) => (
               <View key={filter.key} style={{ gap: 8 }}>
-                <Text style={{ color: '#475569', fontWeight: '800' }}>
+                <Text style={{ color: '#475569', fontWeight: '900' }}>
                   {filter.label}
                 </Text>
                 <ScrollView
@@ -216,13 +272,13 @@ export function ExerciseLibrary({
           </View>
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: '#64748b', fontWeight: '700' }}>
+            <Text style={{ color: '#64748b', fontWeight: '800' }}>
               {filteredExercises.length} of {exercises.length} exercises
             </Text>
             {hasActiveFilters ? (
               <Pressable onPress={clearFilters}>
-                <Text style={{ color: '#0f172a', fontWeight: '800' }}>
-                  Clear filters
+                <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                  Clear
                 </Text>
               </Pressable>
             ) : null}
@@ -230,21 +286,22 @@ export function ExerciseLibrary({
 
           <ScrollView
             nestedScrollEnabled
-            style={{ maxHeight: 380 }}
+            style={{ maxHeight: 430 }}
             contentContainerStyle={{ gap: 10, paddingBottom: 4 }}
           >
             {filteredExercises.length === 0 ? (
               <View
                 style={{
+                  backgroundColor: '#f8fafc',
                   borderColor: '#e2e8f0',
-                  borderRadius: 14,
+                  borderRadius: 16,
                   borderWidth: 1,
                   padding: 16,
                 }}
               >
-                <Text style={{ fontWeight: '800' }}>No exercises found</Text>
+                <Text style={{ fontWeight: '900' }}>No exercises found</Text>
                 <Text style={{ color: '#64748b', marginTop: 6 }}>
-                  Try clearing one of the filters.
+                  Try clearing the search or one of the filters.
                 </Text>
               </View>
             ) : (
@@ -255,7 +312,7 @@ export function ExerciseLibrary({
                   style={({ pressed }) => ({
                     backgroundColor: pressed ? '#f1f5f9' : '#ffffff',
                     borderColor: '#e2e8f0',
-                    borderRadius: 14,
+                    borderRadius: 18,
                     borderWidth: 1,
                     padding: 14,
                     gap: 10,
@@ -270,28 +327,22 @@ export function ExerciseLibrary({
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 16, fontWeight: '800' }}>
+                      <Text style={{ fontSize: 17, fontWeight: '900' }}>
                         {exercise.name}
                       </Text>
                       <Text style={{ color: '#64748b', marginTop: 4 }}>
                         {exercise.muscleGroup}
                       </Text>
                     </View>
-                    {exercise.equipment ? (
-                      <ExerciseBadge label={exercise.equipment} />
-                    ) : null}
+                    {exercise.equipment ? <ExerciseBadge label={exercise.equipment} /> : null}
                   </View>
 
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {exercise.movementType ? (
-                      <Text style={{ color: '#64748b', fontWeight: '700' }}>
-                        {exercise.movementType}
-                      </Text>
+                      <ExerciseBadge label={exercise.movementType} tone="slate" />
                     ) : null}
                     {exercise.difficulty ? (
-                      <Text style={{ color: '#64748b', fontWeight: '700' }}>
-                        • {exercise.difficulty}
-                      </Text>
+                      <ExerciseBadge label={exercise.difficulty} tone="slate" />
                     ) : null}
                   </View>
                 </Pressable>
@@ -339,7 +390,7 @@ export function ExerciseLibrary({
                 />
 
                 <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 24, fontWeight: '900' }}>
+                  <Text style={{ fontSize: 26, fontWeight: '900' }}>
                     {selectedExercise.name}
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -348,10 +399,10 @@ export function ExerciseLibrary({
                       <ExerciseBadge label={selectedExercise.equipment} />
                     ) : null}
                     {selectedExercise.movementType ? (
-                      <ExerciseBadge label={selectedExercise.movementType} />
+                      <ExerciseBadge label={selectedExercise.movementType} tone="slate" />
                     ) : null}
                     {selectedExercise.difficulty ? (
-                      <ExerciseBadge label={selectedExercise.difficulty} />
+                      <ExerciseBadge label={selectedExercise.difficulty} tone="slate" />
                     ) : null}
                   </View>
                 </View>
@@ -359,16 +410,16 @@ export function ExerciseLibrary({
                 <View
                   style={{
                     alignItems: 'center',
-                    backgroundColor: '#f1f5f9',
-                    borderColor: '#e2e8f0',
-                    borderRadius: 18,
+                    backgroundColor: '#f8fafc',
+                    borderColor: '#cbd5e1',
+                    borderRadius: 22,
                     borderStyle: 'dashed',
                     borderWidth: 1,
-                    height: 160,
+                    height: 150,
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: '#64748b', fontWeight: '800' }}>
+                  <Text style={{ color: '#64748b', fontWeight: '900' }}>
                     Muscle diagram placeholder
                   </Text>
                   <Text style={{ color: '#94a3b8', marginTop: 6 }}>
@@ -377,9 +428,7 @@ export function ExerciseLibrary({
                 </View>
 
                 <View style={{ gap: 6 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '800' }}>
-                    Instructions
-                  </Text>
+                  <Text style={{ fontSize: 16, fontWeight: '900' }}>Instructions</Text>
                   <Text style={{ color: '#475569', lineHeight: 22 }}>
                     {selectedExercise.instructions ||
                       'Instructions have not been added for this exercise yet.'}
@@ -397,9 +446,7 @@ export function ExerciseLibrary({
                   onPress={() => setSelectedExercise(null)}
                   style={{ alignItems: 'center', paddingVertical: 8 }}
                 >
-                  <Text style={{ color: '#64748b', fontWeight: '800' }}>
-                    Close
-                  </Text>
+                  <Text style={{ color: '#64748b', fontWeight: '900' }}>Close</Text>
                 </Pressable>
               </>
             ) : null}
