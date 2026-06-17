@@ -43,7 +43,22 @@ export default function LiveWorkoutScreen() {
     return id;
   }, [id]);
 
-  const session = sessionId ? getLocalWorkoutSession(sessionId) : null;
+  const session = useMemo(
+    () => (sessionId ? getLocalWorkoutSession(sessionId) : null),
+    [sessionId]
+  );
+
+  const selectedExerciseMetadata = useMemo(() => {
+    if (!selectedExercise) return '';
+
+    return [
+      selectedExercise.muscleGroup,
+      selectedExercise.equipment,
+      selectedExercise.difficulty,
+    ]
+      .filter(Boolean)
+      .join(' • ');
+  }, [selectedExercise]);
 
   function refreshSets() {
     if (!sessionId) return;
@@ -168,10 +183,9 @@ export default function LiveWorkoutScreen() {
                 <Text style={{ fontSize: 24, fontWeight: '900', marginTop: 4 }}>
                   {selectedExercise?.name ?? 'Choose exercise'}
                 </Text>
-                {selectedExercise ? (
+                {selectedExerciseMetadata ? (
                   <Text style={{ color: '#64748b', marginTop: 6 }}>
-                    {selectedExercise.muscleGroup} • {selectedExercise.equipment} •{' '}
-                    {selectedExercise.difficulty}
+                    {selectedExerciseMetadata}
                   </Text>
                 ) : null}
               </View>
@@ -191,7 +205,8 @@ export default function LiveWorkoutScreen() {
                 }}
               >
                 <Text style={{ color: '#475569', lineHeight: 21 }}>
-                  {selectedExercise.instructions}
+                  {selectedExercise.instructions ||
+                    'Instructions have not been added for this exercise yet.'}
                 </Text>
               </View>
             ) : null}

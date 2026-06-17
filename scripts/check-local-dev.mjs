@@ -13,36 +13,61 @@ const requiredFiles = [
 
 const errors = [];
 
-for (const file of requiredFiles) {
-  if (!existsSync(join(root, file))) {
+function resolveProjectPath(file) {
+  return join(root, file);
+}
+
+function readRequiredText(file) {
+  const fullPath = resolveProjectPath(file);
+
+  if (!existsSync(fullPath)) {
     errors.push(`Missing required local-dev file: ${file}`);
+    return null;
+  }
+
+  return readFileSync(fullPath, 'utf8');
+}
+
+function readRequiredJson(file) {
+  const contents = readRequiredText(file);
+
+  if (!contents) return null;
+
+  try {
+    return JSON.parse(contents);
+  } catch (error) {
+    errors.push(
+      `Could not parse ${file}: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return null;
   }
 }
 
-const seedsPath = join(root, 'src/features/workouts/seed-exercises.json');
-const exercises = JSON.parse(readFileSync(seedsPath, 'utf8'));
+const exercises = readRequiredJson('src/features/workouts/seed-exercises.json');
 
 if (!Array.isArray(exercises) || exercises.length < 8) {
   errors.push('Expected at least 8 local seed exercises.');
 }
 
-const flags = readFileSync(join(root, 'src/lib/runtime-flags.ts'), 'utf8');
+const flags = readRequiredText('src/lib/runtime-flags.ts');
 
-if (!flags.includes("EXPO_PUBLIC_WORKOUT_SYNC_SOURCE === 'supabase'")) {
+if (flags && !flags.includes("EXPO_PUBLIC_WORKOUT_SYNC_SOURCE === 'supabase'")) {
   errors.push('Workout sync should default to local unless explicitly set to supabase.');
 }
 
-const workoutsScreen = readFileSync(join(root, 'app/(tabs)/workouts.tsx'), 'utf8');
+const workoutsScreen = readRequiredText('app/(tabs)/workouts.tsx');
 
-if (workoutsScreen.includes('supabase.auth.getUser')) {
+if (workoutsScreen?.includes('supabase.auth.getUser')) {
   errors.push('Workouts screen still blocks local testing behind Supabase auth.');
 }
 
-const sessionScreen = readFileSync(join(root, 'app/workout/session/[id].tsx'), 'utf8');
+const sessionScreen = readRequiredText('app/workout/session/[id].tsx');
 
-for (const expected of ['ExerciseLibrary', 'addLocalWorkoutSet', 'getLocalWorkoutSets']) {
-  if (!sessionScreen.includes(expected)) {
-    errors.push(`Live workout screen is missing ${expected}.`);
+if (sessionScreen) {
+  for (const expected of ['ExerciseLibrary', 'addLocalWorkoutSet', 'getLocalWorkoutSets']) {
+    if (!sessionScreen.includes(expected)) {
+      errors.push(`Live workout screen is missing ${expected}.`);
+    }
   }
 }
 
