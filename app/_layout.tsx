@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { syncPendingNutritionLogs } from '@/src/features/nutrition/nutrition-service';
 import { syncPendingWorkoutSessions } from '@/src/features/workouts/workout-service';
 import { initializeLocalDb } from '@/src/lib/local-db';
 
@@ -16,12 +17,20 @@ export default function RootLayout() {
       console.warn('Failed to sync pending workout sessions.', error);
     });
 
+    void syncPendingNutritionLogs().catch((error) => {
+      console.warn('Failed to sync pending nutrition logs.', error);
+    });
+
     const subscription = AppState.addEventListener(
       'change',
       (state: AppStateStatus) => {
         if (state === 'active') {
           void syncPendingWorkoutSessions().catch((error) => {
             console.warn('Failed to sync pending workout sessions.', error);
+          });
+
+          void syncPendingNutritionLogs().catch((error) => {
+            console.warn('Failed to sync pending nutrition logs.', error);
           });
         }
       }

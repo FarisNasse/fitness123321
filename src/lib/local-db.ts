@@ -33,6 +33,44 @@ export type LocalWorkoutSet = {
   updated_at: string;
 };
 
+export type LocalMealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export type LocalMealLog = {
+  local_id: string;
+  server_id: string | null;
+  user_id: string;
+  logged_at: string;
+  meal_type: LocalMealType;
+  sync_status: 'pending' | 'synced' | 'failed';
+  updated_at: string;
+};
+
+export type LocalMealItem = {
+  local_id: string;
+  server_id: string | null;
+  meal_log_local_id: string;
+  food_id: string | null;
+  food_name: string;
+  quantity: number;
+  unit: string | null;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  sync_status: 'pending' | 'synced' | 'failed';
+  updated_at: string;
+};
+
+export type LocalWaterLog = {
+  local_id: string;
+  server_id: string | null;
+  user_id: string;
+  logged_at: string;
+  amount_ml: number;
+  sync_status: 'pending' | 'synced' | 'failed';
+  updated_at: string;
+};
+
 type WebStore = {
   workout_sessions_local: Record<string, unknown>[];
   workout_sets_local: Record<string, unknown>[];
@@ -160,6 +198,75 @@ function createWebDbAdapter(): DbAdapter {
           reps,
           weight,
           completed: 1,
+          sync_status: 'pending',
+          updated_at: updatedAt,
+        });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('insert into meal_logs_local')) {
+        const [localId, userId, loggedAt, mealType, updatedAt] = params;
+
+        store.meal_logs_local.push({
+          local_id: localId,
+          server_id: null,
+          user_id: userId,
+          logged_at: loggedAt,
+          meal_type: mealType,
+          sync_status: 'pending',
+          updated_at: updatedAt,
+        });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('insert into meal_items_local')) {
+        const [
+          localId,
+          mealLogLocalId,
+          foodId,
+          foodName,
+          quantity,
+          unit,
+          calories,
+          proteinG,
+          carbsG,
+          fatG,
+          updatedAt,
+        ] = params;
+
+        store.meal_items_local.push({
+          local_id: localId,
+          server_id: null,
+          meal_log_local_id: mealLogLocalId,
+          food_id: foodId,
+          food_name: foodName,
+          quantity,
+          unit,
+          calories,
+          protein_g: proteinG,
+          carbs_g: carbsG,
+          fat_g: fatG,
+          sync_status: 'pending',
+          updated_at: updatedAt,
+        });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('insert into water_logs_local')) {
+        const [localId, userId, loggedAt, amountMl, updatedAt] = params;
+
+        store.water_logs_local.push({
+          local_id: localId,
+          server_id: null,
+          user_id: userId,
+          logged_at: loggedAt,
+          amount_ml: amountMl,
           sync_status: 'pending',
           updated_at: updatedAt,
         });
@@ -331,6 +438,131 @@ function createWebDbAdapter(): DbAdapter {
         writeWebStore(store);
         return;
       }
+
+      if (
+        normalized.startsWith('update meal_logs_local') &&
+        normalized.includes("set sync_status = 'failed'")
+      ) {
+        const [mealLogLocalId] = params;
+        const mealLog = store.meal_logs_local.find(
+          (item) => item.local_id === mealLogLocalId
+        );
+
+        if (mealLog) {
+          mealLog.sync_status = 'failed';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update meal_logs_local') &&
+        normalized.includes('set server_id = ?')
+      ) {
+        const [serverId, mealLogLocalId] = params;
+        const mealLog = store.meal_logs_local.find(
+          (item) => item.local_id === mealLogLocalId
+        );
+
+        if (mealLog) {
+          mealLog.server_id = serverId;
+          mealLog.sync_status = normalized.includes("sync_status = 'pending'")
+            ? 'pending'
+            : 'synced';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update meal_logs_local') &&
+        normalized.includes('set server_id = null')
+      ) {
+        const [mealLogLocalId] = params;
+        const mealLog = store.meal_logs_local.find(
+          (item) => item.local_id === mealLogLocalId
+        );
+
+        if (mealLog) {
+          mealLog.server_id = null;
+          mealLog.sync_status = 'pending';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update meal_items_local') &&
+        normalized.includes("set sync_status = 'failed'")
+      ) {
+        const [mealItemLocalId] = params;
+        const mealItem = store.meal_items_local.find(
+          (item) => item.local_id === mealItemLocalId
+        );
+
+        if (mealItem) {
+          mealItem.sync_status = 'failed';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update meal_items_local') &&
+        normalized.includes('set server_id = ?')
+      ) {
+        const [serverId, mealItemLocalId] = params;
+        const mealItem = store.meal_items_local.find(
+          (item) => item.local_id === mealItemLocalId
+        );
+
+        if (mealItem) {
+          mealItem.server_id = serverId;
+          mealItem.sync_status = 'synced';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update water_logs_local') &&
+        normalized.includes("set sync_status = 'failed'")
+      ) {
+        const [waterLogLocalId] = params;
+        const waterLog = store.water_logs_local.find(
+          (item) => item.local_id === waterLogLocalId
+        );
+
+        if (waterLog) {
+          waterLog.sync_status = 'failed';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update water_logs_local') &&
+        normalized.includes('set server_id = ?')
+      ) {
+        const [serverId, waterLogLocalId] = params;
+        const waterLog = store.water_logs_local.find(
+          (item) => item.local_id === waterLogLocalId
+        );
+
+        if (waterLog) {
+          waterLog.server_id = serverId;
+          waterLog.sync_status = 'synced';
+        }
+
+        writeWebStore(store);
+        return;
+      }
     },
 
     getAllSync<T = unknown>(sql: string, params: unknown[] = []) {
@@ -425,6 +657,110 @@ function createWebDbAdapter(): DbAdapter {
           .sort(
             (a, b) =>
               Number(a.set_number ?? 0) - Number(b.set_number ?? 0)
+          ) as T[];
+      }
+
+      if (
+        normalized.includes('from meal_logs_local') &&
+        normalized.includes('sync_status')
+      ) {
+        const excludedUserId = normalized.includes('user_id != ?')
+          ? String(params[0] ?? '')
+          : null;
+
+        return store.meal_logs_local.filter((mealLog) => {
+          const hasSyncStatus = ['pending', 'failed'].includes(
+            String(mealLog.sync_status)
+          );
+          const hasSyncableOwner =
+            !excludedUserId || String(mealLog.user_id) !== excludedUserId;
+
+          return hasSyncStatus && hasSyncableOwner;
+        }) as T[];
+      }
+
+      if (
+        normalized.includes('from meal_logs_local') &&
+        normalized.includes('logged_at >= ?') &&
+        normalized.includes('logged_at < ?')
+      ) {
+        const [startIso, endIso] = params;
+
+        return store.meal_logs_local
+          .filter(
+            (mealLog) =>
+              String(mealLog.logged_at) >= String(startIso) &&
+              String(mealLog.logged_at) < String(endIso)
+          )
+          .sort(
+            (a, b) =>
+              Date.parse(String(a.logged_at)) - Date.parse(String(b.logged_at))
+          ) as T[];
+      }
+
+      if (
+        normalized.includes('from meal_items_local') &&
+        normalized.includes('meal_log_local_id in')
+      ) {
+        const mealLogIds = new Set(params.map((param) => String(param)));
+
+        return store.meal_items_local
+          .filter((item) => mealLogIds.has(String(item.meal_log_local_id)))
+          .sort(
+            (a, b) =>
+              Date.parse(String(a.updated_at)) - Date.parse(String(b.updated_at))
+          ) as T[];
+      }
+
+      if (
+        normalized.includes('from meal_items_local') &&
+        normalized.includes('meal_log_local_id = ?')
+      ) {
+        const [mealLogLocalId] = params;
+
+        return store.meal_items_local
+          .filter((item) => item.meal_log_local_id === mealLogLocalId)
+          .sort(
+            (a, b) =>
+              Date.parse(String(a.updated_at)) - Date.parse(String(b.updated_at))
+          ) as T[];
+      }
+
+      if (
+        normalized.includes('from water_logs_local') &&
+        normalized.includes('sync_status')
+      ) {
+        const excludedUserId = normalized.includes('user_id != ?')
+          ? String(params[0] ?? '')
+          : null;
+
+        return store.water_logs_local.filter((waterLog) => {
+          const hasSyncStatus = ['pending', 'failed'].includes(
+            String(waterLog.sync_status)
+          );
+          const hasSyncableOwner =
+            !excludedUserId || String(waterLog.user_id) !== excludedUserId;
+
+          return hasSyncStatus && hasSyncableOwner;
+        }) as T[];
+      }
+
+      if (
+        normalized.includes('from water_logs_local') &&
+        normalized.includes('logged_at >= ?') &&
+        normalized.includes('logged_at < ?')
+      ) {
+        const [startIso, endIso] = params;
+
+        return store.water_logs_local
+          .filter(
+            (waterLog) =>
+              String(waterLog.logged_at) >= String(startIso) &&
+              String(waterLog.logged_at) < String(endIso)
+          )
+          .sort(
+            (a, b) =>
+              Date.parse(String(a.logged_at)) - Date.parse(String(b.logged_at))
           ) as T[];
       }
 
@@ -530,5 +866,11 @@ export function initializeLocalDb() {
 
     create index if not exists idx_meal_items_meal
     on meal_items_local(meal_log_local_id);
+
+    create index if not exists idx_meal_logs_logged
+    on meal_logs_local(logged_at);
+
+    create index if not exists idx_water_logs_logged
+    on water_logs_local(logged_at);
   `);
 }
