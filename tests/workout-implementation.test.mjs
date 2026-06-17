@@ -83,6 +83,16 @@ test('workout service creates, completes, reads, and lists local sessions', () =
   assert.match(service, /duration_seconds = cast\(\(julianday\(\?\) - julianday\(started_at\)\) \* 86400 as integer\)/);
 });
 
+
+test('workout set persistence requires a caller supplied exercise id', () => {
+  const service = readProjectFile('src/features/workouts/workout-service.ts');
+
+  assert.match(service, /export function addLocalWorkoutSet\(input: \{\s*sessionLocalId: string;\s*exerciseId: string;\s*setNumber: number;/s);
+  assert.doesNotMatch(service, /placeholderExerciseId|placeholder-exercise/i);
+  assert.match(service, /insert into workout_sets_local \([\s\S]*exercise_id,[\s\S]*values \(\?, \?, \?, \?, \?, \?, 1, 'pending', \?\)/);
+  assert.match(service, /input\.sessionLocalId,\s*input\.exerciseId,\s*input\.setNumber,/);
+});
+
 test('set logging writes completed pending sets for the selected exercise', () => {
   const service = readProjectFile('src/features/workouts/workout-service.ts');
 
