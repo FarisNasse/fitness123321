@@ -64,6 +64,23 @@ test('macro ring uses React-compatible SVG transform props on web', () => {
   assert.match(macroRing, /transform=\{`rotate\(-90 \$\{center\} \$\{center\}\)`\}/);
 });
 
+
+test('Tailwind and NativeWind use class-based dark mode on web', () => {
+  const tailwind = readProjectFile('tailwind.config.js');
+
+  assert.match(tailwind, /darkMode:\s*'class'/);
+});
+
+test('weight chart avoids gifted chart web runtime crashes by using SVG primitives', () => {
+  const chart = readProjectFile('src/components/WeightChart.tsx');
+
+  assert.doesNotMatch(chart, /react-native-gifted-charts/);
+  assert.match(chart, /import Svg, \{ Circle, Path, Text as SvgText \} from 'react-native-svg';/);
+  assert.match(chart, /function buildWeightChartGeometry\(\)/);
+  assert.match(chart, /<Svg width="100%" height=\{chartHeight\}/);
+  assert.match(chart, /<Path\s+d=\{linePath\}/s);
+});
+
 test('root layout initializes local persistence and syncs workout queue on app activation', () => {
   const layout = readProjectFile('app/_layout.tsx');
 
