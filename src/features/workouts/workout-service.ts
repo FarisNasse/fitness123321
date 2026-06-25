@@ -1,9 +1,16 @@
 import * as Crypto from 'expo-crypto';
 
-import { db, getSetsBySession, type LocalWorkoutSession, type LocalWorkoutSet } from '@/src/lib/local-db';
+import {
+  db,
+  getSetsBySession,
+  getSetsBySessionForSync,
+  type LocalWorkoutSession,
+  type LocalWorkoutSet,
+} from '@/src/lib/local-db';
 import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
 
 export type LocalWorkoutSessionRow = LocalWorkoutSession;
+export type WorkoutSyncUiStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 
 export async function getWorkoutOwnerUserId() {
   if (!USE_REMOTE_WORKOUT_SYNC) {
@@ -49,6 +56,7 @@ export function getLocalWorkoutSession(sessionLocalId: string) {
       select *
       from workout_sessions_local
       where local_id = ?
+        and deleted_at is null
       limit 1
       `,
       [sessionLocalId]
@@ -61,6 +69,7 @@ export function getRecentLocalWorkoutSessions(limit = 5) {
     `
     select *
     from workout_sessions_local
+    where deleted_at is null
     order by started_at desc
     limit ?
     `,
@@ -74,6 +83,7 @@ export function getCompletedWorkoutSessions(limit = 5) {
     select *
     from workout_sessions_local
     where completed_at is not null
+      and deleted_at is null
     order by started_at desc
     limit ?
     `,
@@ -85,11 +95,77 @@ export function getLocalWorkoutSets(sessionLocalId: string) {
   return getSetsBySession(sessionLocalId);
 }
 
+export function getWorkoutSyncUiStatus(
+  session: LocalWorkoutSessionRow,
+  isSyncing = false
+): WorkoutSyncUiStatus {
+  if (isSyncing) {
+    return 'syncing';
+  }
+
+  const syncableSets = getSetsBySessionForSync(session.local_id);
+
+  if (
+    session.sync_status === 'failed' ||
+    syncableSets.some((set) => set.sync_status === 'failed')
+  ) {
+    return 'failed';
+  }
+
+  if (
+    session.sync_status === 'pending' ||
+    syncableSets.some((set) => set.sync_status === 'pending')
+  ) {
+    return 'pending';
+  }
+
+  return 'synced';
+}
+
+export function getWorkoutSyncStatusLabel(status: WorkoutSyncUiStatus) {
+  switch (status) {
+    case 'pending':
+      return 'Saved on device';
+    case 'syncing':
+      return 'Syncing';
+    case 'synced':
+      return 'Synced';
+    case 'failed':
+      return 'Sync failed';
+  }
+}
+
+function markWorkoutSessionPending(sessionLocalId: string) {
+  const now = new Date().toISOString();
+
+  db.runSync(
+    `
+    update workout_sessions_local
+    set sync_status = 'pending',
+        updated_at = ?
+    where local_id = ?
+    `,
+    [now, sessionLocalId]
+  );
+}
+
 export function updateLocalWorkoutSet(
   setLocalId: string,
   reps: number,
   weight: number
 ) {
+  const existing = db.getAllSync<LocalWorkoutSet>(
+    `
+    select *
+    from workout_sets_local
+    where local_id = ?
+    limit 1
+    `,
+    [setLocalId]
+  )[0];
+
+  if (!existing || existing.deleted_at) return;
+
   const now = new Date().toISOString();
 
   db.runSync(
@@ -103,6 +179,7 @@ export function updateLocalWorkoutSet(
     `,
     [reps, weight, now, setLocalId]
   );
+  markWorkoutSessionPending(existing.session_local_id);
 }
 
 export function deleteLocalWorkoutSet(setLocalId: string) {
@@ -116,23 +193,28 @@ export function deleteLocalWorkoutSet(setLocalId: string) {
     [setLocalId]
   )[0];
 
-  if (!deleted) return;
+  if (!deleted || deleted.deleted_at) return;
+
+  const now = new Date().toISOString();
 
   db.runSync(
     `
-    delete from workout_sets_local
+    update workout_sets_local
+    set deleted_at = ?,
+        sync_status = 'pending',
+        updated_at = ?
     where local_id = ?
     `,
-    [setLocalId]
+    [now, now, setLocalId]
   );
 
-  const now = new Date().toISOString();
   const toRenumber = db.getAllSync<LocalWorkoutSet>(
     `
     select *
     from workout_sets_local
     where session_local_id = ?
       and exercise_id = ?
+      and deleted_at is null
       and set_number > ?
     order by set_number asc
     `,
@@ -144,12 +226,42 @@ export function deleteLocalWorkoutSet(setLocalId: string) {
       `
       update workout_sets_local
       set set_number = ?,
+          sync_status = 'pending',
           updated_at = ?
       where local_id = ?
       `,
       [s.set_number - 1, now, s.local_id]
     );
   }
+
+  markWorkoutSessionPending(deleted.session_local_id);
+}
+
+export function deleteLocalWorkoutSession(sessionLocalId: string) {
+  const now = new Date().toISOString();
+
+  db.runSync(
+    `
+    update workout_sets_local
+    set deleted_at = ?,
+        sync_status = 'pending',
+        updated_at = ?
+    where session_local_id = ?
+      and deleted_at is null
+    `,
+    [now, now, sessionLocalId]
+  );
+
+  db.runSync(
+    `
+    update workout_sessions_local
+    set deleted_at = ?,
+        sync_status = 'pending',
+        updated_at = ?
+    where local_id = ?
+    `,
+    [now, now, sessionLocalId]
+  );
 }
 
 export function addLocalWorkoutSet(input: {
@@ -188,6 +300,7 @@ export function addLocalWorkoutSet(input: {
     ]
   );
 
+  markWorkoutSessionPending(input.sessionLocalId);
   return localId;
 }
 
@@ -277,6 +390,62 @@ function markWorkoutSetFailed(setLocalId: string) {
   );
 }
 
+async function syncDeletedWorkoutSet(
+  supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase'],
+  set: LocalWorkoutSet
+) {
+  const remoteSetId = set.server_id ?? set.local_id;
+  const { error } = await supabase
+    .from('workout_sets')
+    .delete()
+    .eq('id', remoteSetId);
+
+  if (error) {
+    markWorkoutSetFailed(set.local_id);
+    return false;
+  }
+
+  // A missing remote row is already the desired state, so it is a successful retry.
+  markWorkoutSetSynced(set.local_id, remoteSetId);
+  return true;
+}
+
+async function syncDeletedWorkoutSession(
+  supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase'],
+  session: LocalWorkoutSessionRow
+) {
+  const remoteSessionId = session.server_id ?? session.local_id;
+  const setsToFinalize = getSetsBySessionForSync(session.local_id);
+
+  const { error: setsError } = await supabase
+    .from('workout_sets')
+    .delete()
+    .eq('session_id', remoteSessionId);
+
+  if (setsError) {
+    for (const set of setsToFinalize) {
+      markWorkoutSetFailed(set.local_id);
+    }
+    markWorkoutSessionFailed(session.local_id);
+    return;
+  }
+
+  const { error: sessionError } = await supabase
+    .from('workout_sessions')
+    .delete()
+    .eq('id', remoteSessionId);
+
+  if (sessionError) {
+    markWorkoutSessionFailed(session.local_id);
+    return;
+  }
+
+  for (const set of setsToFinalize) {
+    markWorkoutSetSynced(set.local_id, set.server_id ?? set.local_id);
+  }
+  markWorkoutSessionSynced(session.local_id, remoteSessionId);
+}
+
 let syncInFlight: Promise<void> | null = null;
 let syncRequestedWhileInFlight = false;
 
@@ -291,129 +460,152 @@ async function syncPendingWorkoutSessionsImpl() {
     `
     select *
     from workout_sessions_local
-    where sync_status in ('pending', 'failed')
+    where (
+        sync_status in ('pending', 'failed')
+        or local_id in (
+          select session_local_id
+          from workout_sets_local
+          where sync_status in ('pending', 'failed')
+        )
+      )
       and user_id != ?
     `,
     [LOCAL_DEV_USER_ID]
   );
 
   for (const session of pendingSessions) {
-    let serverSessionId = session.server_id as string | null;
-
-    if (serverSessionId) {
-      const { data, error } = await supabase
-        .from('workout_sessions')
-        .update({
-          name: session.name,
-          started_at: session.started_at,
-          completed_at: session.completed_at,
-          duration_seconds: session.duration_seconds,
-          notes: session.notes,
-        })
-        .eq('id', serverSessionId)
-        .select('id')
-        .maybeSingle();
-
-      if (error) {
-        markWorkoutSessionFailed(session.local_id);
+    try {
+      if (session.deleted_at) {
+        await syncDeletedWorkoutSession(supabase, session);
         continue;
       }
 
-      if (!data?.id) {
-        // The remote row was deleted or never existed. Clear the stale server_id so
-        // this pass can recreate the session with the local id instead of failing forever.
-        clearWorkoutSessionServerId(session.local_id);
-        serverSessionId = null;
-      }
-    }
+      let serverSessionId = session.server_id as string | null;
 
-    if (!serverSessionId) {
-      const desiredSessionId = String(session.local_id);
-      const { data, error } = await supabase
-        .from('workout_sessions')
-        .upsert(
-          {
-            id: desiredSessionId,
-            user_id: session.user_id,
+      if (serverSessionId) {
+        const { data, error } = await supabase
+          .from('workout_sessions')
+          .update({
             name: session.name,
             started_at: session.started_at,
             completed_at: session.completed_at,
             duration_seconds: session.duration_seconds,
             notes: session.notes,
-          },
-          { onConflict: 'id' }
-        )
-        .select('id')
-        .maybeSingle();
+          })
+          .eq('id', serverSessionId)
+          .select('id')
+          .maybeSingle();
 
-      if (error || !data?.id) {
+        if (error) {
+          markWorkoutSessionFailed(session.local_id);
+          continue;
+        }
+
+        if (!data?.id) {
+          // The remote row was deleted or never existed. Clear the stale server_id so
+          // this pass can recreate the session with the local id instead of failing forever.
+          clearWorkoutSessionServerId(session.local_id);
+          serverSessionId = null;
+        }
+      }
+
+      if (!serverSessionId) {
+        const desiredSessionId = String(session.local_id);
+        const { data, error } = await supabase
+          .from('workout_sessions')
+          .upsert(
+            {
+              id: desiredSessionId,
+              user_id: session.user_id,
+              name: session.name,
+              started_at: session.started_at,
+              completed_at: session.completed_at,
+              duration_seconds: session.duration_seconds,
+              notes: session.notes,
+            },
+            { onConflict: 'id' }
+          )
+          .select('id')
+          .maybeSingle();
+
+        if (error || !data?.id) {
+          markWorkoutSessionFailed(session.local_id);
+          continue;
+        }
+
+        serverSessionId = String(data.id);
+        saveWorkoutSessionServerId(session.local_id, serverSessionId);
+      }
+
+      if (!serverSessionId) {
         markWorkoutSessionFailed(session.local_id);
         continue;
       }
 
-      serverSessionId = String(data.id);
-      saveWorkoutSessionServerId(session.local_id, serverSessionId);
-    }
+      const setsToSync = getSetsBySessionForSync(session.local_id).filter(
+        (set) => set.sync_status === 'pending' || set.sync_status === 'failed'
+      );
+      const deletedSets = setsToSync.filter((set) => Boolean(set.deleted_at));
+      const activeSets = setsToSync.filter((set) => !set.deleted_at);
+      let failedSetCount = 0;
 
-    if (!serverSessionId) {
-      markWorkoutSessionFailed(session.local_id);
-      continue;
-    }
+      for (const set of deletedSets) {
+        const didDelete = await syncDeletedWorkoutSet(supabase, set);
+        if (!didDelete) failedSetCount += 1;
+      }
 
-    const setsToSync = getSetsBySession(session.local_id).filter(
-      (set) => set.sync_status === 'pending' || set.sync_status === 'failed'
-    );
+      if (activeSets.length > 0) {
+        const setRows = activeSets.map((set) => ({
+          id: set.server_id ?? set.local_id,
+          session_id: serverSessionId,
+          exercise_id: set.exercise_id,
+          set_number: set.set_number,
+          reps: set.reps,
+          weight: set.weight,
+          completed: Boolean(set.completed),
+        }));
 
-    if (setsToSync.length === 0) {
+        const { data: syncedSets, error: setsError } = await supabase
+          .from('workout_sets')
+          .upsert(setRows, { onConflict: 'id' })
+          .select('id');
+
+        if (setsError || !Array.isArray(syncedSets)) {
+          for (const set of activeSets) {
+            markWorkoutSetFailed(set.local_id);
+          }
+          markWorkoutSessionFailed(session.local_id);
+          continue;
+        }
+
+        const syncedSetIds = new Set(
+          syncedSets
+            .map((set) => (set?.id ? String(set.id) : null))
+            .filter((id): id is string => Boolean(id))
+        );
+
+        for (const set of activeSets) {
+          const expectedRemoteId = set.server_id ?? set.local_id;
+
+          if (syncedSetIds.has(expectedRemoteId)) {
+            markWorkoutSetSynced(set.local_id, expectedRemoteId);
+          } else {
+            markWorkoutSetFailed(set.local_id);
+            failedSetCount += 1;
+          }
+        }
+      }
+
+      if (failedSetCount > 0) {
+        markWorkoutSessionFailed(session.local_id);
+        continue;
+      }
+
       markWorkoutSessionSynced(session.local_id, serverSessionId);
-      continue;
-    }
-
-    const setRows = setsToSync.map((set) => ({
-      id: set.local_id,
-      session_id: serverSessionId,
-      exercise_id: set.exercise_id,
-      set_number: set.set_number,
-      reps: set.reps,
-      weight: set.weight,
-      completed: Boolean(set.completed),
-    }));
-
-    const { data: syncedSets, error: setsError } = await supabase
-      .from('workout_sets')
-      .upsert(setRows, { onConflict: 'id' })
-      .select('id');
-
-    if (setsError || !Array.isArray(syncedSets)) {
-      for (const set of setsToSync) {
-        markWorkoutSetFailed(set.local_id);
-      }
+    } catch (error) {
+      console.warn('Unexpected workout sync error.', error);
       markWorkoutSessionFailed(session.local_id);
-      continue;
     }
-
-    const syncedSetIds = new Set(
-      syncedSets
-        .map((set) => (set?.id ? String(set.id) : null))
-        .filter((id): id is string => Boolean(id))
-    );
-    let failedSetCount = 0;
-
-    for (const set of setsToSync) {
-      if (syncedSetIds.has(set.local_id)) {
-        markWorkoutSetSynced(set.local_id, set.local_id);
-      } else {
-        markWorkoutSetFailed(set.local_id);
-        failedSetCount += 1;
-      }
-    }
-
-    if (failedSetCount > 0) {
-      markWorkoutSessionFailed(session.local_id);
-      continue;
-    }
-
-    markWorkoutSessionSynced(session.local_id, serverSessionId);
   }
 }
 

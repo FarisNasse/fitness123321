@@ -16,12 +16,20 @@ import {
   getCompletedWorkoutSessions,
   getLocalWorkoutSets,
   getWorkoutOwnerUserId,
+  getWorkoutSyncStatusLabel,
+  getWorkoutSyncUiStatus,
+  syncPendingWorkoutSessions,
   type LocalWorkoutSessionRow,
+  type WorkoutSyncUiStatus,
 } from '@/src/features/workouts/workout-service';
 import { USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
 
 export default function WorkoutsScreen() {
   const [recentSessions, setRecentSessions] = useState<LocalWorkoutSessionRow[]>([]);
+  const [syncingSessionIds, setSyncingSessionIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
 
   function refreshRecentSessions() {
     setRecentSessions(getCompletedWorkoutSessions(4));
@@ -30,6 +38,10 @@ export default function WorkoutsScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshRecentSessions();
+
+      if (USE_REMOTE_WORKOUT_SYNC) {
+        void retryWorkoutSync();
+      }
     }, [])
   );
 
@@ -37,6 +49,33 @@ export default function WorkoutsScreen() {
     () => recentSessions.filter((session) => Boolean(session.completed_at)).length,
     [recentSessions]
   );
+
+  async function retryWorkoutSync(sessionLocalId?: string) {
+    if (!USE_REMOTE_WORKOUT_SYNC) return;
+
+    if (sessionLocalId) {
+      setSyncingSessionIds((current) => new Set(current).add(sessionLocalId));
+    } else {
+      setIsSyncingAll(true);
+    }
+
+    try {
+      await syncPendingWorkoutSessions();
+    } catch (error) {
+      console.warn('Manual workout sync retry failed.', error);
+    } finally {
+      if (sessionLocalId) {
+        setSyncingSessionIds((current) => {
+          const next = new Set(current);
+          next.delete(sessionLocalId);
+          return next;
+        });
+      } else {
+        setIsSyncingAll(false);
+      }
+      refreshRecentSessions();
+    }
+  }
 
   async function startWorkout() {
     try {
@@ -112,6 +151,10 @@ export default function WorkoutsScreen() {
             <View className="gap-3">
               {recentSessions.map((session) => {
                 const setCount = getLocalWorkoutSets(session.local_id).length;
+                const syncUiStatus = getWorkoutSyncUiStatus(
+                  session,
+                  isSyncingAll || syncingSessionIds.has(session.local_id)
+                );
 
                 return (
                   <WorkoutHistoryCard
@@ -120,6 +163,14 @@ export default function WorkoutsScreen() {
                     startedAt={formatDateTime(session.started_at)}
                     durationLabel={formatDuration(session.duration_seconds)}
                     setCount={setCount}
+                    syncStatusLabel={getWorkoutSyncStatusLabel(syncUiStatus)}
+                    syncStatusVariant={getSyncStatusBadgeVariant(syncUiStatus)}
+                    onRetrySync={
+                      syncUiStatus === 'failed'
+                        ? () => retryWorkoutSync(session.local_id)
+                        : undefined
+                    }
+                    retrying={syncingSessionIds.has(session.local_id)}
                     onPress={() => router.push(`/workout/history/${session.local_id}`)}
                   />
                 );
@@ -165,4 +216,17 @@ function formatDuration(seconds: number | null) {
 
   const minutes = Math.max(1, Math.round(seconds / 60));
   return `${minutes} min`;
+}
+
+function getSyncStatusBadgeVariant(status: WorkoutSyncUiStatus) {
+  switch (status) {
+    case 'pending':
+      return 'warning' as const;
+    case 'syncing':
+      return 'info' as const;
+    case 'synced':
+      return 'success' as const;
+    case 'failed':
+      return 'error' as const;
+  }
 }

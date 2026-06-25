@@ -193,6 +193,12 @@ export default function LiveWorkoutScreen() {
     setIsPickerOpen(false);
   }
 
+  function queueWorkoutSync(reason: string) {
+    void syncPendingWorkoutSessions().catch((error) => {
+      console.warn(`Failed to sync workout after ${reason}.`, error);
+    });
+  }
+
   function addSet() {
     if (!sessionId || !selectedExercise) return;
 
@@ -218,6 +224,7 @@ export default function LiveWorkoutScreen() {
     });
 
     refreshSets();
+    queueWorkoutSync('adding a set');
     setRestSeconds(REST_DURATION_SECONDS);
   }
 
@@ -246,6 +253,7 @@ export default function LiveWorkoutScreen() {
     updateLocalWorkoutSet(editingSet.local_id, parsedReps, parsedWeight);
     setEditingSet(null);
     refreshSets();
+    queueWorkoutSync('editing a set');
   }
 
   function confirmDeleteSet(setLocalId: string) {
@@ -257,6 +265,7 @@ export default function LiveWorkoutScreen() {
         onPress: () => {
           deleteLocalWorkoutSet(setLocalId);
           refreshSets();
+          queueWorkoutSync('deleting a set');
         },
       },
     ]);
@@ -287,6 +296,7 @@ export default function LiveWorkoutScreen() {
             {session?.name ?? 'Quick workout'} • {sets.length} set
             {sets.length === 1 ? '' : 's'} logged
             {bestEstimatedMax ? ` • best est. 1RM ${Math.round(bestEstimatedMax)} lb` : ''}
+            {' • Saved on device'}
           </Text>
         </View>
 
