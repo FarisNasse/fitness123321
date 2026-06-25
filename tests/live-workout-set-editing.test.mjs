@@ -163,21 +163,21 @@ test('deleteLocalWorkoutSet reads the target row first and safely no-ops when it
     'from workout_sets_local',
     'where local_id = ?',
     'limit 1',
-    'if (!deleted || deleted.deleted_at) return;',
+    'if (!deleted || deleted.is_deleted || deleted.deleted_at) return;',
   ], 'deleteLocalWorkoutSet should fetch the deleted row before deletion');
 });
 
 test('deleteLocalWorkoutSet soft-deletes exactly the requested local set id', () => {
   const service = normalizeWhitespace(readProjectFile('src/features/workouts/workout-service.ts'));
 
-  assert.match(service, /update workout_sets_local set deleted_at = \?, sync_status = 'pending', updated_at = \? where local_id = \?/);
+  assert.match(service, /update workout_sets_local set is_deleted = 1, deleted_at = \?, sync_status = 'pending', updated_at = \? where local_id = \? and coalesce\(is_deleted, 0\) = 0/);
   assert.match(service, /\[now, now, setLocalId\]/);
 });
 
 test('deleteLocalWorkoutSet renumbers only later sets from the same session and exercise', () => {
   const service = normalizeWhitespace(readProjectFile('src/features/workouts/workout-service.ts'));
 
-  assert.match(service, /select \* from workout_sets_local where session_local_id = \? and exercise_id = \? and deleted_at is null and set_number > \? order by set_number asc/);
+  assert.match(service, /select \* from workout_sets_local where session_local_id = \? and exercise_id = \? and coalesce\(is_deleted, 0\) = 0 and deleted_at is null and set_number > \? order by set_number asc/);
   assert.match(service, /\[deleted\.session_local_id, deleted\.exercise_id, deleted\.set_number\]/);
 });
 
@@ -195,7 +195,8 @@ test('web local-db adapter handles every query shape used by set editing and del
   assert.match(localDb, /from workout_sets_local.*where local_id = \?/);
   assert.match(localDb, /update workout_sets_local.*set reps =/);
   assert.match(localDb, /update workout_sets_local.*set set_number =/);
-  assert.match(localDb, /set deleted_at = \?/);
-  assert.match(localDb, /delete from workout_sets_local/);
+  assert.match(localDb, /is_deleted = 1/);
+  assert.match(localDb, /deleted_at = \?/);
+  assert.doesNotMatch(localDb, /delete from workout_sets_local/);
   assert.match(localDb, /session_local_id = \?.*exercise_id = \?.*set_number >/);
 });
