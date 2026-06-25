@@ -16,6 +16,7 @@ export type LocalWorkoutSession = {
   completed_at: string | null;
   duration_seconds: number | null;
   notes: string | null;
+  is_deleted: number;
   deleted_at: string | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
@@ -30,6 +31,7 @@ export type LocalWorkoutSet = {
   reps: number | null;
   weight: number | null;
   completed: number;
+  is_deleted: number;
   deleted_at: string | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
@@ -150,6 +152,23 @@ function normalizeSql(sql: string) {
   return sql.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+function isDeletedRecord(record: Record<string, unknown>) {
+  return (
+    Boolean(record.deleted_at) ||
+    record.is_deleted === 1 ||
+    record.is_deleted === true ||
+    record.is_deleted === '1'
+  );
+}
+
+function queryExcludesDeleted(normalizedSql: string) {
+  return (
+    normalizedSql.includes('deleted_at is null') ||
+    normalizedSql.includes('is_deleted = 0') ||
+    normalizedSql.includes('coalesce(is_deleted, 0) = 0')
+  );
+}
+
 function createWebDbAdapter(): DbAdapter {
   return {
     execSync() {
@@ -172,6 +191,7 @@ function createWebDbAdapter(): DbAdapter {
           completed_at: null,
           duration_seconds: null,
           notes: null,
+          is_deleted: 0,
           deleted_at: null,
           sync_status: 'pending',
           updated_at: updatedAt,
@@ -201,6 +221,7 @@ function createWebDbAdapter(): DbAdapter {
           reps,
           weight,
           completed: 1,
+          is_deleted: 0,
           deleted_at: null,
           sync_status: 'pending',
           updated_at: updatedAt,
@@ -343,7 +364,8 @@ function createWebDbAdapter(): DbAdapter {
 
       if (
         normalized.startsWith('update workout_sessions_local') &&
-        normalized.includes('set deleted_at = ?')
+        normalized.includes('is_deleted = 1') &&
+        normalized.includes('deleted_at = ?')
       ) {
         const [deletedAt, updatedAt, sessionLocalId] = params;
         const session = store.workout_sessions_local.find(
@@ -351,6 +373,7 @@ function createWebDbAdapter(): DbAdapter {
         );
 
         if (session) {
+          session.is_deleted = 1;
           session.deleted_at = deletedAt;
           session.sync_status = 'pending';
           session.updated_at = updatedAt;
@@ -423,7 +446,8 @@ function createWebDbAdapter(): DbAdapter {
         const [deletedAt, updatedAt, sessionLocalId] = params;
 
         for (const set of store.workout_sets_local) {
-          if (set.session_local_id === sessionLocalId && !set.deleted_at) {
+          if (set.session_local_id === sessionLocalId && !isDeletedRecord(set)) {
+            set.is_deleted = 1;
             set.deleted_at = deletedAt;
             set.sync_status = 'pending';
             set.updated_at = updatedAt;
@@ -436,7 +460,8 @@ function createWebDbAdapter(): DbAdapter {
 
       if (
         normalized.startsWith('update workout_sets_local') &&
-        normalized.includes('set deleted_at = ?')
+        normalized.includes('is_deleted = 1') &&
+        normalized.includes('deleted_at = ?')
       ) {
         const [deletedAt, updatedAt, setLocalId] = params;
         const set = store.workout_sets_local.find(
@@ -444,6 +469,7 @@ function createWebDbAdapter(): DbAdapter {
         );
 
         if (set) {
+          set.is_deleted = 1;
           set.deleted_at = deletedAt;
           set.sync_status = 'pending';
           set.updated_at = updatedAt;
@@ -505,16 +531,6 @@ function createWebDbAdapter(): DbAdapter {
           set.sync_status = 'pending';
           set.updated_at = updatedAt;
         }
-
-        writeWebStore(store);
-        return;
-      }
-
-      if (normalized.startsWith('delete from workout_sets_local')) {
-        const [setLocalId] = params;
-        store.workout_sets_local = store.workout_sets_local.filter(
-          (item) => item.local_id !== setLocalId
-        );
 
         writeWebStore(store);
         return;
@@ -656,12 +672,12 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const [sessionLocalId] = params;
 
-        const excludeDeleted = normalized.includes('deleted_at is null');
+        const excludeDeleted = queryExcludesDeleted(normalized);
 
         return store.workout_sessions_local.filter(
           (session) =>
             session.local_id === sessionLocalId &&
-            (!excludeDeleted || !session.deleted_at)
+            (!excludeDeleted || !isDeletedRecord(session))
         ) as T[];
       }
 
@@ -695,11 +711,11 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const [limit = 5] = params;
         const completedOnly = normalized.includes('completed_at is not null');
-        const excludeDeleted = normalized.includes('deleted_at is null');
+        const excludeDeleted = queryExcludesDeleted(normalized);
 
         return [...store.workout_sessions_local]
           .filter((session) => !completedOnly || Boolean(session.completed_at))
-          .filter((session) => !excludeDeleted || !session.deleted_at)
+          .filter((session) => !excludeDeleted || !isDeletedRecord(session))
           .sort(
             (a, b) =>
               Date.parse(String(b.started_at)) - Date.parse(String(a.started_at))
@@ -731,7 +747,7 @@ function createWebDbAdapter(): DbAdapter {
             (set) =>
               set.session_local_id === sessionLocalId &&
               set.exercise_id === exerciseId &&
-              !set.deleted_at &&
+              !isDeletedRecord(set) &&
               Number(set.set_number ?? 0) > Number(setNumber ?? 0)
           )
           .sort(
@@ -745,13 +761,13 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const [sessionLocalId] = params;
 
-        const excludeDeleted = normalized.includes('deleted_at is null');
+        const excludeDeleted = queryExcludesDeleted(normalized);
 
         return store.workout_sets_local
           .filter(
             (set) =>
               set.session_local_id === sessionLocalId &&
-              (!excludeDeleted || !set.deleted_at)
+              (!excludeDeleted || !isDeletedRecord(set))
           )
           .sort(
             (a, b) =>
@@ -877,6 +893,7 @@ export function getSetsBySession(sessionLocalId: string) {
     select *
     from workout_sets_local
     where session_local_id = ?
+      and coalesce(is_deleted, 0) = 0
       and deleted_at is null
     order by set_number asc
     `,
@@ -917,6 +934,7 @@ export function initializeLocalDb() {
       completed_at text,
       duration_seconds integer,
       notes text,
+      is_deleted integer not null default 0,
       deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
@@ -931,6 +949,7 @@ export function initializeLocalDb() {
       reps integer,
       weight real,
       completed integer default 0,
+      is_deleted integer not null default 0,
       deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
@@ -988,6 +1007,12 @@ export function initializeLocalDb() {
     create index if not exists idx_workout_sets_session
     on workout_sets_local(session_local_id);
 
+    create index if not exists idx_workout_sessions_active_started
+    on workout_sessions_local(is_deleted, started_at desc);
+
+    create index if not exists idx_workout_sets_active_session
+    on workout_sets_local(session_local_id, is_deleted, set_number);
+
     create index if not exists idx_meal_items_meal
     on meal_items_local(meal_log_local_id);
 
@@ -998,6 +1023,20 @@ export function initializeLocalDb() {
     on water_logs_local(logged_at);
   `);
 
+  addMissingLocalColumn('workout_sessions_local', 'is_deleted integer not null default 0');
   addMissingLocalColumn('workout_sessions_local', 'deleted_at text');
+  addMissingLocalColumn('workout_sets_local', 'is_deleted integer not null default 0');
   addMissingLocalColumn('workout_sets_local', 'deleted_at text');
+
+  db.execSync(`
+    update workout_sessions_local
+    set is_deleted = 1
+    where deleted_at is not null
+      and coalesce(is_deleted, 0) = 0;
+
+    update workout_sets_local
+    set is_deleted = 1
+    where deleted_at is not null
+      and coalesce(is_deleted, 0) = 0;
+  `);
 }

@@ -33,6 +33,8 @@ export type WorkoutSession = {
   completedAt?: string;
   durationSeconds?: number;
   notes?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
   syncStatus: SyncStatus;
 };
 
@@ -45,6 +47,8 @@ export type WorkoutSet = {
   reps?: number;
   weight?: number;
   completed: boolean;
+  isDeleted?: boolean;
+  deletedAt?: string;
   syncStatus: SyncStatus;
 };
 

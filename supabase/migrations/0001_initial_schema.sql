@@ -66,6 +66,8 @@ create table if not exists public.workout_sessions (
   completed_at timestamptz,
   duration_seconds int,
   notes text,
+  is_deleted boolean not null default false,
+  deleted_at timestamptz,
   created_at timestamptz default now()
 );
 
@@ -80,6 +82,8 @@ create table if not exists public.workout_sets (
   distance_meters numeric,
   rpe numeric,
   completed boolean default false,
+  is_deleted boolean not null default false,
+  deleted_at timestamptz,
   created_at timestamptz default now()
 );
 
@@ -351,8 +355,16 @@ with check (auth.uid() = user_id);
 create index if not exists idx_workout_sessions_user_started
 on public.workout_sessions(user_id, started_at desc);
 
+create index if not exists idx_workout_sessions_active_user_started
+on public.workout_sessions(user_id, started_at desc)
+where is_deleted = false;
+
 create index if not exists idx_workout_sets_session
 on public.workout_sets(session_id);
+
+create index if not exists idx_workout_sets_active_session
+on public.workout_sets(session_id, set_number)
+where is_deleted = false;
 
 create index if not exists idx_body_measurements_user_measured
 on public.body_measurements(user_id, measured_at desc);
