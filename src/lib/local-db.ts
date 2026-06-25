@@ -22,6 +22,15 @@ export type LocalWorkoutSession = {
   updated_at: string;
 };
 
+export type LocalWorkoutSessionExercise = {
+  local_id: string;
+  session_local_id: string;
+  exercise_id: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type LocalWorkoutSet = {
   local_id: string;
   server_id: string | null;
@@ -77,6 +86,7 @@ export type LocalWaterLog = {
 
 type WebStore = {
   workout_sessions_local: Record<string, unknown>[];
+  workout_session_exercises_local: Record<string, unknown>[];
   workout_sets_local: Record<string, unknown>[];
   meal_logs_local: Record<string, unknown>[];
   meal_items_local: Record<string, unknown>[];
@@ -107,6 +117,7 @@ function createNativeDbAdapter(): DbAdapter {
 function createEmptyWebStore(): WebStore {
   return {
     workout_sessions_local: [],
+    workout_session_exercises_local: [],
     workout_sets_local: [],
     meal_logs_local: [],
     meal_items_local: [],
@@ -196,6 +207,30 @@ function createWebDbAdapter(): DbAdapter {
           sync_status: 'pending',
           updated_at: updatedAt,
         });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('insert or ignore into workout_session_exercises_local')) {
+        const [localId, sessionLocalId, exerciseId, sortOrder, createdAt, updatedAt] =
+          params;
+        const alreadySelected = store.workout_session_exercises_local.some(
+          (item) =>
+            item.session_local_id === sessionLocalId &&
+            item.exercise_id === exerciseId
+        );
+
+        if (!alreadySelected) {
+          store.workout_session_exercises_local.push({
+            local_id: localId,
+            session_local_id: sessionLocalId,
+            exercise_id: exerciseId,
+            sort_order: sortOrder,
+            created_at: createdAt,
+            updated_at: updatedAt,
+          });
+        }
 
         writeWebStore(store);
         return;
@@ -667,6 +702,44 @@ function createWebDbAdapter(): DbAdapter {
       const store = readWebStore();
 
       if (
+        normalized.includes('from workout_session_exercises_local') &&
+        normalized.includes('session_local_id = ?')
+      ) {
+        const [sessionLocalId] = params;
+
+        return store.workout_session_exercises_local
+          .filter((item) => item.session_local_id === sessionLocalId)
+          .sort(
+            (a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)
+          ) as T[];
+      }
+
+      if (
+        normalized.includes('from workout_sets_local') &&
+        normalized.includes('group by exercise_id')
+      ) {
+        const [sessionLocalId] = params;
+        const seenExerciseIds = new Set<string>();
+        const rows: Record<string, unknown>[] = [];
+
+        for (const set of store.workout_sets_local) {
+          const exerciseId = String(set.exercise_id ?? '');
+
+          if (
+            set.session_local_id === sessionLocalId &&
+            exerciseId &&
+            !isDeletedRecord(set) &&
+            !seenExerciseIds.has(exerciseId)
+          ) {
+            seenExerciseIds.add(exerciseId);
+            rows.push({ exercise_id: exerciseId });
+          }
+        }
+
+        return rows as T[];
+      }
+
+      if (
         normalized.includes('from workout_sessions_local') &&
         normalized.includes('where local_id = ?')
       ) {
@@ -709,11 +782,14 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('from workout_sessions_local') &&
         normalized.includes('order by started_at desc')
       ) {
-        const [limit = 5] = params;
+        const hasUserFilter = normalized.includes('user_id = ?');
+        const userId = hasUserFilter ? String(params[0] ?? '') : null;
+        const limit = hasUserFilter ? params[1] ?? 5 : params[0] ?? 5;
         const completedOnly = normalized.includes('completed_at is not null');
         const excludeDeleted = queryExcludesDeleted(normalized);
 
         return [...store.workout_sessions_local]
+          .filter((session) => !userId || String(session.user_id) === userId)
           .filter((session) => !completedOnly || Boolean(session.completed_at))
           .filter((session) => !excludeDeleted || !isDeletedRecord(session))
           .sort(
@@ -914,6 +990,33 @@ export function getSetsBySessionForSync(sessionLocalId: string) {
   );
 }
 
+export function getExercisesBySession(sessionLocalId: string) {
+  return db.getAllSync<LocalWorkoutSessionExercise>(
+    `
+    select *
+    from workout_session_exercises_local
+    where session_local_id = ?
+    order by sort_order asc
+    `,
+    [sessionLocalId]
+  );
+}
+
+export function getExerciseIdsBySessionFromSets(sessionLocalId: string) {
+  return db.getAllSync<{ exercise_id: string }>(
+    `
+    select exercise_id
+    from workout_sets_local
+    where session_local_id = ?
+      and coalesce(is_deleted, 0) = 0
+      and deleted_at is null
+    group by exercise_id
+    order by min(rowid) asc
+    `,
+    [sessionLocalId]
+  );
+}
+
 function addMissingLocalColumn(tableName: string, columnSql: string) {
   try {
     db.execSync(`alter table ${tableName} add column ${columnSql};`);
@@ -938,6 +1041,16 @@ export function initializeLocalDb() {
       deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
+    );
+
+    create table if not exists workout_session_exercises_local (
+      local_id text primary key,
+      session_local_id text not null,
+      exercise_id text not null,
+      sort_order integer not null,
+      created_at text not null,
+      updated_at text not null,
+      unique(session_local_id, exercise_id)
     );
 
     create table if not exists workout_sets_local (
@@ -1003,6 +1116,9 @@ export function initializeLocalDb() {
       sync_status text not null default 'pending',
       updated_at text not null
     );
+
+    create index if not exists idx_workout_session_exercises_session
+    on workout_session_exercises_local(session_local_id, sort_order);
 
     create index if not exists idx_workout_sets_session
     on workout_sets_local(session_local_id);

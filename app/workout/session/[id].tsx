@@ -16,10 +16,12 @@ import {
 } from '@/src/features/workouts/exercise-service';
 import { estimatedOneRepMax } from '@/src/features/workouts/pr-service';
 import {
+  addLocalWorkoutSessionExercise,
   addLocalWorkoutSet,
   completeLocalWorkoutSession,
   deleteLocalWorkoutSet,
   getLocalWorkoutSession,
+  getLocalWorkoutSessionExercises,
   getLocalWorkoutSets,
   syncPendingWorkoutSessions,
   updateLocalWorkoutSet,
@@ -110,21 +112,27 @@ export default function LiveWorkoutScreen() {
     setSets(nextSets);
     setExerciseSetMap(nextMap);
 
+    const savedExerciseRows = getLocalWorkoutSessionExercises(sessionId);
+    const orderedSessionExercises = savedExerciseRows
+      .map((row) => resolveExercise(row.exercise_id))
+      .filter((exercise): exercise is Exercise => Boolean(exercise));
+    const savedExerciseIds = new Set(
+      orderedSessionExercises.map((exercise) => exercise.id)
+    );
     const exercisesFromLoggedSets = Array.from(nextMap.keys())
       .map((exerciseId) => resolveExercise(exerciseId))
-      .filter((exercise): exercise is Exercise => Boolean(exercise));
+      .filter((exercise): exercise is Exercise => Boolean(exercise))
+      .filter((exercise) => !savedExerciseIds.has(exercise.id));
+    const nextExercises = [...orderedSessionExercises, ...exercisesFromLoggedSets];
 
-    if (exercisesFromLoggedSets.length > 0) {
+    if (nextExercises.length > 0) {
       setSelectedExercises((current) => {
-        const existingIds = new Set(current.map((exercise) => exercise.id));
-        const missingExercises = exercisesFromLoggedSets.filter(
-          (exercise) => !existingIds.has(exercise.id)
-        );
+        const nextIds = new Set(nextExercises.map((exercise) => exercise.id));
+        const currentOnly = current.filter((exercise) => !nextIds.has(exercise.id));
 
-        return missingExercises.length > 0
-          ? [...current, ...missingExercises]
-          : current;
+        return [...nextExercises, ...currentOnly];
       });
+      setSelectedExercise((current) => current ?? nextExercises[0]);
     }
   }
 
@@ -174,6 +182,10 @@ export default function LiveWorkoutScreen() {
   }, [sets]);
 
   function chooseExercise(exercise: Exercise) {
+    if (sessionId) {
+      addLocalWorkoutSessionExercise(sessionId, exercise.id);
+    }
+
     rememberExercises([exercise]);
     setExerciseLookup((current) => ({
       ...current,

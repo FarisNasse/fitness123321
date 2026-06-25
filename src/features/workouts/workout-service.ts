@@ -2,14 +2,18 @@ import * as Crypto from 'expo-crypto';
 
 import {
   db,
+  getExerciseIdsBySessionFromSets,
+  getExercisesBySession,
   getSetsBySession,
   getSetsBySessionForSync,
   type LocalWorkoutSession,
+  type LocalWorkoutSessionExercise,
   type LocalWorkoutSet,
 } from '@/src/lib/local-db';
 import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
 
 export type LocalWorkoutSessionRow = LocalWorkoutSession;
+export type LocalWorkoutSessionExerciseRow = LocalWorkoutSessionExercise;
 export type WorkoutSyncUiStatus = 'pending' | 'syncing' | 'synced' | 'failed';
 
 export async function getWorkoutOwnerUserId() {
@@ -94,6 +98,140 @@ export function getCompletedWorkoutSessions(limit = 5) {
     `,
     [limit]
   );
+}
+
+export function getMostRecentCompletedWorkoutSession(userId: string) {
+  return (
+    db.getAllSync<LocalWorkoutSessionRow>(
+      `
+      select *
+      from workout_sessions_local
+      where user_id = ?
+        and completed_at is not null
+        and coalesce(is_deleted, 0) = 0
+        and deleted_at is null
+      order by started_at desc
+      limit ?
+      `,
+      [userId, 1]
+    )[0] ?? null
+  );
+}
+
+function buildFallbackWorkoutSessionExercises(sessionLocalId: string) {
+  const now = new Date().toISOString();
+
+  return getExerciseIdsBySessionFromSets(sessionLocalId).map((row, index) => ({
+    local_id: `${sessionLocalId}:${row.exercise_id}`,
+    session_local_id: sessionLocalId,
+    exercise_id: row.exercise_id,
+    sort_order: index + 1,
+    created_at: now,
+    updated_at: now,
+  }));
+}
+
+function insertLocalWorkoutSessionExercise(
+  sessionLocalId: string,
+  exerciseId: string,
+  sortOrder: number
+) {
+  const localId = Crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  db.runSync(
+    `
+    insert or ignore into workout_session_exercises_local (
+      local_id,
+      session_local_id,
+      exercise_id,
+      sort_order,
+      created_at,
+      updated_at
+    )
+    values (?, ?, ?, ?, ?, ?)
+    `,
+    [localId, sessionLocalId, exerciseId, sortOrder, now, now]
+  );
+
+  return localId;
+}
+
+export function getLocalWorkoutSessionExercises(sessionLocalId: string) {
+  const savedExercises = getExercisesBySession(sessionLocalId);
+
+  if (savedExercises.length > 0) {
+    return savedExercises;
+  }
+
+  return buildFallbackWorkoutSessionExercises(sessionLocalId);
+}
+
+export function addLocalWorkoutSessionExercise(
+  sessionLocalId: string,
+  exerciseId: string,
+  sortOrder?: number
+) {
+  let savedExercises = getExercisesBySession(sessionLocalId);
+
+  if (savedExercises.length === 0) {
+    for (const fallbackExercise of buildFallbackWorkoutSessionExercises(sessionLocalId)) {
+      insertLocalWorkoutSessionExercise(
+        sessionLocalId,
+        fallbackExercise.exercise_id,
+        fallbackExercise.sort_order
+      );
+    }
+
+    savedExercises = getExercisesBySession(sessionLocalId);
+  }
+
+  const existing = savedExercises.find((exercise) => exercise.exercise_id === exerciseId);
+
+  if (existing) {
+    return existing.local_id;
+  }
+
+  const nextSortOrder =
+    sortOrder ??
+    savedExercises.reduce(
+      (maxOrder, exercise) => Math.max(maxOrder, exercise.sort_order),
+      0
+    ) + 1;
+
+  return insertLocalWorkoutSessionExercise(
+    sessionLocalId,
+    exerciseId,
+    nextSortOrder
+  );
+}
+
+export function repeatLastCompletedWorkout(userId: string) {
+  const previousWorkout = getMostRecentCompletedWorkoutSession(userId);
+
+  if (!previousWorkout) {
+    return null;
+  }
+
+  const nextSessionLocalId = createLocalWorkoutSession(
+    userId,
+    `Repeat: ${previousWorkout.name}`
+  );
+  const exercisesToRepeat = getLocalWorkoutSessionExercises(previousWorkout.local_id);
+
+  for (const exercise of exercisesToRepeat) {
+    addLocalWorkoutSessionExercise(
+      nextSessionLocalId,
+      exercise.exercise_id,
+      exercise.sort_order
+    );
+  }
+
+  return {
+    sessionLocalId: nextSessionLocalId,
+    sourceSessionLocalId: previousWorkout.local_id,
+    exerciseCount: exercisesToRepeat.length,
+  };
 }
 
 export function getLocalWorkoutSets(sessionLocalId: string) {
@@ -284,6 +422,8 @@ export function addLocalWorkoutSet(input: {
   reps?: number;
   weight?: number;
 }) {
+  addLocalWorkoutSessionExercise(input.sessionLocalId, input.exerciseId);
+
   const localId = Crypto.randomUUID();
   const now = new Date().toISOString();
 
