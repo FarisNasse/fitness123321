@@ -37,6 +37,7 @@ test('local database schema stores the workout session and set fields used by th
     'reps integer',
     'weight real',
     'completed integer default 0',
+    'deleted_at text',
   ]) {
     assert.ok(localDb.includes(column), `workout set schema missing ${column}`);
   }
@@ -51,12 +52,15 @@ test('web local-db adapter supports every workout query pattern used by services
   assert.match(localDb, /update workout_sessions_local.*set sync_status = 'failed'/);
   assert.match(localDb, /update workout_sessions_local.*set server_id = \?/);
   assert.match(localDb, /update workout_sessions_local.*set server_id = null/);
+  assert.match(localDb, /update workout_sessions_local.*set deleted_at = \?/);
   assert.match(localDb, /update workout_sets_local.*set sync_status = 'failed'/);
+  assert.match(localDb, /update workout_sets_local.*set deleted_at = \?/);
   assert.match(localDb, /update workout_sets_local.*set server_id = \?/);
   assert.match(localDb, /from workout_sessions_local.*where local_id = \?/);
   assert.match(localDb, /from workout_sessions_local.*sync_status/);
   assert.match(localDb, /from workout_sessions_local.*order by started_at desc/);
   assert.match(localDb, /from workout_sets_local.*session_local_id = \?/);
+  assert.match(localDb, /getSetsBySessionForSync/);
 });
 
 test('workout owner logic keeps local mode usable without Supabase auth', () => {
@@ -106,7 +110,8 @@ test('set logging writes completed pending sets for the selected exercise', () =
 test('remote sync avoids known RLS traps and handles stale remote rows', () => {
   const service = readProjectFile('src/features/workouts/workout-service.ts');
 
-  assert.match(service, /where sync_status in \('pending', 'failed'\)\s*and user_id != \?/s);
+  assert.match(service, /sync_status in \('pending', 'failed'\)[\s\S]*or local_id in/);
+  assert.match(service, /and user_id != \?/);
   assert.match(service, /\[LOCAL_DEV_USER_ID\]/);
   assert.match(service, /\.update\([\s\S]*?\)\s*\.eq\('id', serverSessionId\)\s*\.select\('id'\)\s*\.maybeSingle\(\)/);
   assert.match(service, /if \(!data\?\.id\) \{[\s\S]*clearWorkoutSessionServerId\(session\.local_id\);[\s\S]*serverSessionId = null;[\s\S]*\}/);
@@ -116,10 +121,13 @@ test('remote sync avoids known RLS traps and handles stale remote rows', () => {
 test('remote sync marks sessions and sets according to Supabase outcomes', () => {
   const service = readProjectFile('src/features/workouts/workout-service.ts');
 
-  assert.match(service, /if \(setsToSync\.length === 0\) \{\s*markWorkoutSessionSynced\(session\.local_id, serverSessionId\);\s*continue;\s*\}/s);
+  assert.match(service, /const deletedSets = setsToSync\.filter\(\(set\) => Boolean\(set\.deleted_at\)\)/);
+  assert.match(service, /const activeSets = setsToSync\.filter\(\(set\) => !set\.deleted_at\)/);
+  assert.match(service, /for \(const set of deletedSets\) \{[\s\S]*syncDeletedWorkoutSet\(supabase, set\)/);
   assert.match(service, /\.from\('workout_sets'\)\s*\.upsert\(setRows, \{ onConflict: 'id' \}\)\s*\.select\('id'\)/);
   assert.match(service, /if \(setsError \|\| !Array\.isArray\(syncedSets\)\) \{/);
-  assert.match(service, /markWorkoutSetSynced\(set\.local_id, set\.local_id\)/);
+  assert.match(service, /const expectedRemoteId = set\.server_id \?\? set\.local_id/);
+  assert.match(service, /markWorkoutSetSynced\(set\.local_id, expectedRemoteId\)/);
   assert.match(service, /markWorkoutSetFailed\(set\.local_id\)/);
   assert.match(service, /markWorkoutSessionFailed\(session\.local_id\)/);
   assert.match(service, /markWorkoutSessionSynced\(session\.local_id, serverSessionId\)/);

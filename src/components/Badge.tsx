@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 
-type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral' | 'primary';
+export type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral' | 'primary';
 
 type BadgeProps = {
   label: string;

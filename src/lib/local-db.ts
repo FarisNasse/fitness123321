@@ -16,6 +16,7 @@ export type LocalWorkoutSession = {
   completed_at: string | null;
   duration_seconds: number | null;
   notes: string | null;
+  deleted_at: string | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
 };
@@ -29,6 +30,7 @@ export type LocalWorkoutSet = {
   reps: number | null;
   weight: number | null;
   completed: number;
+  deleted_at: string | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
 };
@@ -170,6 +172,7 @@ function createWebDbAdapter(): DbAdapter {
           completed_at: null,
           duration_seconds: null,
           notes: null,
+          deleted_at: null,
           sync_status: 'pending',
           updated_at: updatedAt,
         });
@@ -198,6 +201,7 @@ function createWebDbAdapter(): DbAdapter {
           reps,
           weight,
           completed: 1,
+          deleted_at: null,
           sync_status: 'pending',
           updated_at: updatedAt,
         });
@@ -320,6 +324,44 @@ function createWebDbAdapter(): DbAdapter {
 
       if (
         normalized.startsWith('update workout_sessions_local') &&
+        normalized.includes("set sync_status = 'pending'") &&
+        normalized.includes('updated_at = ?')
+      ) {
+        const [updatedAt, sessionLocalId] = params;
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId
+        );
+
+        if (session) {
+          session.sync_status = 'pending';
+          session.updated_at = updatedAt;
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sessions_local') &&
+        normalized.includes('set deleted_at = ?')
+      ) {
+        const [deletedAt, updatedAt, sessionLocalId] = params;
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId
+        );
+
+        if (session) {
+          session.deleted_at = deletedAt;
+          session.sync_status = 'pending';
+          session.updated_at = updatedAt;
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sessions_local') &&
         normalized.includes('set server_id = ?')
       ) {
         const [serverId, sessionLocalId] = params;
@@ -375,6 +417,44 @@ function createWebDbAdapter(): DbAdapter {
 
       if (
         normalized.startsWith('update workout_sets_local') &&
+        normalized.includes('where session_local_id = ?') &&
+        normalized.includes('deleted_at is null')
+      ) {
+        const [deletedAt, updatedAt, sessionLocalId] = params;
+
+        for (const set of store.workout_sets_local) {
+          if (set.session_local_id === sessionLocalId && !set.deleted_at) {
+            set.deleted_at = deletedAt;
+            set.sync_status = 'pending';
+            set.updated_at = updatedAt;
+          }
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sets_local') &&
+        normalized.includes('set deleted_at = ?')
+      ) {
+        const [deletedAt, updatedAt, setLocalId] = params;
+        const set = store.workout_sets_local.find(
+          (item) => item.local_id === setLocalId
+        );
+
+        if (set) {
+          set.deleted_at = deletedAt;
+          set.sync_status = 'pending';
+          set.updated_at = updatedAt;
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update workout_sets_local') &&
         normalized.includes('set server_id = ?')
       ) {
         const [serverId, setLocalId] = params;
@@ -422,6 +502,7 @@ function createWebDbAdapter(): DbAdapter {
 
         if (set) {
           set.set_number = setNumber;
+          set.sync_status = 'pending';
           set.updated_at = updatedAt;
         }
 
@@ -575,8 +656,12 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const [sessionLocalId] = params;
 
+        const excludeDeleted = normalized.includes('deleted_at is null');
+
         return store.workout_sessions_local.filter(
-          (session) => session.local_id === sessionLocalId
+          (session) =>
+            session.local_id === sessionLocalId &&
+            (!excludeDeleted || !session.deleted_at)
         ) as T[];
       }
 
@@ -592,10 +677,15 @@ function createWebDbAdapter(): DbAdapter {
           const hasSyncStatus = ['pending', 'failed'].includes(
             String(session.sync_status)
           );
+          const hasPendingChildSet = store.workout_sets_local.some(
+            (set) =>
+              set.session_local_id === session.local_id &&
+              ['pending', 'failed'].includes(String(set.sync_status))
+          );
           const hasSyncableOwner =
             !excludedUserId || String(session.user_id) !== excludedUserId;
 
-          return hasSyncStatus && hasSyncableOwner;
+          return (hasSyncStatus || hasPendingChildSet) && hasSyncableOwner;
         }) as T[];
       }
 
@@ -605,9 +695,11 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const [limit = 5] = params;
         const completedOnly = normalized.includes('completed_at is not null');
+        const excludeDeleted = normalized.includes('deleted_at is null');
 
         return [...store.workout_sessions_local]
           .filter((session) => !completedOnly || Boolean(session.completed_at))
+          .filter((session) => !excludeDeleted || !session.deleted_at)
           .sort(
             (a, b) =>
               Date.parse(String(b.started_at)) - Date.parse(String(a.started_at))
@@ -639,6 +731,7 @@ function createWebDbAdapter(): DbAdapter {
             (set) =>
               set.session_local_id === sessionLocalId &&
               set.exercise_id === exerciseId &&
+              !set.deleted_at &&
               Number(set.set_number ?? 0) > Number(setNumber ?? 0)
           )
           .sort(
@@ -652,8 +745,14 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const [sessionLocalId] = params;
 
+        const excludeDeleted = normalized.includes('deleted_at is null');
+
         return store.workout_sets_local
-          .filter((set) => set.session_local_id === sessionLocalId)
+          .filter(
+            (set) =>
+              set.session_local_id === sessionLocalId &&
+              (!excludeDeleted || !set.deleted_at)
+          )
           .sort(
             (a, b) =>
               Number(a.set_number ?? 0) - Number(b.set_number ?? 0)
@@ -778,10 +877,33 @@ export function getSetsBySession(sessionLocalId: string) {
     select *
     from workout_sets_local
     where session_local_id = ?
+      and deleted_at is null
     order by set_number asc
     `,
     [sessionLocalId]
   );
+}
+
+export function getSetsBySessionForSync(sessionLocalId: string) {
+  return db.getAllSync<LocalWorkoutSet>(
+    `
+    select *
+    from workout_sets_local
+    where session_local_id = ?
+      and sync_status in ('pending', 'failed')
+    order by set_number asc
+    `,
+    [sessionLocalId]
+  );
+}
+
+function addMissingLocalColumn(tableName: string, columnSql: string) {
+  try {
+    db.execSync(`alter table ${tableName} add column ${columnSql};`);
+  } catch {
+    // SQLite does not support ADD COLUMN IF NOT EXISTS on all targets.
+    // Existing installs can safely ignore duplicate-column errors.
+  }
 }
 
 export function initializeLocalDb() {
@@ -795,6 +917,7 @@ export function initializeLocalDb() {
       completed_at text,
       duration_seconds integer,
       notes text,
+      deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
     );
@@ -808,6 +931,7 @@ export function initializeLocalDb() {
       reps integer,
       weight real,
       completed integer default 0,
+      deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
     );
@@ -873,4 +997,7 @@ export function initializeLocalDb() {
     create index if not exists idx_water_logs_logged
     on water_logs_local(logged_at);
   `);
+
+  addMissingLocalColumn('workout_sessions_local', 'deleted_at text');
+  addMissingLocalColumn('workout_sets_local', 'deleted_at text');
 }
