@@ -133,11 +133,22 @@ test('delete confirmation uses a destructive action that removes the set and ref
   assert.match(live, /text: 'Delete',[\s\S]*style: 'destructive',[\s\S]*onPress: \(\) => \{[\s\S]*deleteLocalWorkoutSet\(setLocalId\);[\s\S]*refreshSets\(\);[\s\S]*\}/);
 });
 
-test('new sets continue numbering within only the currently selected exercise', () => {
+test('new sets continue numbering within the exercise being logged', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
   assert.match(live, /const selectedExerciseSets = useMemo\(\(\) => \{[\s\S]*return exerciseSetMap\.get\(selectedExercise\.id\) \?\? \[\];[\s\S]*\}, \[exerciseSetMap, selectedExercise\]\);/);
-  assert.match(live, /setNumber: selectedExerciseSets\.length \+ 1/);
+  assert.match(live, /function logSetForExercise\(exercise: Exercise\) \{/);
+  assert.match(live, /const currentExerciseSets = exerciseSetMap\.get\(exercise\.id\) \?\? \[\]/);
+  assert.match(live, /setNumber: currentExerciseSets\.length \+ 1/);
+  assert.match(live, /function addSet\(\) \{[\s\S]*logSetForExercise\(selectedExercise\);[\s\S]*\}/);
+});
+
+test('each repeated exercise card has a direct set logging button', () => {
+  const live = readProjectFile('app/workout/session/[id].tsx');
+
+  assertIncludes(live, "title={exerciseSets.length === 0 ? 'Log first set' : 'Add another set'}");
+  assert.match(live, /onPress=\{\(\) => logSetForExercise\(exercise\)\}/);
+  assert.match(live, /variant=\{isActiveExercise \? 'primary' : 'outline'\}/);
 });
 
 test('workout service exposes explicit update and delete helpers for logged sets', () => {

@@ -200,6 +200,10 @@ export async function getNutritionOwnerUserId() {
 }
 
 export async function getDailyTargets(): Promise<DailyTargetsState> {
+  if (!USE_REMOTE_NUTRITION_SYNC) {
+    return { targets: DEFAULT_DAILY_TARGETS, hasRemoteTargets: false };
+  }
+
   const { supabase } = await import('@/src/lib/supabase');
   const { data: authData, error: authError } = await supabase.auth.getUser();
 

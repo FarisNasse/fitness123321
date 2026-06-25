@@ -82,6 +82,13 @@ test('runtime flags keep nutrition local by default and enable Supabase explicit
   assert.match(flags, /USE_SUPABASE_FOODS =\s*USE_REMOTE_NUTRITION_SYNC \|\| process\.env\.EXPO_PUBLIC_FOOD_SOURCE === 'supabase'/);
 });
 
+
+test('daily targets stay local by default instead of warning about missing Supabase auth', () => {
+  const service = readProjectFile('src/features/nutrition/nutrition-service.ts');
+
+  assert.match(service, /export async function getDailyTargets\(\): Promise<DailyTargetsState> \{\s*if \(!USE_REMOTE_NUTRITION_SYNC\) \{\s*return \{ targets: DEFAULT_DAILY_TARGETS, hasRemoteTargets: false \};\s*\}/s);
+});
+
 test('dashboard reads live nutrition totals, loads daily targets, prompts for defaults, and marks shipped flows', () => {
   const dashboard = readProjectFile('app/(tabs)/dashboard.tsx');
 

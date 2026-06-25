@@ -16,10 +16,12 @@ import {
 } from '@/src/features/workouts/exercise-service';
 import { estimatedOneRepMax } from '@/src/features/workouts/pr-service';
 import {
+  addLocalWorkoutSessionExercise,
   addLocalWorkoutSet,
   completeLocalWorkoutSession,
   deleteLocalWorkoutSet,
   getLocalWorkoutSession,
+  getLocalWorkoutSessionExercises,
   getLocalWorkoutSets,
   syncPendingWorkoutSessions,
   updateLocalWorkoutSet,
@@ -110,21 +112,27 @@ export default function LiveWorkoutScreen() {
     setSets(nextSets);
     setExerciseSetMap(nextMap);
 
+    const savedExerciseRows = getLocalWorkoutSessionExercises(sessionId);
+    const orderedSessionExercises = savedExerciseRows
+      .map((row) => resolveExercise(row.exercise_id))
+      .filter((exercise): exercise is Exercise => Boolean(exercise));
+    const savedExerciseIds = new Set(
+      orderedSessionExercises.map((exercise) => exercise.id)
+    );
     const exercisesFromLoggedSets = Array.from(nextMap.keys())
       .map((exerciseId) => resolveExercise(exerciseId))
-      .filter((exercise): exercise is Exercise => Boolean(exercise));
+      .filter((exercise): exercise is Exercise => Boolean(exercise))
+      .filter((exercise) => !savedExerciseIds.has(exercise.id));
+    const nextExercises = [...orderedSessionExercises, ...exercisesFromLoggedSets];
 
-    if (exercisesFromLoggedSets.length > 0) {
+    if (nextExercises.length > 0) {
       setSelectedExercises((current) => {
-        const existingIds = new Set(current.map((exercise) => exercise.id));
-        const missingExercises = exercisesFromLoggedSets.filter(
-          (exercise) => !existingIds.has(exercise.id)
-        );
+        const nextIds = new Set(nextExercises.map((exercise) => exercise.id));
+        const currentOnly = current.filter((exercise) => !nextIds.has(exercise.id));
 
-        return missingExercises.length > 0
-          ? [...current, ...missingExercises]
-          : current;
+        return [...nextExercises, ...currentOnly];
       });
+      setSelectedExercise((current) => current ?? nextExercises[0]);
     }
   }
 
@@ -174,6 +182,10 @@ export default function LiveWorkoutScreen() {
   }, [sets]);
 
   function chooseExercise(exercise: Exercise) {
+    if (sessionId) {
+      addLocalWorkoutSessionExercise(sessionId, exercise.id);
+    }
+
     rememberExercises([exercise]);
     setExerciseLookup((current) => ({
       ...current,
@@ -199,33 +211,50 @@ export default function LiveWorkoutScreen() {
     });
   }
 
-  function addSet() {
-    if (!sessionId || !selectedExercise) return;
-
+  function parseSetInputs() {
     const parsedReps = Number.parseInt(reps, 10);
     const parsedWeight = Number.parseFloat(weight);
 
     if (!Number.isFinite(parsedReps) || parsedReps <= 0) {
       Alert.alert('Invalid reps', 'Enter a valid rep count.');
-      return;
+      return null;
     }
 
     if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
       Alert.alert('Invalid weight', 'Enter a valid weight.');
-      return;
+      return null;
     }
+
+    return { parsedReps, parsedWeight };
+  }
+
+  function logSetForExercise(exercise: Exercise) {
+    if (!sessionId) return;
+
+    const parsed = parseSetInputs();
+
+    if (!parsed) return;
+
+    const currentExerciseSets = exerciseSetMap.get(exercise.id) ?? [];
 
     addLocalWorkoutSet({
       sessionLocalId: sessionId,
-      exerciseId: selectedExercise.id,
-      setNumber: selectedExerciseSets.length + 1,
-      reps: parsedReps,
-      weight: parsedWeight,
+      exerciseId: exercise.id,
+      setNumber: currentExerciseSets.length + 1,
+      reps: parsed.parsedReps,
+      weight: parsed.parsedWeight,
     });
 
+    setSelectedExercise(exercise);
     refreshSets();
     queueWorkoutSync('adding a set');
     setRestSeconds(REST_DURATION_SECONDS);
+  }
+
+  function addSet() {
+    if (!selectedExercise) return;
+
+    logSetForExercise(selectedExercise);
   }
 
   function openEditModal(set: LocalWorkoutSet) {
@@ -341,7 +370,7 @@ export default function LiveWorkoutScreen() {
               </Text>
               {selectedExerciseMetadata ? (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {selectedExerciseMetadata.split(' â€¢ ').map((item) => (
+                  {selectedExerciseMetadata.split(' • ').map((item) => (
                     <Badge key={item} label={item} variant="neutral" />
                   ))}
                 </View>
@@ -514,6 +543,12 @@ export default function LiveWorkoutScreen() {
                       ))}
                     </View>
                   )}
+
+                  <Button
+                    title={exerciseSets.length === 0 ? 'Log first set' : 'Add another set'}
+                    onPress={() => logSetForExercise(exercise)}
+                    variant={isActiveExercise ? 'primary' : 'outline'}
+                  />
                 </View>
               </Card>
             );

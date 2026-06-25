@@ -17,6 +17,7 @@ import {
   getLocalWorkoutSets,
   getWorkoutOwnerUserId,
   getWorkoutSyncStatusLabel,
+  repeatLastCompletedWorkout,
   getWorkoutSyncUiStatus,
   syncPendingWorkoutSessions,
   type LocalWorkoutSessionRow,
@@ -91,6 +92,29 @@ export default function WorkoutsScreen() {
     }
   }
 
+  async function repeatLastWorkout() {
+    try {
+      const userId = await getWorkoutOwnerUserId();
+      const repeatedWorkout = repeatLastCompletedWorkout(userId);
+
+      if (!repeatedWorkout) {
+        Alert.alert(
+          'No completed workout yet',
+          'Finish a workout once, then Repeat Last Workout can preload those exercises.'
+        );
+        return;
+      }
+
+      refreshRecentSessions();
+      router.push(`/workout/session/${repeatedWorkout.sessionLocalId}`);
+    } catch (error) {
+      Alert.alert(
+        'Could not repeat workout',
+        error instanceof Error ? error.message : 'Try signing in again.'
+      );
+    }
+  }
+
   return (
     <Screen>
       <View className="gap-5">
@@ -125,7 +149,22 @@ export default function WorkoutsScreen() {
               Press start, add exercises, log sets, finish, and see local data persist.
             </Text>
           </View>
-          <Button title="Start workout" onPress={startWorkout} size="lg" />
+          <View className="gap-3">
+            <Button title="Start workout" onPress={startWorkout} size="lg" />
+            {recentSessions.length > 0 ? (
+              <Button
+                title="Repeat Last Workout"
+                onPress={repeatLastWorkout}
+                size="lg"
+                variant="outline"
+              />
+            ) : (
+              <EmptyState
+                title="Nothing to repeat yet"
+                message="Finish a workout once, then Repeat Last Workout will open a new session with those exercises already loaded."
+              />
+            )}
+          </View>
         </Card>
 
         <Card className="gap-4">
