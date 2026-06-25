@@ -211,33 +211,50 @@ export default function LiveWorkoutScreen() {
     });
   }
 
-  function addSet() {
-    if (!sessionId || !selectedExercise) return;
-
+  function parseSetInputs() {
     const parsedReps = Number.parseInt(reps, 10);
     const parsedWeight = Number.parseFloat(weight);
 
     if (!Number.isFinite(parsedReps) || parsedReps <= 0) {
       Alert.alert('Invalid reps', 'Enter a valid rep count.');
-      return;
+      return null;
     }
 
     if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
       Alert.alert('Invalid weight', 'Enter a valid weight.');
-      return;
+      return null;
     }
+
+    return { parsedReps, parsedWeight };
+  }
+
+  function logSetForExercise(exercise: Exercise) {
+    if (!sessionId) return;
+
+    const parsed = parseSetInputs();
+
+    if (!parsed) return;
+
+    const currentExerciseSets = exerciseSetMap.get(exercise.id) ?? [];
 
     addLocalWorkoutSet({
       sessionLocalId: sessionId,
-      exerciseId: selectedExercise.id,
-      setNumber: selectedExerciseSets.length + 1,
-      reps: parsedReps,
-      weight: parsedWeight,
+      exerciseId: exercise.id,
+      setNumber: currentExerciseSets.length + 1,
+      reps: parsed.parsedReps,
+      weight: parsed.parsedWeight,
     });
 
+    setSelectedExercise(exercise);
     refreshSets();
     queueWorkoutSync('adding a set');
     setRestSeconds(REST_DURATION_SECONDS);
+  }
+
+  function addSet() {
+    if (!selectedExercise) return;
+
+    logSetForExercise(selectedExercise);
   }
 
   function openEditModal(set: LocalWorkoutSet) {
@@ -353,7 +370,7 @@ export default function LiveWorkoutScreen() {
               </Text>
               {selectedExerciseMetadata ? (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {selectedExerciseMetadata.split(' â€¢ ').map((item) => (
+                  {selectedExerciseMetadata.split(' • ').map((item) => (
                     <Badge key={item} label={item} variant="neutral" />
                   ))}
                 </View>
@@ -526,6 +543,12 @@ export default function LiveWorkoutScreen() {
                       ))}
                     </View>
                   )}
+
+                  <Button
+                    title={exerciseSets.length === 0 ? 'Log first set' : 'Add another set'}
+                    onPress={() => logSetForExercise(exercise)}
+                    variant={isActiveExercise ? 'primary' : 'outline'}
+                  />
                 </View>
               </Card>
             );

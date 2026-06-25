@@ -82,8 +82,7 @@ export function MacroRing({ calories, protein, water }: MacroRingProps) {
                 strokeDasharray={`${circumference} ${circumference}`}
                 strokeDashoffset={circumference * (1 - progress)}
                 strokeLinecap="round"
-                rotation="-90"
-                origin={`${center}, ${center}`}
+                transform={`rotate(-90 ${center} ${center})`}
               />
             );
           })}

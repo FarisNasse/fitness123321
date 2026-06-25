@@ -57,6 +57,13 @@ test('routing and source files required by the app exist', () => {
   }
 });
 
+test('macro ring uses React-compatible SVG transform props on web', () => {
+  const macroRing = readProjectFile('src/components/MacroRing.tsx');
+
+  assert.doesNotMatch(macroRing, /transform-origin|origin=\{`\$\{center\}, \$\{center\}`\}/);
+  assert.match(macroRing, /transform=\{`rotate\(-90 \$\{center\} \$\{center\}\)`\}/);
+});
+
 test('root layout initializes local persistence and syncs workout queue on app activation', () => {
   const layout = readProjectFile('app/_layout.tsx');
 
@@ -198,9 +205,10 @@ test('live workout screen no longer depends on a placeholder exercise id', () =>
   assert.doesNotMatch(live, /placeholderExerciseId|placeholder-exercise/i);
   assert.doesNotMatch(live, /exerciseId:\s*['"`][^'"`]+['"`]/);
   assert.match(live, /const \[selectedExercise, setSelectedExercise\] = useState<Exercise \| null>\(null\)/);
-  assert.match(live, /function addSet\(\) \{\s*if \(!sessionId \|\| !selectedExercise\) return;/s);
+  assert.match(live, /function logSetForExercise\(exercise: Exercise\) \{\s*if \(!sessionId\) return;/s);
+  assert.match(live, /function addSet\(\) \{\s*if \(!selectedExercise\) return;\s*logSetForExercise\(selectedExercise\);\s*\}/s);
   assert.match(live, /<Button title="Add set" onPress=\{addSet\} disabled=\{!selectedExercise\} \/>/);
-  assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
+  assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: exercise\.id,/s);
 });
 
 test('live workout exercise picker modal wires ExerciseLibrary selection into session state', () => {
@@ -237,8 +245,10 @@ test('live workout screen supports exercise picking, validation, set logging, PR
   assert.match(live, /rememberExercises\(\[exercise\]\)/);
   assert.match(live, /Alert\.alert\('Invalid reps', 'Enter a valid rep count\.'\)/);
   assert.match(live, /Alert\.alert\('Invalid weight', 'Enter a valid weight\.'\)/);
-  assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
-  assert.match(live, /setNumber: selectedExerciseSets\.length \+ 1/);
+  assert.match(live, /function logSetForExercise\(exercise: Exercise\)/);
+  assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: exercise\.id,/s);
+  assert.match(live, /setNumber: currentExerciseSets\.length \+ 1/);
+  assert.match(live, /title=\{exerciseSets\.length === 0 \? 'Log first set' : 'Add another set'\}/);
   assert.match(live, /estimatedOneRepMax\(Number\(set\.weight\), Number\(set\.reps\)\)/);
   assert.match(live, /completeLocalWorkoutSession\(sessionId\)/);
   assert.match(live, /syncPendingWorkoutSessions\(\)/);
