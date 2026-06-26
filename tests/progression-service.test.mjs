@@ -30,29 +30,34 @@ async function loadProgressionService() {
     const localTsc = resolve('node_modules', 'typescript', 'bin', 'tsc');
 
     if (existsSync(localTsc)) {
-      execFileSync(
-        process.execPath,
-        [
-          localTsc,
-          'src/features/workouts/progression-service.ts',
-          '--target',
-          'ES2022',
-          '--module',
-          'ES2022',
-          '--moduleResolution',
-          'node',
-          '--skipLibCheck',
-          '--outDir',
-          tempDir,
-        ],
-        { cwd: resolve('.'), stdio: 'pipe' }
-      );
+      try {
+        execFileSync(
+          process.execPath,
+          [
+            localTsc,
+            'src/features/workouts/progression-service.ts',
+            '--target',
+            'ES2022',
+            '--module',
+            'ES2022',
+            '--moduleResolution',
+            'node',
+            '--skipLibCheck',
+            '--outDir',
+            tempDir,
+          ],
+          { cwd: resolve('.'), stdio: 'pipe' }
+        );
 
-      const compiledJs = join(tempDir, 'progression-service.js');
-      const compiledMjs = join(tempDir, 'progression-service.mjs');
-      copyFileSync(compiledJs, compiledMjs);
+        const compiledJs = join(tempDir, 'progression-service.js');
+        const compiledMjs = join(tempDir, 'progression-service.mjs');
+        copyFileSync(compiledJs, compiledMjs);
 
-      return await import(pathToFileURL(resolve(compiledMjs)).href);
+        return await import(pathToFileURL(resolve(compiledMjs)).href);
+      } catch {
+        // Some TypeScript versions reject single-file compilation when a tsconfig exists.
+        // Fall through to the dependency-free loader so these behavior tests remain stable.
+      }
     }
 
     const serviceSource = readFileSync(
