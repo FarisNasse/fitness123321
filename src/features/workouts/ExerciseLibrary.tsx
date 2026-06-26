@@ -237,8 +237,8 @@ export function ExerciseLibrary({
           title={hasActiveFilters ? 'No exercises match these filters' : 'Exercise library is empty'}
           message={
             hasActiveFilters
-              ? 'Clear the search or filters to get back to the seeded exercise list.'
-              : 'No seeded exercises were returned. Retry the local library, then run npm run check:exercises if this keeps happening.'
+              ? 'Clear the search or filters to get back to the full exercise list.'
+              : 'No exercises are available right now. Try again in a moment.'
           }
           action={
             hasActiveFilters ? (
@@ -289,8 +289,7 @@ export function ExerciseLibrary({
           <View className="flex-1" style={styles.libraryHeaderText}>
             <Text className="text-2xl font-black text-base-content" style={styles.libraryTitle}>Exercise library</Text>
             <Text className="mt-1.5 font-body leading-5 text-base-muted" style={styles.librarySubtitle}>
-              Browse seeded exercises, filter instantly, and open details before
-              adding one to a workout.
+              Browse exercises, search quickly, and open details before adding one to a workout.
             </Text>
           </View>
           <ExerciseBadge label={`${exercises.length} moves`} tone="slate" />
@@ -317,7 +316,7 @@ export function ExerciseLibrary({
       ) : error ? (
         <LibraryEmptyState
           title="Could not load exercises"
-          message={`The local exercise seed file could not be read. Run npm run check:exercises to verify the seed data.${error?.message ? ` Detail: ${error.message}` : ''}`}
+          message={`The exercise list could not be loaded. Try again in a moment.${error?.message ? ` Detail: ${error.message}` : ''}`}
           action={<LibraryButton title="Try again" onPress={() => void refetch()} />}
         />
       ) : (
