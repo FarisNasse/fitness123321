@@ -75,16 +75,17 @@ test('workout service records exercise selections when picking or logging moveme
   assert.match(service, /addLocalWorkoutSessionExercise\(input\.sessionLocalId, input\.exerciseId\);/);
 });
 
-test('workouts tab exposes Repeat Last Workout and a useful empty state', () => {
+test('workouts tab exposes Repeat Last Workout only when history can be repeated', () => {
   const workouts = readProjectFile('app/(tabs)/workouts.tsx');
 
   assert.match(workouts, /repeatLastCompletedWorkout/);
   assert.match(workouts, /async function repeatLastWorkout\(\)/);
   assert.match(workouts, /const repeatedWorkout = repeatLastCompletedWorkout\(userId\)/);
+  assert.match(workouts, /if \(!repeatedWorkout\) \{/);
   assert.match(workouts, /router\.push\(`\/workout\/session\/\$\{repeatedWorkout\.sessionLocalId\}`\)/);
   assertIncludes(workouts, 'title="Repeat Last Workout"');
-  assertIncludes(workouts, 'Nothing to repeat yet');
-  assertIncludes(workouts, 'Finish a workout once, then Repeat Last Workout will open a new session with those exercises already loaded.');
+  assert.match(workouts, /\{recentSessions\.length > 0 \? \([\s\S]*title="Repeat Last Workout"[\s\S]*\) : null\}/);
+  assert.doesNotMatch(workouts, /Nothing to repeat yet/);
 });
 
 test('live workout screen preloads saved exercises before any new sets are logged', () => {

@@ -205,17 +205,29 @@ test('onboarding persists goal and level for the authenticated profile', () => {
   assert.match(onboarding, /router\.replace\('\/dashboard'\)/);
 });
 
-test('workouts tab is wired to the local-first workout flow', () => {
+test('workouts tab is wired as a simplified workout hub', () => {
   const workouts = readProjectFile('app/(tabs)/workouts.tsx');
 
   assert.match(workouts, /getWorkoutOwnerUserId\(\)/);
   assert.match(workouts, /createLocalWorkoutSession\(userId, 'Quick workout'\)/);
   assert.match(workouts, /router\.push\(`\/workout\/session\/\$\{sessionId\}`\)/);
   assert.match(workouts, /getCompletedWorkoutSessions\(4\)/);
-  assert.match(workouts, /router\.push\('\/workout\/exercises'\)/);
+  assert.match(workouts, /Start a workout, log your sets, and review what you completed\./);
+  assert.match(workouts, /Quick actions/);
+  assert.doesNotMatch(workouts, /Quick start/);
+  assert.match(workouts, /MiniStat label="Recent sessions"/);
+  assert.match(workouts, /MiniStat label="Sets logged"/);
+  assert.match(workouts, /title="Start workout"[\s\S]*title="Browse exercises"/);
+  assert.match(workouts, /function browseExercises\(\) \{[\s\S]*router\.push\('\/workout\/exercises'\);[\s\S]*\}/);
+  assert.match(workouts, /title="Browse exercises"[\s\S]*onPress=\{browseExercises\}[\s\S]*variant="outline"/);
+  for (const phrase of ['Supabase setup', 'Cloud sync on', 'Local mode', 'remote database', 'local data persist', 'starting the demo']) {
+    assert.doesNotMatch(workouts, new RegExp(phrase));
+  }
   assert.doesNotMatch(workouts, /<ExerciseLibrary scrollMode="page" \/>/);
+  assert.doesNotMatch(workouts, /import \{ ExerciseLibrary \}/);
   assert.match(workouts, /router\.push\(`\/workout\/history\/\$\{session\.local_id\}`\)/);
-  assert.match(workouts, /USE_REMOTE_WORKOUT_SYNC \? 'Cloud sync on' : 'Local mode'/);
+  assert.match(workouts, /syncStatusLabel=\{getWorkoutSyncStatusLabel\(syncUiStatus\)\}/);
+  assert.match(workouts, /onRetrySync=\{/);
 });
 
 test('dedicated workout exercise browser reuses the shared ExerciseLibrary as a full page', () => {
