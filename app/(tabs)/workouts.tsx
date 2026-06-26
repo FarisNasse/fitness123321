@@ -1,8 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, ActivityIndicator, Pressable, Text, View } from 'react-native';
 
-import { Badge } from '@/src/components/Badge';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { EmptyState } from '@/src/components/EmptyState';
@@ -59,10 +58,14 @@ export default function WorkoutsScreen() {
     }, [])
   );
 
-  const completedCount = useMemo(
-    () => recentSessions.filter((session) => Boolean(session.completed_at)).length,
-    [recentSessions]
+  const setsLoggedCount = recentSessions.reduce(
+    (total, session) => total + getLocalWorkoutSets(session.local_id).length,
+    0
   );
+
+  function browseExercises() {
+    router.push('/workout/exercises');
+  }
 
   async function retryWorkoutSync(sessionLocalId?: string) {
     if (!USE_REMOTE_WORKOUT_SYNC) return;
@@ -132,38 +135,31 @@ export default function WorkoutsScreen() {
     <Screen>
       <View className="gap-5">
         <View className="gap-4">
-          <View className="flex-row items-start justify-between gap-3">
-            <View className="flex-1 gap-2">
-              <Text className="text-4xl font-display text-base-content">Train</Text>
-              <Text className="text-sm font-body leading-6 text-base-muted">
-                Start a local workout, pick real exercises, log sets, and finish
-                without needing Supabase setup.
-              </Text>
-            </View>
-            <Badge
-              label={USE_REMOTE_WORKOUT_SYNC ? 'Cloud sync on' : 'Local mode'}
-              variant={USE_REMOTE_WORKOUT_SYNC ? 'info' : 'primary'}
-            />
+          <View className="gap-2">
+            <Text className="text-4xl font-display text-base-content">Train</Text>
+            <Text className="text-sm font-body leading-6 text-base-muted">
+              Start a workout, log your sets, and review what you completed.
+            </Text>
           </View>
 
           <WeekStrip />
 
           <View className="flex-row flex-wrap gap-3">
-            <MiniStat label="Sessions" value={String(recentSessions.length)} />
-            <MiniStat label="Completed" value={String(completedCount)} />
-            <MiniStat label="Sync" value={USE_REMOTE_WORKOUT_SYNC ? 'On' : 'Off'} />
+            <MiniStat label="Recent sessions" value={String(recentSessions.length)} />
+            <MiniStat label="Sets logged" value={String(setsLoggedCount)} />
           </View>
         </View>
 
         <Card variant="highlighted" className="gap-4">
-          <View className="gap-2">
-            <Text className="text-2xl font-black text-base-content">Quick start</Text>
-            <Text className="text-sm font-body leading-6 text-base-muted">
-              Press start, add exercises, log sets, finish, and see local data persist.
-            </Text>
-          </View>
+          <Text className="text-2xl font-black text-base-content">Quick actions</Text>
           <View className="gap-3">
             <Button title="Start workout" onPress={startWorkout} size="lg" />
+            <Button
+              title="Browse exercises"
+              onPress={browseExercises}
+              size="lg"
+              variant="outline"
+            />
             {recentSessions.length > 0 ? (
               <Button
                 title="Repeat Last Workout"
@@ -171,34 +167,8 @@ export default function WorkoutsScreen() {
                 size="lg"
                 variant="outline"
               />
-            ) : (
-              <EmptyState
-                title="Nothing to repeat yet"
-                message="Finish a workout once, then Repeat Last Workout will open a new session with those exercises already loaded."
-              />
-            )}
+            ) : null}
           </View>
-        </Card>
-
-        <Card className="gap-4">
-          <SectionHeader
-            title="Exercise library"
-            action={
-              <Pressable onPress={() => router.push('/workout/exercises')}>
-                <Text className="text-sm font-bold text-primary">Open</Text>
-              </Pressable>
-            }
-          />
-          <Text className="text-sm font-body leading-6 text-base-muted">
-            Browse the full seeded exercise catalog on its own screen. Live workouts
-            still use the Add exercise picker so choosing a movement immediately adds
-            it to the active session.
-          </Text>
-          <Button
-            title="Browse exercises"
-            onPress={() => router.push('/workout/exercises')}
-            variant="outline"
-          />
         </Card>
 
         <Card className="gap-4">
@@ -214,7 +184,7 @@ export default function WorkoutsScreen() {
           {recentSessionsError ? (
             <ErrorState
               title="Could not load workout history"
-              message="Your local workout data is still on this device, but the screen could not read it. Try refreshing before starting the demo."
+              message="Your workout history could not be read. Try refreshing before starting a new workout."
               detail={recentSessionsError}
               onRetry={refreshRecentSessions}
             />
@@ -223,7 +193,7 @@ export default function WorkoutsScreen() {
           ) : recentSessions.length === 0 ? (
             <EmptyState
               title="No completed workouts yet"
-              message="Start one above. Completed sessions will show here without a remote database."
+              message="Start one above. Completed sessions will show here when you finish them."
             />
           ) : (
             <View className="gap-3">
