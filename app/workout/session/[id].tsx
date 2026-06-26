@@ -32,6 +32,8 @@ import type { Exercise } from '@/src/types/models';
 type LocalWorkoutSetRow = ReturnType<typeof getLocalWorkoutSets>[number];
 
 const REST_DURATION_SECONDS = 90;
+const REP_STEP = 1;
+const WEIGHT_STEP = 5;
 
 function buildExerciseSetMap(sets: LocalWorkoutSetRow[]) {
   return sets.reduce((map, set) => {
@@ -39,6 +41,14 @@ function buildExerciseSetMap(sets: LocalWorkoutSetRow[]) {
     map.set(set.exercise_id, [...exerciseSets, set]);
     return map;
   }, new Map<string, LocalWorkoutSetRow[]>());
+}
+
+function formatWeightInput(value: number) {
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
+
+  return value.toFixed(1).replace(/\.0$/, '');
 }
 
 export default function LiveWorkoutScreen() {
@@ -173,6 +183,16 @@ export default function LiveWorkoutScreen() {
     return exerciseSetMap.get(selectedExercise.id) ?? [];
   }, [exerciseSetMap, selectedExercise]);
 
+  const currentSetDraft = useMemo(
+    () => ({
+      exerciseName: selectedExercise?.name ?? 'Choose an exercise',
+      setNumber: selectedExercise ? selectedExerciseSets.length + 1 : 1,
+      suggestedReps: reps,
+      suggestedWeight: weight,
+    }),
+    [reps, selectedExercise, selectedExerciseSets.length, weight]
+  );
+
   const bestEstimatedMax = useMemo(() => {
     const estimates = sets
       .filter((set) => Number(set.weight) > 0 && Number(set.reps) > 0)
@@ -208,6 +228,24 @@ export default function LiveWorkoutScreen() {
   function queueWorkoutSync(reason: string) {
     void syncPendingWorkoutSessions().catch((error) => {
       console.warn(`Failed to sync workout after ${reason}.`, error);
+    });
+  }
+
+  function adjustReps(delta: number) {
+    setReps((current) => {
+      const currentValue = Number.parseInt(current, 10);
+      const nextValue = Math.max(1, (Number.isFinite(currentValue) ? currentValue : 0) + delta);
+
+      return String(nextValue);
+    });
+  }
+
+  function adjustWeight(delta: number) {
+    setWeight((current) => {
+      const currentValue = Number.parseFloat(current);
+      const nextValue = Math.max(0, (Number.isFinite(currentValue) ? currentValue : 0) + delta);
+
+      return formatWeightInput(nextValue);
     });
   }
 
@@ -363,10 +401,10 @@ export default function LiveWorkoutScreen() {
           <View style={{ gap: 16 }}>
             <View style={{ gap: 6 }}>
               <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
-                LOG SET
+                CURRENT SET
               </Text>
               <Text style={{ fontSize: 24, fontWeight: '900' }}>
-                {selectedExercise?.name ?? 'Choose an exercise'}
+                {currentSetDraft.exerciseName}
               </Text>
               {selectedExerciseMetadata ? (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -380,6 +418,74 @@ export default function LiveWorkoutScreen() {
                   library.
                 </Text>
               )}
+            </View>
+
+            <View
+              style={{
+                backgroundColor: '#0f172a',
+                borderRadius: 24,
+                gap: 18,
+                padding: 18,
+              }}
+            >
+              <View
+                style={{
+                  alignItems: 'flex-start',
+                  flexDirection: 'row',
+                  gap: 12,
+                  justifyContent: 'space-between',
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '900' }}>
+                    NEXT UP
+                  </Text>
+                  <Text style={{ color: '#ffffff', fontSize: 30, fontWeight: '900' }}>
+                    Set {currentSetDraft.setNumber}
+                  </Text>
+                  <Text style={{ color: '#cbd5e1', lineHeight: 21, marginTop: 4 }}>
+                    Suggested for {currentSetDraft.exerciseName}
+                  </Text>
+                </View>
+                <Badge label="One tap" variant="success" />
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <CurrentSetValue
+                  label="Suggested reps"
+                  value={currentSetDraft.suggestedReps || '—'}
+                />
+                <CurrentSetValue
+                  label="Suggested weight"
+                  value={`${currentSetDraft.suggestedWeight || '—'} lb`}
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <QuickAdjustButton label="− rep" onPress={() => adjustReps(-REP_STEP)} />
+                <QuickAdjustButton label="+ rep" onPress={() => adjustReps(REP_STEP)} />
+                <QuickAdjustButton label="− 5 lb" onPress={() => adjustWeight(-WEIGHT_STEP)} />
+                <QuickAdjustButton label="+ 5 lb" onPress={() => adjustWeight(WEIGHT_STEP)} />
+              </View>
+
+              <Pressable
+                disabled={!selectedExercise}
+                onPress={addSet}
+                style={({ pressed }) => ({
+                  alignItems: 'center',
+                  backgroundColor: selectedExercise ? '#a3e635' : '#cbd5e1',
+                  borderRadius: 20,
+                  opacity: pressed ? 0.82 : 1,
+                  paddingVertical: 20,
+                })}
+              >
+                <Text style={{ color: '#0f172a', fontSize: 24, fontWeight: '900' }}>
+                  Done
+                </Text>
+                <Text style={{ color: '#334155', fontWeight: '800', marginTop: 4 }}>
+                  Log displayed values and start rest timer
+                </Text>
+              </Pressable>
             </View>
 
             {selectedExercise ? (
@@ -399,28 +505,33 @@ export default function LiveWorkoutScreen() {
               </View>
             ) : null}
 
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '800', marginBottom: 6 }}>Reps</Text>
-                <TextInput
-                  keyboardType="number-pad"
-                  value={reps}
-                  onChangeText={setReps}
-                  style={inputStyle}
-                />
+            <View style={{ gap: 10 }}>
+              <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
+                MANUAL FALLBACK
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '800', marginBottom: 6 }}>Reps</Text>
+                  <TextInput
+                    keyboardType="number-pad"
+                    value={reps}
+                    onChangeText={setReps}
+                    style={inputStyle}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '800', marginBottom: 6 }}>Weight</Text>
+                  <TextInput
+                    keyboardType="decimal-pad"
+                    value={weight}
+                    onChangeText={setWeight}
+                    style={inputStyle}
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '800', marginBottom: 6 }}>Weight</Text>
-                <TextInput
-                  keyboardType="decimal-pad"
-                  value={weight}
-                  onChangeText={setWeight}
-                  style={inputStyle}
-                />
-              </View>
-            </View>
 
-            <Button title="Add set" onPress={addSet} disabled={!selectedExercise} />
+              <Button title="Add set" onPress={addSet} disabled={!selectedExercise} />
+            </View>
 
             {restSeconds !== null ? (
               <View style={{ gap: 8 }}>
@@ -676,6 +787,45 @@ export default function LiveWorkoutScreen() {
         </Pressable>
       </Modal>
     </Screen>
+  );
+}
+
+function CurrentSetValue({ label, value }: { label: string; value: string }) {
+  return (
+    <View
+      style={{
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderColor: 'rgba(255, 255, 255, 0.14)',
+        borderRadius: 18,
+        borderWidth: 1,
+        flex: 1,
+        padding: 14,
+      }}
+    >
+      <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '900' }}>
+        {label}
+      </Text>
+      <Text style={{ color: '#ffffff', fontSize: 26, fontWeight: '900', marginTop: 4 }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function QuickAdjustButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        alignItems: 'center',
+        backgroundColor: pressed ? '#e2e8f0' : '#f8fafc',
+        borderRadius: 14,
+        flex: 1,
+        paddingVertical: 12,
+      })}
+    >
+      <Text style={{ color: '#0f172a', fontWeight: '900' }}>{label}</Text>
+    </Pressable>
   );
 }
 
