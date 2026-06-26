@@ -1055,14 +1055,8 @@ export default function LiveWorkoutScreen() {
         >
           <Pressable
             onPress={(event) => event.stopPropagation()}
-            style={{
-              backgroundColor: '#ffffff',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              maxHeight: '88%',
-              padding: 16,
-              paddingBottom: 30,
-            }}
+            className="rounded-t-card border border-base-300 bg-base-200 p-4 pb-8"
+            style={{ maxHeight: '88%' }}
           >
             <ExerciseLibrary
               onSelect={chooseExercise}

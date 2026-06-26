@@ -321,13 +321,31 @@ test('exercise library supports loading, searching, filtering, clearing, details
   assert.match(library, /scrollMode\?: 'page' \| 'contained'/);
   assert.match(library, /scrollMode = 'contained'/);
   assert.match(library, /keyboardShouldPersistTaps="handled"/);
-  assert.match(library, /style=\{\{ maxHeight: '100%' \}\}/);
-  assert.match(library, /return <View style=\{\{ gap: 16 \}\}>\{libraryContent\}<\/View>/);
+  assert.match(library, /className="max-h-full"/);
+  assert.match(library, /return <View className="gap-4">\{libraryContent\}<\/View>/);
   assert.match(library, /searchQuery\.trim\(\)\.toLowerCase\(\)/);
   assert.match(library, /exercise\.name,[\s\S]*exercise\.muscleGroup,[\s\S]*exercise\.equipment,[\s\S]*exercise\.movementType,[\s\S]*exercise\.difficulty,/);
   assert.match(library, /function clearFilters\(\)/);
   assert.match(library, /setSearchQuery\(''\)/);
   assert.match(library, /onSelect\?\.\(exercise\)/);
   assert.match(library, /<Modal[\s\S]*visible=\{Boolean\(selectedExercise\)\}/);
+
   assert.match(library, /Muscle diagram placeholder/);
+});
+
+test('exercise library and live picker use theme-aware tokens instead of pasted-in light cards', () => {
+  const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
+  const live = readProjectFile('app/workout/session/[id].tsx');
+  const pickerModal = live.match(/\{\/\* Exercise picker modal \*\/\}[\s\S]*?\{\/\* Inline set-edit modal \*\/\}/)?.[0] ?? '';
+
+  assert.match(library, /border-primary\/40 bg-primary\/15/);
+  assert.match(library, /border-base-300 bg-base-100 active:bg-base-300/);
+  assert.match(library, /rounded-card border border-base-300 bg-base-100 p-4 active:border-primary\/40 active:bg-base-300/);
+  assert.match(library, /rounded-input border border-base-300 bg-base-100 px-4 py-3 text-base font-body text-base-content/);
+  assert.match(library, /placeholderTextColor=\{colors\.baseMuted\}/);
+  assert.match(library, /rounded-t-card border border-base-300 bg-base-200/);
+  assert.doesNotMatch(library, /#(?:ffffff|f8fafc|f1f5f9|e2e8f0|cbd5e1|64748b|475569|334155|0f172a|0369a1|bae6fd|e0f2fe|94a3b8)/i);
+
+  assert.match(pickerModal, /className="rounded-t-card border border-base-300 bg-base-200 p-4 pb-8"/);
+  assert.doesNotMatch(pickerModal, /backgroundColor:\s*'#ffffff'/);
 });
