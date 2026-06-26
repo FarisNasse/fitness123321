@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Alert, ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { Badge } from '@/src/components/Badge';
 import { Button } from '@/src/components/Button';
@@ -27,13 +27,27 @@ import { USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
 
 export default function WorkoutsScreen() {
   const [recentSessions, setRecentSessions] = useState<LocalWorkoutSessionRow[]>([]);
+  const [recentSessionsError, setRecentSessionsError] = useState<string | null>(null);
+  const [isLoadingRecentSessions, setIsLoadingRecentSessions] = useState(true);
   const [syncingSessionIds, setSyncingSessionIds] = useState<Set<string>>(
     () => new Set()
   );
   const [isSyncingAll, setIsSyncingAll] = useState(false);
 
   function refreshRecentSessions() {
-    setRecentSessions(getCompletedWorkoutSessions(4));
+    setIsLoadingRecentSessions(true);
+    setRecentSessionsError(null);
+
+    try {
+      setRecentSessions(getCompletedWorkoutSessions(4));
+    } catch (error) {
+      setRecentSessions([]);
+      setRecentSessionsError(
+        error instanceof Error ? error.message : 'Workout history could not be read.'
+      );
+    } finally {
+      setIsLoadingRecentSessions(false);
+    }
   }
 
   useFocusEffect(
@@ -135,7 +149,7 @@ export default function WorkoutsScreen() {
 
           <WeekStrip />
 
-          <View className="flex-row gap-3">
+          <View className="flex-row flex-wrap gap-3">
             <MiniStat label="Sessions" value={String(recentSessions.length)} />
             <MiniStat label="Completed" value={String(completedCount)} />
             <MiniStat label="Sync" value={USE_REMOTE_WORKOUT_SYNC ? 'On' : 'Off'} />
@@ -181,7 +195,16 @@ export default function WorkoutsScreen() {
             }
           />
 
-          {recentSessions.length === 0 ? (
+          {recentSessionsError ? (
+            <ErrorState
+              title="Could not load workout history"
+              message="Your local workout data is still on this device, but the screen could not read it. Try refreshing before starting the demo."
+              detail={recentSessionsError}
+              onRetry={refreshRecentSessions}
+            />
+          ) : isLoadingRecentSessions ? (
+            <LoadingState message="Loading recent workouts…" />
+          ) : recentSessions.length === 0 ? (
             <EmptyState
               title="No completed workouts yet"
               message="Start one above. Completed sessions will show here without a remote database."
@@ -222,9 +245,70 @@ export default function WorkoutsScreen() {
   );
 }
 
+
+function LoadingState({ message }: { message: string }) {
+  return (
+    <View
+      style={{
+        alignItems: 'center',
+        backgroundColor: '#f8fafc',
+        borderColor: '#e2e8f0',
+        borderRadius: 16,
+        borderWidth: 1,
+        gap: 10,
+        padding: 18,
+      }}
+    >
+      <ActivityIndicator />
+      <Text style={{ color: '#64748b', fontWeight: '800' }}>{message}</Text>
+    </View>
+  );
+}
+
+function ErrorState({
+  title,
+  message,
+  detail,
+  onRetry,
+}: {
+  title: string;
+  message: string;
+  detail?: string | null;
+  onRetry: () => void;
+}) {
+  return (
+    <View
+      style={{
+        backgroundColor: '#fef2f2',
+        borderColor: '#fecaca',
+        borderRadius: 16,
+        borderWidth: 1,
+        gap: 10,
+        padding: 16,
+      }}
+    >
+      <Text style={{ color: '#991b1b', fontSize: 16, fontWeight: '900' }}>
+        {title}
+      </Text>
+      <Text style={{ color: '#64748b', lineHeight: 21 }}>{message}</Text>
+      {detail ? (
+        <Text style={{ color: '#94a3b8', fontSize: 12, lineHeight: 18 }}>
+          {detail}
+        </Text>
+      ) : null}
+      <Pressable onPress={onRetry} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
+        <Text style={{ color: '#0f172a', fontWeight: '900' }}>Try again</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <View className="flex-1 rounded-card border border-base-300 bg-base-200 p-3">
+    <View
+      className="flex-1 rounded-card border border-base-300 bg-base-200 p-3"
+      style={{ minWidth: 96 }}
+    >
       <Text className="text-xs font-bold uppercase tracking-widest text-base-muted">
         {label}
       </Text>
