@@ -51,7 +51,7 @@ test('Done is the one-tap logging action and still starts the rest timer through
 
   assert.match(live, /<Pressable\s+disabled=\{!selectedExercise\}\s+onPress=\{addSet\}/s);
   assertInOrder(live, [
-    '<Text style={{ color: \'#0f172a\', fontSize: 24, fontWeight: \'900\' }}>',
+    '<Text style={{ color: colors.primaryContent, fontSize: 24, fontWeight: \'900\' }}>',
     'Done',
     'Log displayed values and start rest timer',
   ], 'Done button should be visually prominent and clear');

@@ -1,19 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
   type GestureResponderEvent,
 } from 'react-native';
 
-import { Button } from '@/src/components/Button';
-import { EmptyState } from '@/src/components/EmptyState';
 import { fetchExercises } from '@/src/features/workouts/exercise-service';
+import { colors } from '@/src/lib/theme';
 import type { Exercise } from '@/src/types/models';
 
 type FilterKey = 'muscleGroup' | 'equipment' | 'movementType' | 'difficulty';
@@ -49,25 +49,18 @@ function uniqueValues(exercises: Exercise[], key: FilterKey) {
 }
 
 function ExerciseBadge({ label, tone = 'blue' }: { label: string; tone?: 'blue' | 'slate' }) {
-  const isBlue = tone === 'blue';
+  const toneClasses =
+    tone === 'blue'
+      ? { badge: 'border-primary/40 bg-primary/15', text: 'text-primary' }
+      : { badge: 'border-base-300 bg-base-300', text: 'text-base-muted' };
+  const toneStyles =
+    tone === 'blue'
+      ? { badge: styles.badgePrimary, text: styles.badgePrimaryText }
+      : { badge: styles.badgeNeutral, text: styles.badgeNeutralText };
+
   return (
-    <View
-      style={{
-        backgroundColor: isBlue ? '#e0f2fe' : '#f1f5f9',
-        borderColor: isBlue ? '#bae6fd' : '#e2e8f0',
-        borderRadius: 999,
-        borderWidth: 1,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-      }}
-    >
-      <Text
-        style={{
-          color: isBlue ? '#0369a1' : '#475569',
-          fontSize: 12,
-          fontWeight: '900',
-        }}
-      >
+    <View className={`rounded-pill border px-3 py-1 ${toneClasses.badge}`} style={[styles.badge, toneStyles.badge]}>
+      <Text className={`text-xs font-black ${toneClasses.text}`} style={[styles.badgeText, toneStyles.text]}>
         {label}
       </Text>
     </View>
@@ -86,26 +79,72 @@ function FilterChip({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => ({
-        backgroundColor: selected ? '#0f172a' : '#ffffff',
-        borderColor: selected ? '#0f172a' : '#cbd5e1',
-        borderWidth: 1,
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        opacity: pressed ? 0.75 : 1,
-      })}
+      className={`rounded-pill border px-3 py-2 active:opacity-75 ${
+        selected
+          ? 'border-primary bg-primary/15'
+          : 'border-base-300 bg-base-100 active:bg-base-300'
+      }`}
+      style={({ pressed }) => [
+        styles.filterChip,
+        selected ? styles.filterChipSelected : styles.filterChipIdle,
+        pressed && (selected ? styles.pressedSelected : styles.pressedIdle),
+      ]}
     >
       <Text
-        style={{
-          color: selected ? '#ffffff' : '#334155',
-          fontSize: 13,
-          fontWeight: '900',
-        }}
+        className={`text-sm font-black ${selected ? 'text-primary' : 'text-base-content'}`}
+        style={[styles.filterChipText, selected ? styles.filterChipTextSelected : styles.filterChipTextIdle]}
       >
         {label}
       </Text>
     </Pressable>
+  );
+}
+
+function LibraryButton({
+  title,
+  onPress,
+  variant = 'primary',
+}: {
+  title: string;
+  onPress: () => void;
+  variant?: 'primary' | 'outline';
+}) {
+  const isOutline = variant === 'outline';
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.libraryButton,
+        isOutline ? styles.libraryButtonOutline : styles.libraryButtonPrimary,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.libraryButtonText, isOutline ? styles.libraryButtonOutlineText : styles.libraryButtonPrimaryText]}>
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
+
+function LibraryEmptyState({
+  title,
+  message,
+  action,
+}: {
+  title: string;
+  message: string;
+  action?: ReactNode;
+}) {
+  return (
+    <View style={styles.emptyStateCard}>
+      <View style={styles.emptyStateAccent} />
+      <View style={styles.emptyStateTextGroup}>
+        <Text style={styles.emptyStateTitle}>{title}</Text>
+        <Text style={styles.emptyStateMessage}>{message}</Text>
+      </View>
+      {action}
+    </View>
   );
 }
 
@@ -192,9 +231,9 @@ export function ExerciseLibrary({
   const hasActiveFilters = hasActiveSearch || activeFilterCount > 0;
 
   const renderedExercises = (
-    <View style={{ gap: 10 }}>
+    <View className="gap-3" style={styles.exerciseList}>
       {filteredExercises.length === 0 ? (
-        <EmptyState
+        <LibraryEmptyState
           title={hasActiveFilters ? 'No exercises match these filters' : 'Exercise library is empty'}
           message={
             hasActiveFilters
@@ -203,9 +242,9 @@ export function ExerciseLibrary({
           }
           action={
             hasActiveFilters ? (
-              <Button title="Clear search and filters" onPress={clearFilters} variant="outline" />
+              <LibraryButton title="Clear search and filters" onPress={clearFilters} variant="outline" />
             ) : (
-              <Button title="Retry exercise library" onPress={() => void refetch()} variant="outline" />
+              <LibraryButton title="Retry exercise library" onPress={() => void refetch()} variant="outline" />
             )
           }
         />
@@ -214,35 +253,22 @@ export function ExerciseLibrary({
           <Pressable
             key={exercise.id}
             onPress={() => setSelectedExercise(exercise)}
-            style={({ pressed }) => ({
-              backgroundColor: pressed ? '#f1f5f9' : '#ffffff',
-              borderColor: '#e2e8f0',
-              borderRadius: 18,
-              borderWidth: 1,
-              padding: 14,
-              gap: 10,
-            })}
+            className="gap-3 rounded-card border border-base-300 bg-base-100 p-4 active:border-primary/40 active:bg-base-300 active:opacity-90"
+            style={({ pressed }) => [styles.exerciseCard, pressed && styles.exerciseCardPressed]}
           >
-            <View
-              style={{
-                alignItems: 'flex-start',
-                flexDirection: 'row',
-                gap: 10,
-                justifyContent: 'space-between',
-              }}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 17, fontWeight: '900' }}>
+            <View className="flex-row items-start justify-between gap-3" style={styles.exerciseCardHeader}>
+              <View className="flex-1" style={styles.exerciseCardTitleGroup}>
+                <Text className="text-lg font-black text-base-content" style={styles.exerciseCardTitle}>
                   {exercise.name}
                 </Text>
-                <Text style={{ color: '#64748b', marginTop: 4 }}>
+                <Text className="mt-1 text-sm font-body text-base-muted" style={styles.exerciseCardSubtitle}>
                   {exercise.muscleGroup}
                 </Text>
               </View>
               {exercise.equipment ? <ExerciseBadge label={exercise.equipment} /> : null}
             </View>
 
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <View className="flex-row flex-wrap gap-2" style={styles.badgeRow}>
               {exercise.movementType ? (
                 <ExerciseBadge label={exercise.movementType} tone="slate" />
               ) : null}
@@ -258,18 +284,11 @@ export function ExerciseLibrary({
 
   const libraryContent = (
     <>
-      <View style={{ gap: 12 }}>
-        <View
-          style={{
-            alignItems: 'flex-start',
-            flexDirection: 'row',
-            gap: 12,
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 22, fontWeight: '900' }}>Exercise library</Text>
-            <Text style={{ marginTop: 6, color: '#64748b', lineHeight: 21 }}>
+      <View className="gap-3" style={styles.headerSection}>
+        <View className="flex-row items-start justify-between gap-3" style={styles.libraryHeader}>
+          <View className="flex-1" style={styles.libraryHeaderText}>
+            <Text className="text-2xl font-black text-base-content" style={styles.libraryTitle}>Exercise library</Text>
+            <Text className="mt-1.5 font-body leading-5 text-base-muted" style={styles.librarySubtitle}>
               Browse seeded exercises, filter instantly, and open details before
               adding one to a workout.
             </Text>
@@ -280,67 +299,58 @@ export function ExerciseLibrary({
         <TextInput
           autoCapitalize="none"
           placeholder="Search exercise, muscle, or equipment"
+          placeholderTextColor={colors.baseMuted}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          style={{
-            backgroundColor: '#f8fafc',
-            borderColor: '#cbd5e1',
-            borderRadius: 16,
-            borderWidth: 1,
-            fontSize: 16,
-            padding: 14,
-          }}
+          className="rounded-input border border-base-300 bg-base-100 px-4 py-3 text-base font-body text-base-content"
+          style={styles.searchInput}
         />
       </View>
 
       {isLoading ? (
-        <View style={{ alignItems: 'center', gap: 10, paddingVertical: 28 }}>
-          <ActivityIndicator />
-          <Text style={{ color: '#64748b', fontWeight: '800' }}>
+        <View className="items-center gap-2.5 py-7" style={styles.loadingState}>
+          <ActivityIndicator color={colors.primary} />
+          <Text className="font-bold text-base-muted" style={styles.loadingText}>
             Loading exercises…
           </Text>
         </View>
       ) : error ? (
-        <EmptyState
+        <LibraryEmptyState
           title="Could not load exercises"
           message={`The local exercise seed file could not be read. Run npm run check:exercises to verify the seed data.${error?.message ? ` Detail: ${error.message}` : ''}`}
-          action={<Button title="Try again" onPress={() => void refetch()} />}
+          action={<LibraryButton title="Try again" onPress={() => void refetch()} />}
         />
       ) : (
         <>
-          <View
-            style={{
-              alignItems: 'center',
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              gap: 10,
-              justifyContent: 'space-between',
-            }}
-          >
-            <Text style={{ color: '#64748b', fontWeight: '800' }}>
+          <View className="flex-row flex-wrap items-center justify-between gap-2.5" style={styles.toolbar}>
+            <Text className="font-bold text-base-muted" style={styles.visibleCountText}>
               {filteredExercises.length} of {exercises.length} exercises visible
             </Text>
-            <View style={{ alignItems: 'center', flexDirection: 'row', gap: 12 }}>
+            <View className="flex-row items-center gap-3" style={styles.toolbarActions}>
               {hasActiveFilters ? (
-                <Pressable onPress={clearFilters}>
-                  <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                <Pressable onPress={clearFilters} className="rounded-pill px-2 py-2 active:opacity-75" style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
+                  <Text className="font-black text-primary" style={styles.clearButtonText}>
                     Clear
                   </Text>
                 </Pressable>
               ) : null}
               <Pressable
                 onPress={() => setIsFilterSheetOpen(true)}
-                style={({ pressed }) => ({
-                  backgroundColor: '#ffffff',
-                  borderColor: activeFilterCount > 0 ? '#0f172a' : '#cbd5e1',
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  opacity: pressed ? 0.75 : 1,
-                  paddingHorizontal: 14,
-                  paddingVertical: 9,
-                })}
+                className={`rounded-pill border px-4 py-2.5 active:opacity-75 ${
+                  activeFilterCount > 0
+                    ? 'border-primary bg-primary/15'
+                    : 'border-base-300 bg-base-100 active:bg-base-300'
+                }`}
+                style={({ pressed }) => [
+                  styles.filterButton,
+                  activeFilterCount > 0 ? styles.filterChipSelected : styles.filterChipIdle,
+                  pressed && (activeFilterCount > 0 ? styles.pressedSelected : styles.pressedIdle),
+                ]}
               >
-                <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                <Text
+                  className={activeFilterCount > 0 ? 'font-black text-primary' : 'font-black text-base-content'}
+                  style={[styles.filterButtonText, activeFilterCount > 0 ? styles.filterChipTextSelected : styles.filterChipTextIdle]}
+                >
                   {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
                 </Text>
               </Pressable>
@@ -351,60 +361,30 @@ export function ExerciseLibrary({
         </>
       )}
 
-
       <Modal
         animationType="slide"
         onRequestClose={() => setIsFilterSheetOpen(false)}
         transparent
         visible={isFilterSheetOpen}
       >
-        <Pressable
-          onPress={() => setIsFilterSheetOpen(false)}
-          style={{
-            backgroundColor: 'rgba(15, 23, 42, 0.45)',
-            flex: 1,
-            justifyContent: 'flex-end',
-          }}
-        >
+        <Pressable onPress={() => setIsFilterSheetOpen(false)} style={styles.modalBackdrop}>
           <Pressable
             onPress={(event: GestureResponderEvent) => event.stopPropagation()}
-            style={{
-              backgroundColor: '#ffffff',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              gap: 16,
-              maxHeight: '85%',
-              padding: 20,
-              paddingBottom: 28,
-            }}
+            className="gap-4 rounded-t-card border border-base-300 bg-base-200 p-5 pb-7"
+            style={[styles.modalSheet, styles.filterSheet]}
           >
-            <View
-              style={{
-                alignSelf: 'center',
-                backgroundColor: '#cbd5e1',
-                borderRadius: 999,
-                height: 4,
-                width: 46,
-              }}
-            />
+            <View className="h-1 w-12 self-center rounded-pill bg-base-300" style={styles.sheetHandle} />
 
-            <View
-              style={{
-                alignItems: 'flex-start',
-                flexDirection: 'row',
-                gap: 12,
-                justifyContent: 'space-between',
-              }}
-            >
-              <View style={{ flex: 1, gap: 6 }}>
-                <Text style={{ fontSize: 24, fontWeight: '900' }}>Filters</Text>
-                <Text style={{ color: '#64748b', lineHeight: 21 }}>
+            <View className="flex-row items-start justify-between gap-3" style={styles.sheetHeader}>
+              <View className="flex-1 gap-1.5" style={styles.sheetTitleGroup}>
+                <Text className="text-2xl font-black text-base-content" style={styles.sheetTitle}>Filters</Text>
+                <Text className="font-body leading-5 text-base-muted" style={styles.sheetSubtitle}>
                   Narrow the library by muscle, equipment, movement, or level.
                 </Text>
               </View>
               {activeFilterCount > 0 ? (
-                <Pressable onPress={clearStructuredFilters} style={{ paddingVertical: 4 }}>
-                  <Text style={{ color: '#0f172a', fontWeight: '900' }}>Clear all</Text>
+                <Pressable onPress={clearStructuredFilters} className="rounded-pill px-2 py-1 active:opacity-75" style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
+                  <Text className="font-black text-primary" style={styles.clearButtonText}>Clear all</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -412,14 +392,15 @@ export function ExerciseLibrary({
             <ScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ gap: 18, paddingBottom: 4 }}
+              contentContainerClassName="gap-4.5 pb-1"
+              contentContainerStyle={styles.filterScrollContent}
             >
               {FILTERS.map((filter) => (
-                <View key={filter.key} style={{ gap: 8 }}>
-                  <Text style={{ color: '#475569', fontWeight: '900' }}>
+                <View key={filter.key} className="gap-2" style={styles.filterGroup}>
+                  <Text className="font-black text-base-content" style={styles.filterGroupLabel}>
                     {filter.label}
                   </Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <View className="flex-row flex-wrap gap-2" style={styles.chipRow}>
                     <FilterChip
                       label={filter.allLabel}
                       selected={!filters[filter.key]}
@@ -438,11 +419,11 @@ export function ExerciseLibrary({
               ))}
             </ScrollView>
 
-            <View style={{ gap: 8 }}>
-              <Text style={{ color: '#64748b', fontWeight: '800', textAlign: 'center' }}>
+            <View className="gap-2" style={styles.sheetFooter}>
+              <Text className="text-center font-bold text-base-muted" style={styles.sheetFooterText}>
                 {filteredExercises.length} exercises visible
               </Text>
-              <Button title="Show exercises" onPress={() => setIsFilterSheetOpen(false)} />
+              <LibraryButton title="Show exercises" onPress={() => setIsFilterSheetOpen(false)} />
             </View>
           </Pressable>
         </Pressable>
@@ -454,42 +435,21 @@ export function ExerciseLibrary({
         transparent
         visible={Boolean(selectedExercise)}
       >
-        <Pressable
-          onPress={() => setSelectedExercise(null)}
-          style={{
-            backgroundColor: 'rgba(15, 23, 42, 0.45)',
-            flex: 1,
-            justifyContent: 'flex-end',
-          }}
-        >
+        <Pressable onPress={() => setSelectedExercise(null)} style={styles.modalBackdrop}>
           <Pressable
             onPress={(event: GestureResponderEvent) => event.stopPropagation()}
-            style={{
-              backgroundColor: '#ffffff',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              gap: 16,
-              padding: 20,
-              paddingBottom: 32,
-            }}
+            className="gap-4 rounded-t-card border border-base-300 bg-base-200 p-5 pb-8"
+            style={styles.modalSheet}
           >
             {selectedExercise ? (
               <>
-                <View
-                  style={{
-                    alignSelf: 'center',
-                    backgroundColor: '#cbd5e1',
-                    borderRadius: 999,
-                    height: 4,
-                    width: 46,
-                  }}
-                />
+                <View className="h-1 w-12 self-center rounded-pill bg-base-300" style={styles.sheetHandle} />
 
-                <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 26, fontWeight: '900' }}>
+                <View className="gap-2" style={styles.detailTitleGroup}>
+                  <Text className="text-3xl font-black text-base-content" style={styles.detailTitle}>
                     {selectedExercise.name}
                   </Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <View className="flex-row flex-wrap gap-2" style={styles.badgeRow}>
                     <ExerciseBadge label={selectedExercise.muscleGroup} />
                     {selectedExercise.equipment ? (
                       <ExerciseBadge label={selectedExercise.equipment} />
@@ -503,36 +463,25 @@ export function ExerciseLibrary({
                   </View>
                 </View>
 
-                <View
-                  style={{
-                    alignItems: 'center',
-                    backgroundColor: '#f8fafc',
-                    borderColor: '#cbd5e1',
-                    borderRadius: 22,
-                    borderStyle: 'dashed',
-                    borderWidth: 1,
-                    height: 150,
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text style={{ color: '#64748b', fontWeight: '900' }}>
+                <View className="h-36 items-center justify-center rounded-card border border-dashed border-base-300 bg-base-100" style={styles.diagramPlaceholder}>
+                  <Text className="font-black text-base-muted" style={styles.diagramPlaceholderTitle}>
                     Muscle diagram placeholder
                   </Text>
-                  <Text style={{ color: '#94a3b8', marginTop: 6 }}>
+                  <Text className="mt-1.5 text-base-muted/80" style={styles.diagramPlaceholderSubtitle}>
                     {selectedExercise.muscleGroup}
                   </Text>
                 </View>
 
-                <View style={{ gap: 6 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '900' }}>Instructions</Text>
-                  <Text style={{ color: '#475569', lineHeight: 22 }}>
+                <View className="gap-1.5" style={styles.instructionsGroup}>
+                  <Text className="text-base font-black text-base-content" style={styles.instructionsTitle}>Instructions</Text>
+                  <Text className="font-body leading-6 text-base-muted" style={styles.instructionsText}>
                     {selectedExercise.instructions ||
                       'Instructions have not been added for this exercise yet.'}
                   </Text>
                 </View>
 
                 {onSelect ? (
-                  <Button
+                  <LibraryButton
                     title={selectButtonTitle}
                     onPress={() => selectExercise(selectedExercise)}
                   />
@@ -540,9 +489,10 @@ export function ExerciseLibrary({
 
                 <Pressable
                   onPress={() => setSelectedExercise(null)}
-                  style={{ alignItems: 'center', paddingVertical: 8 }}
+                  className="items-center rounded-pill py-2 active:opacity-75"
+                  style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
                 >
-                  <Text style={{ color: '#64748b', fontWeight: '900' }}>Close</Text>
+                  <Text className="font-black text-base-muted" style={styles.closeButtonText}>Close</Text>
                 </Pressable>
               </>
             ) : null}
@@ -557,13 +507,375 @@ export function ExerciseLibrary({
       <ScrollView
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
-        style={{ maxHeight: '100%' }}
-        contentContainerStyle={{ gap: 16, paddingBottom: 4 }}
+        className="max-h-full"
+        style={styles.containedScroll}
+        contentContainerClassName="gap-4 pb-1"
+        contentContainerStyle={styles.scrollContent}
       >
         {libraryContent}
       </ScrollView>
     );
   }
 
-  return <View style={{ gap: 16 }}>{libraryContent}</View>;
+  return <View className="gap-4" style={styles.pageLibrary}>{libraryContent}</View>;
 }
+
+const styles = StyleSheet.create({
+  pageLibrary: {
+    gap: 16,
+  },
+  containedScroll: {
+    backgroundColor: colors.base200,
+    maxHeight: '100%',
+  },
+  scrollContent: {
+    gap: 16,
+    paddingBottom: 4,
+  },
+  headerSection: {
+    gap: 12,
+  },
+  libraryHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  libraryHeaderText: {
+    flex: 1,
+  },
+  libraryTitle: {
+    color: colors.baseContent,
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  librarySubtitle: {
+    color: colors.baseMuted,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  searchInput: {
+    backgroundColor: colors.base100,
+    borderColor: colors.base300,
+    borderRadius: 16,
+    borderWidth: 1,
+    color: colors.baseContent,
+    fontSize: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  loadingState: {
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 28,
+  },
+  loadingText: {
+    color: colors.baseMuted,
+    fontWeight: '800',
+  },
+  toolbar: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  toolbarActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  visibleCountText: {
+    color: colors.baseMuted,
+    fontWeight: '800',
+  },
+  clearButton: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  clearButtonText: {
+    color: colors.primary,
+    fontWeight: '900',
+  },
+  filterButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  filterButtonText: {
+    fontWeight: '900',
+  },
+  exerciseList: {
+    gap: 12,
+  },
+  exerciseCard: {
+    backgroundColor: colors.base100,
+    borderColor: colors.base300,
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 12,
+    padding: 16,
+  },
+  exerciseCardPressed: {
+    backgroundColor: colors.base300,
+    borderColor: colors.primary,
+    opacity: 0.9,
+  },
+  exerciseCardHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  exerciseCardTitleGroup: {
+    flex: 1,
+  },
+  exerciseCardTitle: {
+    color: colors.baseContent,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  exerciseCardSubtitle: {
+    color: colors.baseMuted,
+    fontSize: 14,
+    marginTop: 4,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  badge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  badgePrimary: {
+    backgroundColor: 'rgba(163, 230, 53, 0.15)',
+    borderColor: 'rgba(163, 230, 53, 0.4)',
+  },
+  badgeNeutral: {
+    backgroundColor: colors.base300,
+    borderColor: colors.base300,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  badgePrimaryText: {
+    color: colors.primary,
+  },
+  badgeNeutralText: {
+    color: colors.baseMuted,
+  },
+  filterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  filterChipIdle: {
+    backgroundColor: colors.base100,
+    borderColor: colors.base300,
+  },
+  filterChipSelected: {
+    backgroundColor: 'rgba(163, 230, 53, 0.15)',
+    borderColor: colors.primary,
+  },
+  pressed: {
+    opacity: 0.75,
+  },
+  pressedIdle: {
+    backgroundColor: colors.base300,
+  },
+  pressedSelected: {
+    opacity: 0.75,
+  },
+  filterChipText: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  filterChipTextIdle: {
+    color: colors.baseContent,
+  },
+  filterChipTextSelected: {
+    color: colors.primary,
+  },
+  emptyStateCard: {
+    alignItems: 'center',
+    backgroundColor: colors.base100,
+    borderColor: colors.base300,
+    borderRadius: 24,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    gap: 12,
+    padding: 20,
+  },
+  emptyStateAccent: {
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    height: 8,
+    width: 64,
+  },
+  emptyStateTextGroup: {
+    gap: 4,
+  },
+  emptyStateTitle: {
+    color: colors.baseContent,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  emptyStateMessage: {
+    color: colors.baseMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  libraryButton: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  libraryButtonPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  libraryButtonOutline: {
+    backgroundColor: 'transparent',
+    borderColor: colors.primary,
+  },
+  libraryButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  libraryButtonPrimaryText: {
+    color: colors.primaryContent,
+  },
+  libraryButtonOutlineText: {
+    color: colors.primary,
+  },
+  modalBackdrop: {
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.base200,
+    borderColor: colors.base300,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    gap: 16,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  filterSheet: {
+    maxHeight: '85%',
+    paddingBottom: 28,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    backgroundColor: colors.base300,
+    borderRadius: 999,
+    height: 4,
+    width: 48,
+  },
+  sheetHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  sheetTitleGroup: {
+    flex: 1,
+    gap: 6,
+  },
+  sheetTitle: {
+    color: colors.baseContent,
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  sheetSubtitle: {
+    color: colors.baseMuted,
+    lineHeight: 20,
+  },
+  filterScrollContent: {
+    gap: 18,
+    paddingBottom: 4,
+  },
+  filterGroup: {
+    gap: 8,
+  },
+  filterGroupLabel: {
+    color: colors.baseContent,
+    fontWeight: '900',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sheetFooter: {
+    gap: 8,
+  },
+  sheetFooterText: {
+    color: colors.baseMuted,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  detailTitleGroup: {
+    gap: 8,
+  },
+  detailTitle: {
+    color: colors.baseContent,
+    fontSize: 30,
+    fontWeight: '900',
+  },
+  diagramPlaceholder: {
+    alignItems: 'center',
+    backgroundColor: colors.base100,
+    borderColor: colors.base300,
+    borderRadius: 24,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    height: 144,
+    justifyContent: 'center',
+  },
+  diagramPlaceholderTitle: {
+    color: colors.baseMuted,
+    fontWeight: '900',
+  },
+  diagramPlaceholderSubtitle: {
+    color: colors.baseMuted,
+    marginTop: 6,
+    opacity: 0.8,
+  },
+  instructionsGroup: {
+    gap: 6,
+  },
+  instructionsTitle: {
+    color: colors.baseContent,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  instructionsText: {
+    color: colors.baseMuted,
+    lineHeight: 24,
+  },
+  closeButton: {
+    alignItems: 'center',
+    borderRadius: 999,
+    paddingVertical: 8,
+  },
+  closeButtonText: {
+    color: colors.baseMuted,
+    fontWeight: '900',
+  },
+});

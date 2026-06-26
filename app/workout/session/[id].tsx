@@ -9,6 +9,7 @@ import { Card } from '@/src/components/Card';
 import { EmptyState } from '@/src/components/EmptyState';
 import { ProgressBar } from '@/src/components/ProgressBar';
 import { Screen } from '@/src/components/Screen';
+import { colors } from '@/src/lib/theme';
 import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
 import {
   getExerciseById,
@@ -53,6 +54,10 @@ function buildExerciseSetMap(sets: LocalWorkoutSetRow[]) {
     map.set(set.exercise_id, [...exerciseSets, set]);
     return map;
   }, new Map<string, LocalWorkoutSetRow[]>());
+}
+
+function rgba(red: number, green: number, blue: number, alpha: number) {
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function formatWeightInput(value: number) {
@@ -579,7 +584,7 @@ export default function LiveWorkoutScreen() {
         <Card>
           <View style={{ alignItems: 'center', gap: 12, paddingVertical: 24 }}>
             <ActivityIndicator />
-            <Text style={{ color: '#64748b', fontWeight: '800' }}>
+            <Text style={{ color: colors.baseMuted, fontWeight: '800' }}>
               Loading workout session…
             </Text>
           </View>
@@ -612,11 +617,11 @@ export default function LiveWorkoutScreen() {
     <Screen>
       <View style={{ gap: 18 }}>
         <View style={{ gap: 8 }}>
-          <Text style={{ fontSize: 34, fontWeight: '900' }}>Live Workout</Text>
-          <Text style={{ color: '#a3e635', fontSize: 18, fontWeight: '900' }}>
+          <Text style={{ color: colors.baseContent, fontSize: 34, fontWeight: '900' }}>Live Workout</Text>
+          <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '900' }}>
             {formatClock(elapsedSeconds)}
           </Text>
-          <Text style={{ color: '#64748b', lineHeight: 21 }}>
+          <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
             {session?.name ?? 'Quick workout'} • {sets.length} set
             {sets.length === 1 ? '' : 's'} logged
             {bestEstimatedMax ? ` • best est. 1RM ${Math.round(bestEstimatedMax)} lb` : ''}
@@ -635,18 +640,18 @@ export default function LiveWorkoutScreen() {
               }}
             >
               <View style={{ flex: 1, minWidth: 96 }}>
-                <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
+                <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
                   EXERCISES
                 </Text>
-                <Text style={{ fontSize: 24, fontWeight: '900', marginTop: 4 }}>
+                <Text style={{ color: colors.baseContent, fontSize: 24, fontWeight: '900', marginTop: 4 }}>
                   {selectedExercises.length} added
                 </Text>
-                <Text style={{ color: '#64748b', lineHeight: 21, marginTop: 6 }}>
+                <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 6 }}>
                   Add a real exercise from the library before logging sets.
                 </Text>
               </View>
               <Pressable onPress={() => setIsPickerOpen(true)}>
-                <Text style={{ color: '#0f172a', fontWeight: '900' }}>Add exercise</Text>
+                <Text style={{ color: colors.primary, fontWeight: '900' }}>Add exercise</Text>
               </Pressable>
             </View>
 
@@ -657,10 +662,10 @@ export default function LiveWorkoutScreen() {
         <Card>
           <View style={{ gap: 16 }}>
             <View style={{ gap: 6 }}>
-              <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
+              <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
                 CURRENT SET
               </Text>
-              <Text style={{ fontSize: 24, fontWeight: '900' }}>
+              <Text style={{ color: colors.baseContent, fontSize: 24, fontWeight: '900' }}>
                 {currentSetDraft.exerciseName}
               </Text>
               {selectedExerciseMetadata ? (
@@ -670,7 +675,7 @@ export default function LiveWorkoutScreen() {
                   ))}
                 </View>
               ) : (
-                <Text style={{ color: '#64748b', lineHeight: 21 }}>
+                <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
                   Select an exercise card below, or tap Add exercise to pick from the
                   library.
                 </Text>
@@ -679,8 +684,10 @@ export default function LiveWorkoutScreen() {
 
             <View
               style={{
-                backgroundColor: '#0f172a',
+                backgroundColor: colors.base100,
+                borderColor: colors.base300,
                 borderRadius: 24,
+                borderWidth: 1,
                 gap: 18,
                 padding: 18,
               }}
@@ -694,13 +701,13 @@ export default function LiveWorkoutScreen() {
                 }}
               >
                 <View style={{ flex: 1, minWidth: 96 }}>
-                  <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '900' }}>
+                  <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
                     NEXT UP
                   </Text>
-                  <Text style={{ color: '#ffffff', fontSize: 30, fontWeight: '900' }}>
+                  <Text style={{ color: colors.baseContent, fontSize: 30, fontWeight: '900' }}>
                     Set {currentSetDraft.setNumber}
                   </Text>
-                  <Text style={{ color: '#cbd5e1', lineHeight: 21, marginTop: 4 }}>
+                  <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 4 }}>
                     Suggested for {currentSetDraft.exerciseName}
                   </Text>
                 </View>
@@ -718,7 +725,7 @@ export default function LiveWorkoutScreen() {
                 />
               </View>
 
-              <Text style={{ color: '#cbd5e1', fontWeight: '800', lineHeight: 20 }}>
+              <Text style={{ color: colors.baseMuted, fontWeight: '800', lineHeight: 20 }}>
                 {currentSetDraft.sourceLabel} • target {currentSetDraft.repRange} reps •{' '}
                 {formatWeightInput(activeIncrementSize)} lb jumps
               </Text>
@@ -743,16 +750,16 @@ export default function LiveWorkoutScreen() {
                 onPress={addSet}
                 style={({ pressed }) => ({
                   alignItems: 'center',
-                  backgroundColor: selectedExercise ? '#a3e635' : '#cbd5e1',
+                  backgroundColor: selectedExercise ? colors.primary : colors.baseMuted,
                   borderRadius: 20,
                   opacity: pressed ? 0.82 : 1,
                   paddingVertical: 20,
                 })}
               >
-                <Text style={{ color: '#0f172a', fontSize: 24, fontWeight: '900' }}>
+                <Text style={{ color: colors.primaryContent, fontSize: 24, fontWeight: '900' }}>
                   Done
                 </Text>
-                <Text style={{ color: '#334155', fontWeight: '800', marginTop: 4 }}>
+                <Text style={{ color: colors.primaryContent, fontWeight: '800', marginTop: 4 }}>
                   Log displayed values and start rest timer
                 </Text>
               </Pressable>
@@ -761,14 +768,14 @@ export default function LiveWorkoutScreen() {
             {selectedExercise ? (
               <View
                 style={{
-                  backgroundColor: '#f8fafc',
-                  borderColor: '#e2e8f0',
+                  backgroundColor: colors.base100,
+                  borderColor: colors.base300,
                   borderRadius: 16,
                   borderWidth: 1,
                   padding: 14,
                 }}
               >
-                <Text style={{ color: '#475569', lineHeight: 21 }}>
+                <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
                   {selectedExercise.instructions ||
                     'Instructions have not been added for this exercise yet.'}
                 </Text>
@@ -778,8 +785,8 @@ export default function LiveWorkoutScreen() {
             {selectedExercise ? (
               <View
                 style={{
-                  backgroundColor: '#f8fafc',
-                  borderColor: '#e2e8f0',
+                  backgroundColor: colors.base100,
+                  borderColor: colors.base300,
                   borderRadius: 16,
                   borderWidth: 1,
                   gap: 12,
@@ -787,10 +794,10 @@ export default function LiveWorkoutScreen() {
                 }}
               >
                 <View style={{ gap: 4 }}>
-                  <Text style={{ fontSize: 18, fontWeight: '900' }}>
+                  <Text style={{ color: colors.baseContent, fontSize: 18, fontWeight: '900' }}>
                     Optional targets
                   </Text>
-                  <Text style={{ color: '#64748b', lineHeight: 20 }}>
+                  <Text style={{ color: colors.baseMuted, lineHeight: 20 }}>
                     Configure this only when you want custom set counts, rep ranges,
                     jumps, or deloads. Logging still works without touching it.
                   </Text>
@@ -831,26 +838,28 @@ export default function LiveWorkoutScreen() {
             ) : null}
 
             <View style={{ gap: 10 }}>
-              <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
+              <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
                 MANUAL FALLBACK
               </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 130 }}>
-                  <Text style={{ fontWeight: '800', marginBottom: 6 }}>Reps</Text>
+                  <Text style={{ color: colors.baseContent, fontWeight: '800', marginBottom: 6 }}>Reps</Text>
                   <TextInput
                     keyboardType="number-pad"
                     value={reps}
                     onChangeText={setReps}
-                    style={inputStyle}
+                    placeholderTextColor={colors.baseMuted}
+                  style={inputStyle}
                   />
                 </View>
                 <View style={{ flex: 1, minWidth: 130 }}>
-                  <Text style={{ fontWeight: '800', marginBottom: 6 }}>Weight</Text>
+                  <Text style={{ color: colors.baseContent, fontWeight: '800', marginBottom: 6 }}>Weight</Text>
                   <TextInput
                     keyboardType="decimal-pad"
                     value={weight}
                     onChangeText={setWeight}
-                    style={inputStyle}
+                    placeholderTextColor={colors.baseMuted}
+                  style={inputStyle}
                   />
                 </View>
               </View>
@@ -860,10 +869,10 @@ export default function LiveWorkoutScreen() {
 
             {restSeconds !== null ? (
               <View style={{ gap: 8 }}>
-                <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
+                <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
                   REST TIMER
                 </Text>
-                <Text style={{ color: '#e6edf3', fontSize: 24, fontWeight: '900' }}>
+                <Text style={{ color: colors.baseContent, fontSize: 24, fontWeight: '900' }}>
                   Next set in {formatClock(restSeconds).slice(3)}
                 </Text>
                 <ProgressBar value={restSeconds / REST_DURATION_SECONDS} />
@@ -879,8 +888,8 @@ export default function LiveWorkoutScreen() {
         {selectedExercises.length === 0 ? (
           <Card>
             <View style={{ gap: 8 }}>
-              <Text style={{ fontSize: 20, fontWeight: '900' }}>No exercises added</Text>
-              <Text style={{ color: '#64748b', lineHeight: 21 }}>
+              <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900' }}>No exercises added</Text>
+              <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
                 Tap Add exercise to open the library, choose a movement, then log
                 reps and weight against that exercise.
               </Text>
@@ -903,10 +912,10 @@ export default function LiveWorkoutScreen() {
                     }}
                   >
                     <View style={{ flex: 1, minWidth: 96 }}>
-                      <Text style={{ fontSize: 22, fontWeight: '900' }}>
+                      <Text style={{ color: colors.baseContent, fontSize: 22, fontWeight: '900' }}>
                         {exercise.name}
                       </Text>
-                      <Text style={{ color: '#64748b', lineHeight: 21, marginTop: 4 }}>
+                      <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 4 }}>
                         {[exercise.muscleGroup, exercise.equipment, exercise.difficulty]
                           .filter(Boolean)
                           .join(' • ')}
@@ -914,7 +923,7 @@ export default function LiveWorkoutScreen() {
                     </View>
                     {/* Legacy selection shape covered by tests: <Pressable onPress={() => setSelectedExercise(exercise)}> */}
                     <Pressable onPress={() => void selectExerciseForLogging(exercise)}>
-                      <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                      <Text style={{ color: isActiveExercise ? colors.primary : colors.baseContent, fontWeight: '900' }}>
                         {isActiveExercise ? 'Selected' : 'Log set'}
                       </Text>
                     </Pressable>
@@ -923,14 +932,14 @@ export default function LiveWorkoutScreen() {
                   {exerciseSets.length === 0 ? (
                     <View
                       style={{
-                        backgroundColor: '#f8fafc',
-                        borderColor: '#e2e8f0',
+                        backgroundColor: colors.base100,
+                        borderColor: colors.base300,
                         borderRadius: 16,
                         borderWidth: 1,
                         padding: 14,
                       }}
                     >
-                      <Text style={{ color: '#64748b', fontWeight: '800' }}>
+                      <Text style={{ color: colors.baseMuted, fontWeight: '800' }}>
                         No sets logged for this exercise yet.
                       </Text>
                     </View>
@@ -942,8 +951,8 @@ export default function LiveWorkoutScreen() {
                           onPress={() => openEditModal(set)}
                           style={({ pressed }) => ({
                             alignItems: 'center',
-                            backgroundColor: pressed ? '#f1f5f9' : '#f8fafc',
-                            borderColor: '#e2e8f0',
+                            backgroundColor: pressed ? colors.base300 : colors.base100,
+                            borderColor: colors.base300,
                             borderRadius: 14,
                             borderWidth: 1,
                             flexDirection: 'row',
@@ -951,11 +960,11 @@ export default function LiveWorkoutScreen() {
                             padding: 12,
                           })}
                         >
-                          <Text style={{ fontWeight: '900', minWidth: 52 }}>
+                          <Text style={{ color: colors.baseContent, fontWeight: '900', minWidth: 52 }}>
                             Set {set.set_number}
                           </Text>
 
-                          <Text style={{ color: '#475569', flex: 1, fontWeight: '800' }}>
+                          <Text style={{ color: colors.baseMuted, flex: 1, fontWeight: '800' }}>
                             {set.reps ?? 0} reps × {set.weight ?? 0} lb
                           </Text>
 
@@ -966,13 +975,13 @@ export default function LiveWorkoutScreen() {
                               confirmDeleteSet(set.local_id);
                             }}
                             style={({ pressed }) => ({
-                              backgroundColor: pressed ? '#fee2e2' : '#fef2f2',
+                              backgroundColor: pressed ? rgba(248, 113, 113, 0.22) : rgba(248, 113, 113, 0.14),
                               borderRadius: 8,
                               paddingHorizontal: 10,
                               paddingVertical: 5,
                             })}
                           >
-                            <Text style={{ color: '#ef4444', fontSize: 15, fontWeight: '900' }}>
+                            <Text style={{ color: colors.error, fontSize: 15, fontWeight: '900' }}>
                               ✕
                             </Text>
                           </Pressable>
@@ -995,8 +1004,8 @@ export default function LiveWorkoutScreen() {
         <Card>
           <View style={{ gap: 12 }}>
             <View style={{ gap: 4 }}>
-              <Text style={{ fontSize: 20, fontWeight: '900' }}>How did that feel?</Text>
-              <Text style={{ color: '#64748b', lineHeight: 21 }}>
+              <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900' }}>How did that feel?</Text>
+              <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
                 Optional feedback helps next-time suggestions decide whether to
                 increase, repeat, or deload.
               </Text>
@@ -1012,8 +1021,8 @@ export default function LiveWorkoutScreen() {
                     onPress={() => setEffortFeedback(selected ? null : feedback)}
                     style={{
                       alignItems: 'center',
-                      backgroundColor: selected ? '#0f172a' : '#f8fafc',
-                      borderColor: selected ? '#0f172a' : '#e2e8f0',
+                      backgroundColor: selected ? colors.primary : colors.base100,
+                      borderColor: selected ? colors.primary : colors.base300,
                       borderRadius: 14,
                       borderWidth: 1,
                       flex: 1,
@@ -1022,7 +1031,7 @@ export default function LiveWorkoutScreen() {
                   >
                     <Text
                       style={{
-                        color: selected ? '#ffffff' : '#0f172a',
+                        color: selected ? colors.primaryContent : colors.baseContent,
                         fontWeight: '900',
                       }}
                     >
@@ -1055,14 +1064,8 @@ export default function LiveWorkoutScreen() {
         >
           <Pressable
             onPress={(event) => event.stopPropagation()}
-            style={{
-              backgroundColor: '#ffffff',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              maxHeight: '88%',
-              padding: 16,
-              paddingBottom: 30,
-            }}
+            className="rounded-t-card border border-base-300 bg-base-200 p-4 pb-8"
+            style={pickerSheetStyle}
           >
             <ExerciseLibrary
               onSelect={chooseExercise}
@@ -1090,34 +1093,38 @@ export default function LiveWorkoutScreen() {
           <Pressable
             onPress={(event) => event.stopPropagation()}
             style={{
-              backgroundColor: '#ffffff',
+              backgroundColor: colors.base200,
+              borderColor: colors.base300,
               borderTopLeftRadius: 28,
               borderTopRightRadius: 28,
+              borderWidth: 1,
               gap: 20,
               padding: 24,
               paddingBottom: 36,
             }}
           >
-            <Text style={{ fontSize: 20, fontWeight: '900' }}>
+            <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900' }}>
               Edit Set {editingSet?.set_number}
             </Text>
 
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1, minWidth: 96 }}>
-                <Text style={{ fontWeight: '800', marginBottom: 6 }}>Reps</Text>
+                <Text style={{ color: colors.baseContent, fontWeight: '800', marginBottom: 6 }}>Reps</Text>
                 <TextInput
                   keyboardType="number-pad"
                   value={editReps}
                   onChangeText={setEditReps}
+                  placeholderTextColor={colors.baseMuted}
                   style={inputStyle}
                 />
               </View>
               <View style={{ flex: 1, minWidth: 96 }}>
-                <Text style={{ fontWeight: '800', marginBottom: 6 }}>Weight</Text>
+                <Text style={{ color: colors.baseContent, fontWeight: '800', marginBottom: 6 }}>Weight</Text>
                 <TextInput
                   keyboardType="decimal-pad"
                   value={editWeight}
                   onChangeText={setEditWeight}
+                  placeholderTextColor={colors.baseMuted}
                   style={inputStyle}
                 />
               </View>
@@ -1127,7 +1134,7 @@ export default function LiveWorkoutScreen() {
               <Pressable
                 onPress={() => setEditingSet(null)}
                 style={({ pressed }) => ({
-                  borderColor: '#e2e8f0',
+                  borderColor: colors.base300,
                   borderRadius: 14,
                   borderWidth: 1,
                   flex: 1,
@@ -1136,12 +1143,12 @@ export default function LiveWorkoutScreen() {
                   alignItems: 'center',
                 })}
               >
-                <Text style={{ fontWeight: '900' }}>Cancel</Text>
+                <Text style={{ color: colors.baseContent, fontWeight: '900' }}>Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={saveEditedSet}
                 style={({ pressed }) => ({
-                  backgroundColor: '#0f172a',
+                  backgroundColor: colors.primary,
                   borderRadius: 14,
                   flex: 1,
                   opacity: pressed ? 0.8 : 1,
@@ -1149,7 +1156,7 @@ export default function LiveWorkoutScreen() {
                   alignItems: 'center',
                 })}
               >
-                <Text style={{ color: '#ffffff', fontWeight: '900' }}>Save</Text>
+                <Text style={{ color: colors.primaryContent, fontWeight: '900' }}>Save</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -1170,13 +1177,14 @@ function TargetInput({
 }) {
   return (
     <View style={{ flex: 1, minWidth: 96 }}>
-      <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900', marginBottom: 6 }}>
+      <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900', marginBottom: 6 }}>
         {label}
       </Text>
       <TextInput
         keyboardType="decimal-pad"
         value={value}
         onChangeText={onChangeText}
+        placeholderTextColor={colors.baseMuted}
         style={inputStyle}
       />
     </View>
@@ -1196,10 +1204,10 @@ function CurrentSetValue({ label, value }: { label: string; value: string }) {
         padding: 14,
       }}
     >
-      <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '900' }}>
+      <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
         {label}
       </Text>
-      <Text style={{ color: '#ffffff', fontSize: 26, fontWeight: '900', marginTop: 4 }}>
+      <Text style={{ color: colors.baseContent, fontSize: 26, fontWeight: '900', marginTop: 4 }}>
         {value}
       </Text>
     </View>
@@ -1212,7 +1220,7 @@ function QuickAdjustButton({ label, onPress }: { label: string; onPress: () => v
       onPress={onPress}
       style={({ pressed }) => ({
         alignItems: 'center',
-        backgroundColor: pressed ? '#e2e8f0' : '#f8fafc',
+        backgroundColor: pressed ? colors.base300 : colors.base100,
         borderRadius: 14,
         flexGrow: 1,
         minWidth: 74,
@@ -1220,7 +1228,7 @@ function QuickAdjustButton({ label, onPress }: { label: string; onPress: () => v
         paddingVertical: 12,
       })}
     >
-      <Text style={{ color: '#0f172a', fontWeight: '900' }}>{label}</Text>
+      <Text style={{ color: colors.baseContent, fontWeight: '900' }}>{label}</Text>
     </Pressable>
   );
 }
@@ -1229,8 +1237,8 @@ function StatBox({ label, value }: { label: string; value: string }) {
   return (
     <View
       style={{
-        backgroundColor: '#f8fafc',
-        borderColor: '#e2e8f0',
+        backgroundColor: colors.base100,
+        borderColor: colors.base300,
         borderRadius: 14,
         borderWidth: 1,
         flex: 1,
@@ -1238,17 +1246,32 @@ function StatBox({ label, value }: { label: string; value: string }) {
         padding: 12,
       }}
     >
-      <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
+      <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
         {label}
       </Text>
-      <Text style={{ fontSize: 20, fontWeight: '900', marginTop: 4 }}>{value}</Text>
+      <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900', marginTop: 4 }}>{value}</Text>
     </View>
   );
 }
 
-const inputStyle = {
+
+const pickerSheetStyle = {
+  backgroundColor: colors.base200,
+  borderColor: colors.base300,
+  borderTopLeftRadius: 28,
+  borderTopRightRadius: 28,
   borderWidth: 1,
-  borderColor: '#cbd5e1',
+  maxHeight: '88%' as const,
+  overflow: 'hidden' as const,
+  padding: 16,
+  paddingBottom: 32,
+};
+
+const inputStyle = {
+  backgroundColor: colors.base100,
+  borderWidth: 1,
+  borderColor: colors.base300,
+  color: colors.baseContent,
   borderRadius: 14,
   fontSize: 18,
   fontWeight: '800' as const,
