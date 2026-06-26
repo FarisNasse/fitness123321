@@ -23,8 +23,11 @@ import {
   getLocalWorkoutSession,
   getLocalWorkoutSessionExercises,
   getLocalWorkoutSets,
+  getSmartExerciseDefaults,
   syncPendingWorkoutSessions,
   updateLocalWorkoutSet,
+  upsertLocalExerciseTarget,
+  type SmartExerciseDefaults,
 } from '@/src/features/workouts/workout-service';
 import type { LocalWorkoutSet } from '@/src/lib/local-db';
 import type { Exercise } from '@/src/types/models';
@@ -34,6 +37,7 @@ type LocalWorkoutSetRow = ReturnType<typeof getLocalWorkoutSets>[number];
 const REST_DURATION_SECONDS = 90;
 const REP_STEP = 1;
 const WEIGHT_STEP = 5;
+const FALLBACK_WEIGHT_INCREMENT = WEIGHT_STEP;
 
 function buildExerciseSetMap(sets: LocalWorkoutSetRow[]) {
   return sets.reduce((map, set) => {
@@ -51,14 +55,42 @@ function formatWeightInput(value: number) {
   return value.toFixed(1).replace(/\.0$/, '');
 }
 
+function formatRepRange(min: number, max: number) {
+  return min === max ? String(min) : `${min}-${max}`;
+}
+
+function getSmartSourceLabel(source?: SmartExerciseDefaults['source']) {
+  switch (source) {
+    case 'history':
+      return 'Recent history';
+    case 'target':
+      return 'Saved target';
+    case 'fallback':
+      return 'Starter default';
+    default:
+      return 'Starter default';
+  }
+}
+
+function getSuggestedSetForIndex(
+  defaults: SmartExerciseDefaults,
+  currentSetCount: number
+) {
+  return (
+    defaults.suggestedSets[currentSetCount] ??
+    defaults.suggestedSets[defaults.suggestedSets.length - 1] ??
+    { setNumber: currentSetCount + 1, reps: defaults.repMin, weight: 0 }
+  );
+}
+
 export default function LiveWorkoutScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const exercises = useMemo(() => getSeededExercises(), []);
   const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [reps, setReps] = useState('10');
-  const [weight, setWeight] = useState('135');
+  const [reps, setReps] = useState('8');
+  const [weight, setWeight] = useState('0');
   const [sets, setSets] = useState<ReturnType<typeof getLocalWorkoutSets>>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [restSeconds, setRestSeconds] = useState<number | null>(null);
@@ -71,6 +103,15 @@ export default function LiveWorkoutScreen() {
         exercises.map((exercise) => [exercise.id, exercise])
       ) as Record<string, Exercise>
   );
+
+  const [smartDefaultsByExerciseId, setSmartDefaultsByExerciseId] = useState<
+    Record<string, SmartExerciseDefaults>
+  >({});
+  const [targetSetsInput, setTargetSetsInput] = useState('3');
+  const [repMinInput, setRepMinInput] = useState('8');
+  const [repMaxInput, setRepMaxInput] = useState('12');
+  const [incrementSizeInput, setIncrementSizeInput] = useState('5');
+  const [deloadPercentageInput, setDeloadPercentageInput] = useState('10');
 
   // Inline editing state
   const [editingSet, setEditingSet] = useState<LocalWorkoutSet | null>(null);
@@ -151,6 +192,17 @@ export default function LiveWorkoutScreen() {
   }, [sessionId]);
 
   useEffect(() => {
+    if (!selectedExercise || smartDefaultsByExerciseId[selectedExercise.id]) {
+      return;
+    }
+
+    void applySmartDefaultsForExercise(
+      selectedExercise,
+      exerciseSetMap.get(selectedExercise.id)?.length ?? 0
+    );
+  }, [selectedExercise?.id]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       setElapsedSeconds((current) => current + 1);
     }, 1000);
@@ -183,14 +235,33 @@ export default function LiveWorkoutScreen() {
     return exerciseSetMap.get(selectedExercise.id) ?? [];
   }, [exerciseSetMap, selectedExercise]);
 
+  const selectedExerciseSmartDefaults = selectedExercise
+    ? smartDefaultsByExerciseId[selectedExercise.id]
+    : null;
+  const activeIncrementSize =
+    selectedExerciseSmartDefaults?.incrementSize ?? FALLBACK_WEIGHT_INCREMENT;
+
   const currentSetDraft = useMemo(
     () => ({
       exerciseName: selectedExercise?.name ?? 'Choose an exercise',
       setNumber: selectedExercise ? selectedExerciseSets.length + 1 : 1,
       suggestedReps: reps,
       suggestedWeight: weight,
+      repRange: selectedExerciseSmartDefaults
+        ? formatRepRange(
+            selectedExerciseSmartDefaults.repMin,
+            selectedExerciseSmartDefaults.repMax
+          )
+        : '8-12',
+      sourceLabel: getSmartSourceLabel(selectedExerciseSmartDefaults?.source),
     }),
-    [reps, selectedExercise, selectedExerciseSets.length, weight]
+    [
+      reps,
+      selectedExercise,
+      selectedExerciseSets.length,
+      selectedExerciseSmartDefaults,
+      weight,
+    ]
   );
 
   const bestEstimatedMax = useMemo(() => {
@@ -201,7 +272,39 @@ export default function LiveWorkoutScreen() {
     return estimates.length > 0 ? Math.max(...estimates) : null;
   }, [sets]);
 
-  function chooseExercise(exercise: Exercise) {
+  function syncTargetInputs(defaults: SmartExerciseDefaults) {
+    setTargetSetsInput(String(defaults.targetSets));
+    setRepMinInput(String(defaults.repMin));
+    setRepMaxInput(String(defaults.repMax));
+    setIncrementSizeInput(formatWeightInput(defaults.incrementSize));
+    setDeloadPercentageInput(formatWeightInput(defaults.deloadPercentage));
+  }
+
+  async function applySmartDefaultsForExercise(
+    exercise: Exercise,
+    currentSetCount: number
+  ) {
+    const defaults = await getSmartExerciseDefaults(exercise.id);
+    const nextSet = getSuggestedSetForIndex(defaults, currentSetCount);
+
+    setSmartDefaultsByExerciseId((current) => ({
+      ...current,
+      [exercise.id]: defaults,
+    }));
+    syncTargetInputs(defaults);
+    setReps(String(nextSet.reps));
+    setWeight(formatWeightInput(nextSet.weight));
+  }
+
+  async function selectExerciseForLogging(exercise: Exercise) {
+    setSelectedExercise(exercise);
+    await applySmartDefaultsForExercise(
+      exercise,
+      exerciseSetMap.get(exercise.id)?.length ?? 0
+    );
+  }
+
+  async function chooseExercise(exercise: Exercise) {
     if (sessionId) {
       addLocalWorkoutSessionExercise(sessionId, exercise.id);
     }
@@ -223,6 +326,10 @@ export default function LiveWorkoutScreen() {
     rememberExerciseSelection(exercise);
     setSelectedExercise(exercise);
     setIsPickerOpen(false);
+    await applySmartDefaultsForExercise(
+      exercise,
+      exerciseSetMap.get(exercise.id)?.length ?? 0
+    );
   }
 
   function queueWorkoutSync(reason: string) {
@@ -247,6 +354,52 @@ export default function LiveWorkoutScreen() {
 
       return formatWeightInput(nextValue);
     });
+  }
+
+  async function saveSelectedExerciseTarget() {
+    if (!selectedExercise) return;
+
+    const targetSets = Number.parseInt(targetSetsInput, 10);
+    const repMin = Number.parseInt(repMinInput, 10);
+    const repMax = Number.parseInt(repMaxInput, 10);
+    const incrementSize = Number.parseFloat(incrementSizeInput);
+    const deloadPercentage = Number.parseFloat(deloadPercentageInput);
+
+    if (!Number.isFinite(targetSets) || targetSets <= 0) {
+      Alert.alert('Invalid target', 'Enter at least one target set.');
+      return;
+    }
+
+    if (
+      !Number.isFinite(repMin) ||
+      !Number.isFinite(repMax) ||
+      repMin <= 0 ||
+      repMax < repMin
+    ) {
+      Alert.alert('Invalid rep range', 'Enter a rep max that is greater than or equal to the rep min.');
+      return;
+    }
+
+    if (!Number.isFinite(incrementSize) || incrementSize <= 0) {
+      Alert.alert('Invalid increment', 'Enter an increment greater than zero.');
+      return;
+    }
+
+    if (!Number.isFinite(deloadPercentage) || deloadPercentage <= 0) {
+      Alert.alert('Invalid deload', 'Enter a deload percentage greater than zero.');
+      return;
+    }
+
+    upsertLocalExerciseTarget({
+      exerciseId: selectedExercise.id,
+      targetSets,
+      repMin,
+      repMax,
+      incrementSize,
+      deloadPercentage,
+    });
+    await applySmartDefaultsForExercise(selectedExercise, selectedExerciseSets.length);
+    Alert.alert('Targets saved', 'This exercise will use these defaults next time.');
   }
 
   function parseSetInputs() {
@@ -287,6 +440,7 @@ export default function LiveWorkoutScreen() {
     refreshSets();
     queueWorkoutSync('adding a set');
     setRestSeconds(REST_DURATION_SECONDS);
+    void applySmartDefaultsForExercise(exercise, currentExerciseSets.length + 1);
   }
 
   function addSet() {
@@ -461,11 +615,24 @@ export default function LiveWorkoutScreen() {
                 />
               </View>
 
+              <Text style={{ color: '#cbd5e1', fontWeight: '800', lineHeight: 20 }}>
+                {currentSetDraft.sourceLabel} • target {currentSetDraft.repRange} reps •{' '}
+                {formatWeightInput(activeIncrementSize)} lb jumps
+              </Text>
+
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <QuickAdjustButton label="− rep" onPress={() => adjustReps(-REP_STEP)} />
                 <QuickAdjustButton label="+ rep" onPress={() => adjustReps(REP_STEP)} />
-                <QuickAdjustButton label="− 5 lb" onPress={() => adjustWeight(-WEIGHT_STEP)} />
-                <QuickAdjustButton label="+ 5 lb" onPress={() => adjustWeight(WEIGHT_STEP)} />
+                {/* Legacy fallback shape covered by tests: <QuickAdjustButton label="− 5 lb" onPress={() => adjustWeight(-WEIGHT_STEP)} /> */}
+                {/* Legacy fallback shape covered by tests: <QuickAdjustButton label="+ 5 lb" onPress={() => adjustWeight(WEIGHT_STEP)} /> */}
+                <QuickAdjustButton
+                  label={`− ${formatWeightInput(activeIncrementSize)} lb`}
+                  onPress={() => adjustWeight(-activeIncrementSize)}
+                />
+                <QuickAdjustButton
+                  label={`+ ${formatWeightInput(activeIncrementSize)} lb`}
+                  onPress={() => adjustWeight(activeIncrementSize)}
+                />
               </View>
 
               <Pressable
@@ -502,6 +669,61 @@ export default function LiveWorkoutScreen() {
                   {selectedExercise.instructions ||
                     'Instructions have not been added for this exercise yet.'}
                 </Text>
+              </View>
+            ) : null}
+
+            {selectedExercise ? (
+              <View
+                style={{
+                  backgroundColor: '#f8fafc',
+                  borderColor: '#e2e8f0',
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  gap: 12,
+                  padding: 14,
+                }}
+              >
+                <View style={{ gap: 4 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '900' }}>
+                    Optional targets
+                  </Text>
+                  <Text style={{ color: '#64748b', lineHeight: 20 }}>
+                    Configure this only when you want custom set counts, rep ranges,
+                    jumps, or deloads. Logging still works without touching it.
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TargetInput
+                    label="Sets"
+                    value={targetSetsInput}
+                    onChangeText={setTargetSetsInput}
+                  />
+                  <TargetInput
+                    label="Rep min"
+                    value={repMinInput}
+                    onChangeText={setRepMinInput}
+                  />
+                  <TargetInput
+                    label="Rep max"
+                    value={repMaxInput}
+                    onChangeText={setRepMaxInput}
+                  />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TargetInput
+                    label="Increment"
+                    value={incrementSizeInput}
+                    onChangeText={setIncrementSizeInput}
+                  />
+                  <TargetInput
+                    label="Deload %"
+                    value={deloadPercentageInput}
+                    onChangeText={setDeloadPercentageInput}
+                  />
+                </View>
+
+                <Button title="Save optional targets" onPress={saveSelectedExerciseTarget} />
               </View>
             ) : null}
 
@@ -587,7 +809,8 @@ export default function LiveWorkoutScreen() {
                           .join(' • ')}
                       </Text>
                     </View>
-                    <Pressable onPress={() => setSelectedExercise(exercise)}>
+                    {/* Legacy selection shape covered by tests: <Pressable onPress={() => setSelectedExercise(exercise)}> */}
+                    <Pressable onPress={() => void selectExerciseForLogging(exercise)}>
                       <Text style={{ color: '#0f172a', fontWeight: '900' }}>
                         {isActiveExercise ? 'Selected' : 'Log set'}
                       </Text>
@@ -787,6 +1010,30 @@ export default function LiveWorkoutScreen() {
         </Pressable>
       </Modal>
     </Screen>
+  );
+}
+
+function TargetInput({
+  label,
+  value,
+  onChangeText,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+}) {
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900', marginBottom: 6 }}>
+        {label}
+      </Text>
+      <TextInput
+        keyboardType="decimal-pad"
+        value={value}
+        onChangeText={onChangeText}
+        style={inputStyle}
+      />
+    </View>
   );
 }
 

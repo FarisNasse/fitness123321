@@ -52,6 +52,18 @@ export type WorkoutSet = {
   syncStatus: SyncStatus;
 };
 
+export type ExerciseTargetLocal = {
+  localId: string;
+  exerciseId: string;
+  targetSets: number;
+  repMin: number;
+  repMax: number;
+  incrementSize: number;
+  deloadPercentage: number;
+  syncStatus: SyncStatus;
+  updatedAt: string;
+};
+
 export type Food = {
   id: string;
   name: string;

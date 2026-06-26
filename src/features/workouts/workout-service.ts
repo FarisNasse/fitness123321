@@ -6,6 +6,7 @@ import {
   getExercisesBySession,
   getSetsBySession,
   getSetsBySessionForSync,
+  type ExerciseTargetLocal,
   type LocalWorkoutSession,
   type LocalWorkoutSessionExercise,
   type LocalWorkoutSet,
@@ -14,7 +15,274 @@ import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-fl
 
 export type LocalWorkoutSessionRow = LocalWorkoutSession;
 export type LocalWorkoutSessionExerciseRow = LocalWorkoutSessionExercise;
+export type ExerciseTargetLocalRow = ExerciseTargetLocal;
 export type WorkoutSyncUiStatus = 'pending' | 'syncing' | 'synced' | 'failed';
+export type SmartDefaultSource = 'history' | 'target' | 'fallback';
+
+export type SmartExerciseSetDefault = {
+  setNumber: number;
+  reps: number;
+  weight: number;
+};
+
+export type SmartExerciseDefaults = {
+  exerciseId: string;
+  source: SmartDefaultSource;
+  targetSets: number;
+  repMin: number;
+  repMax: number;
+  incrementSize: number;
+  deloadPercentage: number;
+  suggestedSets: SmartExerciseSetDefault[];
+};
+
+const STANDARD_EXERCISE_DEFAULTS = {
+  targetSets: 3,
+  repMin: 8,
+  repMax: 12,
+  incrementSize: 5,
+  deloadPercentage: 10,
+};
+
+function toPositiveInteger(value: unknown, fallback: number) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function toPositiveNumber(value: unknown, fallback: number) {
+  const parsed = Number.parseFloat(String(value ?? ''));
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function toNonNegativeNumber(value: unknown, fallback: number) {
+  const parsed = Number.parseFloat(String(value ?? ''));
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function normalizeExerciseTarget(target: ExerciseTargetLocal | null) {
+  const repMin = toPositiveInteger(target?.rep_min, STANDARD_EXERCISE_DEFAULTS.repMin);
+  const repMax = Math.max(
+    repMin,
+    toPositiveInteger(target?.rep_max, STANDARD_EXERCISE_DEFAULTS.repMax)
+  );
+
+  return {
+    targetSets: toPositiveInteger(
+      target?.target_sets,
+      STANDARD_EXERCISE_DEFAULTS.targetSets
+    ),
+    repMin,
+    repMax,
+    incrementSize: toPositiveNumber(
+      target?.increment_size,
+      STANDARD_EXERCISE_DEFAULTS.incrementSize
+    ),
+    deloadPercentage: toPositiveNumber(
+      target?.deload_percentage,
+      STANDARD_EXERCISE_DEFAULTS.deloadPercentage
+    ),
+  };
+}
+
+function buildFallbackSuggestedSets(
+  count: number,
+  reps: number,
+  weight: number
+): SmartExerciseSetDefault[] {
+  return Array.from({ length: Math.max(1, count) }, (_, index) => ({
+    setNumber: index + 1,
+    reps,
+    weight,
+  }));
+}
+
+export function getLocalExerciseTarget(exerciseId: string) {
+  return (
+    db.getAllSync<ExerciseTargetLocalRow>(
+      `
+      select *
+      from exercise_targets_local
+      where exercise_id = ?
+      limit 1
+      `,
+      [exerciseId]
+    )[0] ?? null
+  );
+}
+
+export function upsertLocalExerciseTarget(input: {
+  exerciseId: string;
+  targetSets: number;
+  repMin: number;
+  repMax: number;
+  incrementSize: number;
+  deloadPercentage: number;
+}) {
+  const existingTarget = getLocalExerciseTarget(input.exerciseId);
+  const localId = existingTarget?.local_id ?? Crypto.randomUUID();
+  const now = new Date().toISOString();
+  const targetSets = toPositiveInteger(
+    input.targetSets,
+    STANDARD_EXERCISE_DEFAULTS.targetSets
+  );
+  const repMin = toPositiveInteger(input.repMin, STANDARD_EXERCISE_DEFAULTS.repMin);
+  const repMax = Math.max(
+    repMin,
+    toPositiveInteger(input.repMax, STANDARD_EXERCISE_DEFAULTS.repMax)
+  );
+  const incrementSize = toPositiveNumber(
+    input.incrementSize,
+    STANDARD_EXERCISE_DEFAULTS.incrementSize
+  );
+  const deloadPercentage = toPositiveNumber(
+    input.deloadPercentage,
+    STANDARD_EXERCISE_DEFAULTS.deloadPercentage
+  );
+
+  db.runSync(
+    `
+    insert into exercise_targets_local (
+      local_id,
+      exercise_id,
+      target_sets,
+      rep_min,
+      rep_max,
+      increment_size,
+      deload_percentage,
+      sync_status,
+      updated_at
+    )
+    values (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+    on conflict(exercise_id) do update set
+      target_sets = excluded.target_sets,
+      rep_min = excluded.rep_min,
+      rep_max = excluded.rep_max,
+      increment_size = excluded.increment_size,
+      deload_percentage = excluded.deload_percentage,
+      sync_status = 'pending',
+      updated_at = excluded.updated_at
+    `,
+    [
+      localId,
+      input.exerciseId,
+      targetSets,
+      repMin,
+      repMax,
+      incrementSize,
+      deloadPercentage,
+      now,
+    ]
+  );
+
+  return getLocalExerciseTarget(input.exerciseId);
+}
+
+function getRecentCompletedExerciseSets(exerciseId: string) {
+  return db.getAllSync<LocalWorkoutSet>(
+    `
+    select ws.*
+    from workout_sets_local ws
+    join workout_sessions_local s
+      on s.local_id = ws.session_local_id
+    where ws.exercise_id = ?
+      and coalesce(ws.is_deleted, 0) = 0
+      and ws.deleted_at is null
+      and coalesce(s.is_deleted, 0) = 0
+      and s.deleted_at is null
+      and s.completed_at is not null
+      and ws.session_local_id = (
+        select ws2.session_local_id
+        from workout_sets_local ws2
+        join workout_sessions_local s2
+          on s2.local_id = ws2.session_local_id
+        where ws2.exercise_id = ?
+          and coalesce(ws2.is_deleted, 0) = 0
+          and ws2.deleted_at is null
+          and coalesce(s2.is_deleted, 0) = 0
+          and s2.deleted_at is null
+          and s2.completed_at is not null
+        order by s2.completed_at desc, s2.started_at desc
+        limit 1
+      )
+    order by ws.set_number asc
+    `,
+    [exerciseId, exerciseId]
+  );
+}
+
+export async function getSmartExerciseDefaults(
+  exerciseId: string
+): Promise<SmartExerciseDefaults> {
+  const target = getLocalExerciseTarget(exerciseId);
+  const normalizedTarget = normalizeExerciseTarget(target);
+  const recentSets = getRecentCompletedExerciseSets(exerciseId);
+
+  if (recentSets.length > 0) {
+    const suggestedSets = recentSets.map((set, index) => ({
+      setNumber: index + 1,
+      reps: toPositiveInteger(set.reps, normalizedTarget.repMin),
+      weight: toNonNegativeNumber(set.weight, 0),
+    }));
+    const targetSetCount = Math.max(
+      normalizedTarget.targetSets,
+      suggestedSets.length
+    );
+    const lastSuggestion = suggestedSets[suggestedSets.length - 1];
+
+    while (suggestedSets.length < targetSetCount) {
+      suggestedSets.push({
+        ...lastSuggestion,
+        setNumber: suggestedSets.length + 1,
+      });
+    }
+
+    return {
+      exerciseId,
+      source: 'history',
+      targetSets: targetSetCount,
+      repMin: normalizedTarget.repMin,
+      repMax: normalizedTarget.repMax,
+      incrementSize: normalizedTarget.incrementSize,
+      deloadPercentage: normalizedTarget.deloadPercentage,
+      suggestedSets,
+    };
+  }
+
+  if (target) {
+    return {
+      exerciseId,
+      source: 'target',
+      targetSets: normalizedTarget.targetSets,
+      repMin: normalizedTarget.repMin,
+      repMax: normalizedTarget.repMax,
+      incrementSize: normalizedTarget.incrementSize,
+      deloadPercentage: normalizedTarget.deloadPercentage,
+      suggestedSets: buildFallbackSuggestedSets(
+        normalizedTarget.targetSets,
+        normalizedTarget.repMin,
+        0
+      ),
+    };
+  }
+
+  return {
+    exerciseId,
+    source: 'fallback',
+    targetSets: STANDARD_EXERCISE_DEFAULTS.targetSets,
+    repMin: STANDARD_EXERCISE_DEFAULTS.repMin,
+    repMax: STANDARD_EXERCISE_DEFAULTS.repMax,
+    incrementSize: STANDARD_EXERCISE_DEFAULTS.incrementSize,
+    deloadPercentage: STANDARD_EXERCISE_DEFAULTS.deloadPercentage,
+    suggestedSets: buildFallbackSuggestedSets(
+      STANDARD_EXERCISE_DEFAULTS.targetSets,
+      STANDARD_EXERCISE_DEFAULTS.repMin,
+      0
+    ),
+  };
+}
 
 export async function getWorkoutOwnerUserId() {
   if (!USE_REMOTE_WORKOUT_SYNC) {
