@@ -113,7 +113,7 @@ test('edit modal is wired to the editing state and uses the edit-specific input 
   assertIncludes(live, 'Edit Set {editingSet?.set_number}');
   assert.match(live, /value=\{editReps\}\s+onChangeText=\{setEditReps\}/s);
   assert.match(live, /value=\{editWeight\}\s+onChangeText=\{setEditWeight\}/s);
-  assert.match(live, /onPress=\{saveEditedSet\}[\s\S]*<Text style=\{\{ color: '#ffffff', fontWeight: '900' \}\}>Save<\/Text>/);
+  assert.match(live, /onPress=\{saveEditedSet\}[\s\S]*<Text style=\{\{ color: colors\.primaryContent, fontWeight: '900' \}\}>Save<\/Text>/);
 });
 
 test('delete control is separate from row editing and stops event propagation', () => {

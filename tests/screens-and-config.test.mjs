@@ -33,6 +33,20 @@ test('package exposes fast test commands without adding heavy native test depend
   }
 });
 
+
+
+test('Expo SDK package ranges are pinned to the committed lockfile versions', () => {
+  const pkg = readProjectJson('package.json');
+  const lock = readProjectJson('package-lock.json');
+
+  assert.equal(pkg.dependencies.expo, '56.0.11');
+  assert.equal(pkg.dependencies['expo-crypto'], '56.0.4');
+  assert.equal(lock.packages[''].dependencies.expo, pkg.dependencies.expo);
+  assert.equal(lock.packages[''].dependencies['expo-crypto'], pkg.dependencies['expo-crypto']);
+  assert.doesNotMatch(pkg.dependencies.expo, /^[~^]/);
+  assert.doesNotMatch(pkg.dependencies['expo-crypto'], /^[~^]/);
+});
+
 test('routing and source files required by the app exist', () => {
   for (const file of appScreens) {
     assert.equal(fileExists(file), true, `missing screen ${file}`);
@@ -348,4 +362,17 @@ test('exercise library and live picker use theme-aware tokens instead of pasted-
 
   assert.match(pickerModal, /className="rounded-t-card border border-base-300 bg-base-200 p-4 pb-8"/);
   assert.doesNotMatch(pickerModal, /backgroundColor:\s*'#ffffff'/);
+});
+
+test('live workout screen uses readable dark-theme colors for the main session surfaces', () => {
+  const live = readProjectFile('app/workout/session/[id].tsx');
+
+  assert.match(live, /import \{ colors \} from '@\/src\/lib\/theme';/);
+  assert.match(live, /backgroundColor: colors\.base100/);
+  assert.match(live, /borderColor: colors\.base300/);
+  assert.match(live, /color: colors\.baseContent/);
+  assert.match(live, /placeholderTextColor=\{colors\.baseMuted\}/);
+  assert.match(live, /backgroundColor: selected \? colors\.primary : colors\.base100/);
+  assert.match(live, /backgroundColor: colors\.base200,[\s\S]*borderColor: colors\.base300,[\s\S]*Edit Set \{editingSet\?\.set_number\}/);
+  assert.doesNotMatch(live, /#(?:ffffff|f8fafc|f1f5f9|e2e8f0|cbd5e1|64748b|475569|334155|0f172a|94a3b8)/i);
 });
