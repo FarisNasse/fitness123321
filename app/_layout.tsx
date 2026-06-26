@@ -177,6 +177,19 @@ export default function RootLayout() {
               <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen
+                name="workout/exercises"
+                options={{
+                  title: 'Exercise Browser',
+                  headerStyle: { backgroundColor: '#0d1117' },
+                  headerTintColor: '#a3e635',
+                  headerTitleStyle: {
+                    color: '#e6edf3',
+                    fontFamily: 'SpaceGrotesk_700Bold',
+                  },
+                  headerShadowVisible: false,
+                }}
+              />
+              <Stack.Screen
                 name="workout/session/[id]"
                 options={{
                   title: 'Live Workout',

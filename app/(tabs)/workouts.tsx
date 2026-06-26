@@ -10,7 +10,6 @@ import { Screen } from '@/src/components/Screen';
 import { SectionHeader } from '@/src/components/SectionHeader';
 import { WeekStrip } from '@/src/components/WeekStrip';
 import { WorkoutHistoryCard } from '@/src/components/WorkoutHistoryCard';
-import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
 import {
   createLocalWorkoutSession,
   getCompletedWorkoutSessions,
@@ -182,7 +181,24 @@ export default function WorkoutsScreen() {
         </Card>
 
         <Card className="gap-4">
-          <ExerciseLibrary scrollMode="page" />
+          <SectionHeader
+            title="Exercise library"
+            action={
+              <Pressable onPress={() => router.push('/workout/exercises')}>
+                <Text className="text-sm font-bold text-primary">Open</Text>
+              </Pressable>
+            }
+          />
+          <Text className="text-sm font-body leading-6 text-base-muted">
+            Browse the full seeded exercise catalog on its own screen. Live workouts
+            still use the Add exercise picker so choosing a movement immediately adds
+            it to the active session.
+          </Text>
+          <Button
+            title="Browse exercises"
+            onPress={() => router.push('/workout/exercises')}
+            variant="outline"
+          />
         </Card>
 
         <Card className="gap-4">

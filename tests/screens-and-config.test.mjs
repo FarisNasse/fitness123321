@@ -14,6 +14,7 @@ const appScreens = [
   'app/(tabs)/progress.tsx',
   'app/(tabs)/wellness.tsx',
   'app/(tabs)/workouts.tsx',
+  'app/workout/exercises.tsx',
   'app/workout/session/[id].tsx',
   'app/workout/history/[id].tsx',
 ];
@@ -89,6 +90,7 @@ test('root layout initializes local persistence and syncs workout queue on app a
   assert.match(layout, /AppState\.addEventListener\(\s*'change'/s);
   assert.match(layout, /if \(state === 'active'\)/);
   assert.match(layout, /<QueryClientProvider client=\{queryClient\}>/);
+  assert.match(layout, /<Stack\.Screen\s*name="workout\/exercises"/);
   assert.match(layout, /<Stack\.Screen\s*name="workout\/session\/\[id\]"/);
   assert.match(layout, /<Stack\.Screen\s*name="workout\/history\/\[id\]"/);
 });
@@ -210,9 +212,20 @@ test('workouts tab is wired to the local-first workout flow', () => {
   assert.match(workouts, /createLocalWorkoutSession\(userId, 'Quick workout'\)/);
   assert.match(workouts, /router\.push\(`\/workout\/session\/\$\{sessionId\}`\)/);
   assert.match(workouts, /getCompletedWorkoutSessions\(4\)/);
-  assert.match(workouts, /<ExerciseLibrary scrollMode="page" \/>/);
+  assert.match(workouts, /router\.push\('\/workout\/exercises'\)/);
+  assert.doesNotMatch(workouts, /<ExerciseLibrary scrollMode="page" \/>/);
   assert.match(workouts, /router\.push\(`\/workout\/history\/\$\{session\.local_id\}`\)/);
   assert.match(workouts, /USE_REMOTE_WORKOUT_SYNC \? 'Cloud sync on' : 'Local mode'/);
+});
+
+test('dedicated workout exercise browser reuses the shared ExerciseLibrary as a full page', () => {
+  const exerciseRoute = readProjectFile('app/workout/exercises.tsx');
+  const layout = readProjectFile('app/_layout.tsx');
+
+  assert.match(exerciseRoute, /import \{ Screen \} from '@\/src\/components\/Screen';/);
+  assert.match(exerciseRoute, /import \{ ExerciseLibrary \} from '@\/src\/features\/workouts\/ExerciseLibrary';/);
+  assert.match(exerciseRoute, /<Screen>[\s\S]*<ExerciseLibrary scrollMode="page" \/>[\s\S]*<\/Screen>/);
+  assert.match(layout, /name="workout\/exercises"[\s\S]*title: 'Exercise Browser'[\s\S]*headerStyle: \{ backgroundColor: '#0d1117' \}[\s\S]*headerTintColor: '#a3e635'/);
 });
 
 
