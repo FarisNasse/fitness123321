@@ -336,7 +336,7 @@ test('exercise library supports loading, searching, filtering, clearing, details
   assert.match(library, /scrollMode = 'contained'/);
   assert.match(library, /keyboardShouldPersistTaps="handled"/);
   assert.match(library, /className="max-h-full"/);
-  assert.match(library, /return <View className="gap-4">\{libraryContent\}<\/View>/);
+  assert.match(library, /return <View className="gap-4" style=\{styles\.pageLibrary\}>\{libraryContent\}<\/View>/);
   assert.match(library, /searchQuery\.trim\(\)\.toLowerCase\(\)/);
   assert.match(library, /exercise\.name,[\s\S]*exercise\.muscleGroup,[\s\S]*exercise\.equipment,[\s\S]*exercise\.movementType,[\s\S]*exercise\.difficulty,/);
   assert.match(library, /function clearFilters\(\)/);
@@ -345,6 +345,16 @@ test('exercise library supports loading, searching, filtering, clearing, details
   assert.match(library, /<Modal[\s\S]*visible=\{Boolean\(selectedExercise\)\}/);
 
   assert.match(library, /Muscle diagram placeholder/);
+});
+
+test('tailwind theme tokens keep dark readable fallbacks when CSS variables are missing', () => {
+  const tailwindConfig = readProjectFile('tailwind.config.js');
+
+  assert.match(tailwindConfig, /const withOpacity = \(variableName, fallback\) =>/);
+  assert.match(tailwindConfig, /rgb\(var\(\$\{variableName\}, \$\{fallback\}\)\)/);
+  assert.match(tailwindConfig, /'base-content': withOpacity\('--color-base-content', '230 237 243'\)/);
+  assert.match(tailwindConfig, /'base-muted': withOpacity\('--color-base-muted', '139 148 158'\)/);
+  assert.match(tailwindConfig, /'base-100': withOpacity\('--color-base-100', '13 17 23'\)/);
 });
 
 test('exercise library and live picker use theme-aware tokens instead of pasted-in light cards', () => {
@@ -358,9 +368,13 @@ test('exercise library and live picker use theme-aware tokens instead of pasted-
   assert.match(library, /rounded-input border border-base-300 bg-base-100 px-4 py-3 text-base font-body text-base-content/);
   assert.match(library, /placeholderTextColor=\{colors\.baseMuted\}/);
   assert.match(library, /rounded-t-card border border-base-300 bg-base-200/);
+  assert.match(library, /StyleSheet\.create\(\{[\s\S]*exerciseCard:\s*\{[\s\S]*backgroundColor: colors\.base100,[\s\S]*color: colors\.baseContent,[\s\S]*modalSheet:\s*\{[\s\S]*backgroundColor: colors\.base200,/);
+  assert.match(library, /style=\{styles\.searchInput\}/);
   assert.doesNotMatch(library, /#(?:ffffff|f8fafc|f1f5f9|e2e8f0|cbd5e1|64748b|475569|334155|0f172a|0369a1|bae6fd|e0f2fe|94a3b8)/i);
 
   assert.match(pickerModal, /className="rounded-t-card border border-base-300 bg-base-200 p-4 pb-8"/);
+  assert.match(pickerModal, /style=\{pickerSheetStyle\}/);
+  assert.match(live, /const pickerSheetStyle = \{[\s\S]*backgroundColor: colors\.base200,[\s\S]*borderColor: colors\.base300,[\s\S]*overflow: 'hidden' as const,/);
   assert.doesNotMatch(pickerModal, /backgroundColor:\s*'#ffffff'/);
 });
 

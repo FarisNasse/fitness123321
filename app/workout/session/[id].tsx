@@ -56,6 +56,10 @@ function buildExerciseSetMap(sets: LocalWorkoutSetRow[]) {
   }, new Map<string, LocalWorkoutSetRow[]>());
 }
 
+function rgba(red: number, green: number, blue: number, alpha: number) {
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
 function formatWeightInput(value: number) {
   if (Number.isInteger(value)) {
     return String(value);
@@ -1061,7 +1065,7 @@ export default function LiveWorkoutScreen() {
           <Pressable
             onPress={(event) => event.stopPropagation()}
             className="rounded-t-card border border-base-300 bg-base-200 p-4 pb-8"
-            style={{ maxHeight: '88%' }}
+            style={pickerSheetStyle}
           >
             <ExerciseLibrary
               onSelect={chooseExercise}
@@ -1249,6 +1253,19 @@ function StatBox({ label, value }: { label: string; value: string }) {
     </View>
   );
 }
+
+
+const pickerSheetStyle = {
+  backgroundColor: colors.base200,
+  borderColor: colors.base300,
+  borderTopLeftRadius: 28,
+  borderTopRightRadius: 28,
+  borderWidth: 1,
+  maxHeight: '88%' as const,
+  overflow: 'hidden' as const,
+  padding: 16,
+  paddingBottom: 32,
+};
 
 const inputStyle = {
   backgroundColor: colors.base100,
