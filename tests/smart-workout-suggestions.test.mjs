@@ -88,3 +88,46 @@ test('live workout screen keeps target configuration optional and uses dynamic i
   assert.match(live, /label=\{`\+ \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
   assert.match(live, /onPress=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
 });
+
+test('progression service is local, beginner-friendly, and keeps 1RM as secondary insight', () => {
+  const service = readProjectFile('src/features/workouts/progression-service.ts');
+
+  assert.match(service, /export type ProgressionDecision = 'increase' \| 'repeat' \| 'deload'/);
+  assert.match(service, /export type ProgressionEffortFeedback = 'easy' \| 'good' \| 'max'/);
+  assert.match(service, /export function buildProgressionRecommendation/);
+  assert.match(service, /const allTargetSetsAtRepMax =/);
+  assert.match(service, /allTargetSetsAtRepMax && input\.effortFeedback !== 'max'/);
+  assert.match(service, /decision: 'increase'/);
+  assert.match(service, /decision: 'repeat'/);
+  assert.match(service, /decision: 'deload'/);
+  assert.match(service, /Estimated 1RM:[\s\S]*not the main rule/);
+  assert.match(service, /The rep-range rule still drives the recommendation/);
+  assert.match(service, /keep the same weight/i);
+  assert.match(service, /Drop about \$\{deloadPercentage\}% next time/i);
+});
+
+test('workout service builds completion recommendations from local workout history', () => {
+  const service = readProjectFile('src/features/workouts/workout-service.ts');
+
+  assert.match(service, /buildProgressionRecommendation/);
+  assert.match(service, /export function getWorkoutCompletionProgressionRecommendations/);
+  assert.match(service, /const currentSetsByExercise = groupWorkoutSetsByExercise\(getLocalWorkoutSets\(sessionLocalId\)\)/);
+  assert.match(service, /const previousSets = getRecentCompletedExerciseSets\(exerciseId\)/);
+  assert.match(service, /targetSets: target\.targetSets/);
+  assert.match(service, /effortFeedback: options\.effortFeedback/);
+  assert.match(service, /export function getWorkoutCompletionProgressionReasonText/);
+  assert.match(service, /Next time:/);
+});
+
+test('live workout screen collects optional effort feedback and shows completion reasons', () => {
+  const live = readProjectFile('app/workout/session/[id].tsx');
+
+  assert.match(live, /ProgressionEffortFeedback/);
+  assert.match(live, /const \[effortFeedback, setEffortFeedback\] = useState<ProgressionEffortFeedback \| null>\(null\)/);
+  assert.match(live, /How did that feel\?/);
+  assert.match(live, /\(\['easy', 'good', 'max'\] as const\)\.map/);
+  assert.match(live, /getWorkoutCompletionProgressionReasonText/);
+  assert.match(live, /const progressionReasonText = getWorkoutCompletionProgressionReasonText/);
+  assert.match(live, /const completionMessage = \[/);
+  assert.match(live, /Alert\.alert\('Workout complete', completionMessage\)/);
+});

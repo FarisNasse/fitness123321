@@ -24,11 +24,13 @@ import {
   getLocalWorkoutSessionExercises,
   getLocalWorkoutSets,
   getSmartExerciseDefaults,
+  getWorkoutCompletionProgressionReasonText,
   syncPendingWorkoutSessions,
   updateLocalWorkoutSet,
   upsertLocalExerciseTarget,
   type SmartExerciseDefaults,
 } from '@/src/features/workouts/workout-service';
+import type { ProgressionEffortFeedback } from '@/src/features/workouts/progression-service';
 import type { LocalWorkoutSet } from '@/src/lib/local-db';
 import type { Exercise } from '@/src/types/models';
 
@@ -112,6 +114,7 @@ export default function LiveWorkoutScreen() {
   const [repMaxInput, setRepMaxInput] = useState('12');
   const [incrementSizeInput, setIncrementSizeInput] = useState('5');
   const [deloadPercentageInput, setDeloadPercentageInput] = useState('10');
+  const [effortFeedback, setEffortFeedback] = useState<ProgressionEffortFeedback | null>(null);
 
   // Inline editing state
   const [editingSet, setEditingSet] = useState<LocalWorkoutSet | null>(null);
@@ -495,13 +498,30 @@ export default function LiveWorkoutScreen() {
   function finishWorkout() {
     if (!sessionId) return;
 
+    const exerciseNamesById = Object.fromEntries(
+      Array.from(exerciseSetMap.keys()).map((exerciseId) => [
+        exerciseId,
+        resolveExercise(exerciseId)?.name ?? 'This exercise',
+      ])
+    );
+    const progressionReasonText = getWorkoutCompletionProgressionReasonText(
+      sessionId,
+      { effortFeedback, exerciseNamesById }
+    );
+    const completionMessage = [
+      'The workout was saved locally.',
+      progressionReasonText,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     completeLocalWorkoutSession(sessionId);
     void syncPendingWorkoutSessions().catch((error) => {
       console.warn('Failed to sync completed workout session.', error);
     });
 
-    Alert.alert('Workout complete', 'The workout was saved locally.');
+    Alert.alert('Workout complete', completionMessage);
     router.replace('/workouts');
   }
 
@@ -888,6 +908,49 @@ export default function LiveWorkoutScreen() {
             );
           })
         )}
+
+        <Card>
+          <View style={{ gap: 12 }}>
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontSize: 20, fontWeight: '900' }}>How did that feel?</Text>
+              <Text style={{ color: '#64748b', lineHeight: 21 }}>
+                Optional feedback helps next-time suggestions decide whether to
+                increase, repeat, or deload.
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {(['easy', 'good', 'max'] as const).map((feedback) => {
+                const selected = effortFeedback === feedback;
+                const label = feedback === 'easy' ? 'Easy' : feedback === 'good' ? 'Good' : 'Max';
+
+                return (
+                  <Pressable
+                    key={feedback}
+                    onPress={() => setEffortFeedback(selected ? null : feedback)}
+                    style={{
+                      alignItems: 'center',
+                      backgroundColor: selected ? '#0f172a' : '#f8fafc',
+                      borderColor: selected ? '#0f172a' : '#e2e8f0',
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      flex: 1,
+                      padding: 12,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: selected ? '#ffffff' : '#0f172a',
+                        fontWeight: '900',
+                      }}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Card>
 
         <Button title="Finish workout" onPress={finishWorkout} />
       </View>

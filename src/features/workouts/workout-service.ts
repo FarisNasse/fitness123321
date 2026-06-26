@@ -12,6 +12,12 @@ import {
   type LocalWorkoutSet,
 } from '@/src/lib/local-db';
 import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
+import {
+  buildProgressionRecommendation,
+  buildProgressionSummaryLines,
+  type ProgressionEffortFeedback,
+  type ProgressionRecommendation,
+} from '@/src/features/workouts/progression-service';
 
 export type LocalWorkoutSessionRow = LocalWorkoutSession;
 export type LocalWorkoutSessionExerciseRow = LocalWorkoutSessionExercise;
@@ -282,6 +288,63 @@ export async function getSmartExerciseDefaults(
       0
     ),
   };
+}
+
+
+export type WorkoutCompletionProgressionRecommendation = ProgressionRecommendation;
+
+function groupWorkoutSetsByExercise(sets: LocalWorkoutSet[]) {
+  return sets.reduce((groups, set) => {
+    const exerciseSets = groups.get(set.exercise_id) ?? [];
+    groups.set(set.exercise_id, [...exerciseSets, set]);
+    return groups;
+  }, new Map<string, LocalWorkoutSet[]>());
+}
+
+export function getWorkoutCompletionProgressionRecommendations(
+  sessionLocalId: string,
+  options: {
+    effortFeedback?: ProgressionEffortFeedback | null;
+    exerciseNamesById?: Record<string, string>;
+  } = {}
+) {
+  const currentSetsByExercise = groupWorkoutSetsByExercise(getLocalWorkoutSets(sessionLocalId));
+
+  return Array.from(currentSetsByExercise.entries()).map(
+    ([exerciseId, currentSets]) => {
+      const target = normalizeExerciseTarget(getLocalExerciseTarget(exerciseId));
+      const previousSets = getRecentCompletedExerciseSets(exerciseId);
+
+      return buildProgressionRecommendation({
+        exerciseId,
+        exerciseName: options.exerciseNamesById?.[exerciseId],
+        currentSets,
+        previousSets,
+        targetSets: target.targetSets,
+        repMin: target.repMin,
+        repMax: target.repMax,
+        incrementSize: target.incrementSize,
+        deloadPercentage: target.deloadPercentage,
+        effortFeedback: options.effortFeedback,
+      });
+    }
+  );
+}
+
+export function getWorkoutCompletionProgressionReasonText(
+  sessionLocalId: string,
+  options: {
+    effortFeedback?: ProgressionEffortFeedback | null;
+    exerciseNamesById?: Record<string, string>;
+  } = {}
+) {
+  const recommendations = getWorkoutCompletionProgressionRecommendations(
+    sessionLocalId,
+    options
+  );
+  const lines = buildProgressionSummaryLines(recommendations);
+
+  return lines.length > 0 ? `Next time:\n${lines.join('\n')}` : '';
 }
 
 export async function getWorkoutOwnerUserId() {
