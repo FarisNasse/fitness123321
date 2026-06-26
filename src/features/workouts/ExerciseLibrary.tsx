@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { Button } from '@/src/components/Button';
+import { EmptyState } from '@/src/components/EmptyState';
 import { fetchExercises } from '@/src/features/workouts/exercise-service';
 import type { Exercise } from '@/src/types/models';
 
@@ -187,20 +188,21 @@ export function ExerciseLibrary({
   const renderedExercises = (
     <View style={{ gap: 10 }}>
       {filteredExercises.length === 0 ? (
-        <View
-          style={{
-            backgroundColor: '#f8fafc',
-            borderColor: '#e2e8f0',
-            borderRadius: 16,
-            borderWidth: 1,
-            padding: 16,
-          }}
-        >
-          <Text style={{ fontWeight: '900' }}>No exercises found</Text>
-          <Text style={{ color: '#64748b', marginTop: 6 }}>
-            Try clearing the search or one of the filters.
-          </Text>
-        </View>
+        <EmptyState
+          title={hasActiveFilters ? 'No exercises match these filters' : 'Exercise library is empty'}
+          message={
+            hasActiveFilters
+              ? 'Clear the search or filters to get back to the seeded exercise list.'
+              : 'No seeded exercises were returned. Retry the local library, then run npm run check:exercises if this keeps happening.'
+          }
+          action={
+            hasActiveFilters ? (
+              <Button title="Clear search and filters" onPress={clearFilters} variant="outline" />
+            ) : (
+              <Button title="Retry exercise library" onPress={() => void refetch()} variant="outline" />
+            )
+          }
+        />
       ) : (
         filteredExercises.map((exercise) => (
           <Pressable
@@ -293,19 +295,11 @@ export function ExerciseLibrary({
           </Text>
         </View>
       ) : error ? (
-        <View style={{ gap: 12 }}>
-          <Text style={{ color: '#b91c1c', fontWeight: '900' }}>
-            Could not load exercises.
-          </Text>
-          <Text style={{ color: '#64748b', lineHeight: 20 }}>
-            The local exercise seed file could not be read. Run npm run
-            check:exercises to verify the seed data.
-          </Text>
-          {error?.message ? (
-            <Text style={{ color: '#94a3b8', fontSize: 12 }}>{error.message}</Text>
-          ) : null}
-          <Button title="Try again" onPress={() => void refetch()} />
-        </View>
+        <EmptyState
+          title="Could not load exercises"
+          message={`The local exercise seed file could not be read. Run npm run check:exercises to verify the seed data.${error?.message ? ` Detail: ${error.message}` : ''}`}
+          action={<Button title="Try again" onPress={() => void refetch()} />}
+        />
       ) : (
         <>
           <View style={{ gap: 12 }}>

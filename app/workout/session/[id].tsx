@@ -1,11 +1,12 @@
 import { useLocalSearchParams, router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, Text, TextInput, View } from 'react-native';
 
 import { Badge } from '@/src/components/Badge';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
+import { EmptyState } from '@/src/components/EmptyState';
 import { ProgressBar } from '@/src/components/ProgressBar';
 import { Screen } from '@/src/components/Screen';
 import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
@@ -35,6 +36,11 @@ import type { LocalWorkoutSet } from '@/src/lib/local-db';
 import type { Exercise } from '@/src/types/models';
 
 type LocalWorkoutSetRow = ReturnType<typeof getLocalWorkoutSets>[number];
+type WorkoutSessionForScreen = NonNullable<ReturnType<typeof getLocalWorkoutSession>>;
+type SessionLoadState =
+  | { status: 'loading' }
+  | { status: 'ready' }
+  | { status: 'error'; message: string; detail?: string };
 
 const REST_DURATION_SECONDS = 90;
 const REP_STEP = 1;
@@ -126,10 +132,46 @@ export default function LiveWorkoutScreen() {
     return id;
   }, [id]);
 
-  const session = useMemo(
-    () => (sessionId ? getLocalWorkoutSession(sessionId) : null),
-    [sessionId]
-  );
+  const [session, setSession] = useState<WorkoutSessionForScreen | null>(null);
+  const [sessionLoadState, setSessionLoadState] = useState<SessionLoadState>({
+    status: 'loading',
+  });
+
+  useEffect(() => {
+    if (!sessionId) {
+      setSession(null);
+      setSessionLoadState({
+        status: 'error',
+        message: 'Workout session unavailable',
+        detail: 'No workout session id was provided.',
+      });
+      return;
+    }
+
+    try {
+      const nextSession = getLocalWorkoutSession(sessionId);
+
+      if (!nextSession) {
+        setSession(null);
+        setSessionLoadState({
+          status: 'error',
+          message: 'Workout session unavailable',
+          detail: 'This local workout was not found on this device. Start a new workout from the Train tab.',
+        });
+        return;
+      }
+
+      setSession(nextSession);
+      setSessionLoadState({ status: 'ready' });
+    } catch (error) {
+      setSession(null);
+      setSessionLoadState({
+        status: 'error',
+        message: 'Could not load this workout',
+        detail: error instanceof Error ? error.message : 'The local workout database could not be read.',
+      });
+    }
+  }, [sessionId]);
 
   const selectedExerciseMetadata = useMemo(() => {
     if (!selectedExercise) return '';
@@ -158,7 +200,7 @@ export default function LiveWorkoutScreen() {
   }
 
   function refreshSets() {
-    if (!sessionId) return;
+    if (!sessionId || !session) return;
 
     const nextSets = getLocalWorkoutSets(sessionId);
     const nextMap = buildExerciseSetMap(nextSets);
@@ -191,8 +233,10 @@ export default function LiveWorkoutScreen() {
   }
 
   useEffect(() => {
+    if (sessionLoadState.status !== 'ready') return;
+
     refreshSets();
-  }, [sessionId]);
+  }, [sessionId, session?.local_id, sessionLoadState.status]);
 
   useEffect(() => {
     if (!selectedExercise || smartDefaultsByExerciseId[selectedExercise.id]) {
@@ -206,6 +250,8 @@ export default function LiveWorkoutScreen() {
   }, [selectedExercise?.id]);
 
   useEffect(() => {
+    if (sessionLoadState.status !== 'ready') return undefined;
+
     const timer = setInterval(() => {
       setElapsedSeconds((current) => current + 1);
     }, 1000);
@@ -213,7 +259,7 @@ export default function LiveWorkoutScreen() {
     return () => {
       clearInterval(timer);
     };
-  }, []);
+  }, [sessionLoadState.status]);
 
   useEffect(() => {
     if (restSeconds === null) return undefined;
@@ -424,6 +470,7 @@ export default function LiveWorkoutScreen() {
 
   function logSetForExercise(exercise: Exercise) {
     if (!sessionId) return;
+    if (!session) return;
 
     const parsed = parseSetInputs();
 
@@ -497,6 +544,7 @@ export default function LiveWorkoutScreen() {
 
   function finishWorkout() {
     if (!sessionId) return;
+    if (!session) return;
 
     const exerciseNamesById = Object.fromEntries(
       Array.from(exerciseSetMap.keys()).map((exerciseId) => [
@@ -525,6 +573,41 @@ export default function LiveWorkoutScreen() {
     router.replace('/workouts');
   }
 
+  if (sessionLoadState.status === 'loading') {
+    return (
+      <Screen>
+        <Card>
+          <View style={{ alignItems: 'center', gap: 12, paddingVertical: 24 }}>
+            <ActivityIndicator />
+            <Text style={{ color: '#64748b', fontWeight: '800' }}>
+              Loading workout session…
+            </Text>
+          </View>
+        </Card>
+      </Screen>
+    );
+  }
+
+  if (sessionLoadState.status === 'error') {
+    return (
+      <Screen>
+        <Card>
+          <EmptyState
+            title={sessionLoadState.message}
+            message={sessionLoadState.detail ?? 'Start a new local workout from the Train tab.'}
+            action={
+              <Button
+                title="Back to workouts"
+                onPress={() => router.replace('/workouts')}
+                variant="outline"
+              />
+            }
+          />
+        </Card>
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <View style={{ gap: 18 }}>
@@ -551,7 +634,7 @@ export default function LiveWorkoutScreen() {
                 justifyContent: 'space-between',
               }}
             >
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 96 }}>
                 <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
                   EXERCISES
                 </Text>
@@ -610,7 +693,7 @@ export default function LiveWorkoutScreen() {
                   justifyContent: 'space-between',
                 }}
               >
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 96 }}>
                   <Text style={{ color: '#94a3b8', fontSize: 12, fontWeight: '900' }}>
                     NEXT UP
                   </Text>
@@ -624,7 +707,7 @@ export default function LiveWorkoutScreen() {
                 <Badge label="One tap" variant="success" />
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
                 <CurrentSetValue
                   label="Suggested reps"
                   value={currentSetDraft.suggestedReps || '—'}
@@ -640,7 +723,7 @@ export default function LiveWorkoutScreen() {
                 {formatWeightInput(activeIncrementSize)} lb jumps
               </Text>
 
-              <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                 <QuickAdjustButton label="− rep" onPress={() => adjustReps(-REP_STEP)} />
                 <QuickAdjustButton label="+ rep" onPress={() => adjustReps(REP_STEP)} />
                 {/* Legacy fallback shape covered by tests: <QuickAdjustButton label="− 5 lb" onPress={() => adjustWeight(-WEIGHT_STEP)} /> */}
@@ -713,7 +796,7 @@ export default function LiveWorkoutScreen() {
                   </Text>
                 </View>
 
-                <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                   <TargetInput
                     label="Sets"
                     value={targetSetsInput}
@@ -730,7 +813,7 @@ export default function LiveWorkoutScreen() {
                     onChangeText={setRepMaxInput}
                   />
                 </View>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                   <TargetInput
                     label="Increment"
                     value={incrementSizeInput}
@@ -751,8 +834,8 @@ export default function LiveWorkoutScreen() {
               <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900' }}>
                 MANUAL FALLBACK
               </Text>
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                <View style={{ flex: 1, minWidth: 130 }}>
                   <Text style={{ fontWeight: '800', marginBottom: 6 }}>Reps</Text>
                   <TextInput
                     keyboardType="number-pad"
@@ -761,7 +844,7 @@ export default function LiveWorkoutScreen() {
                     style={inputStyle}
                   />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 130 }}>
                   <Text style={{ fontWeight: '800', marginBottom: 6 }}>Weight</Text>
                   <TextInput
                     keyboardType="decimal-pad"
@@ -787,7 +870,7 @@ export default function LiveWorkoutScreen() {
               </View>
             ) : null}
 
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
               <StatBox label="This exercise" value={String(selectedExerciseSets.length)} />
               <StatBox label="Total sets" value={String(sets.length)} />
             </View>
@@ -819,7 +902,7 @@ export default function LiveWorkoutScreen() {
                       justifyContent: 'space-between',
                     }}
                   >
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, minWidth: 96 }}>
                       <Text style={{ fontSize: 22, fontWeight: '900' }}>
                         {exercise.name}
                       </Text>
@@ -918,7 +1001,7 @@ export default function LiveWorkoutScreen() {
                 increase, repeat, or deload.
               </Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
               {(['easy', 'good', 'max'] as const).map((feedback) => {
                 const selected = effortFeedback === feedback;
                 const label = feedback === 'easy' ? 'Easy' : feedback === 'good' ? 'Good' : 'Max';
@@ -1020,7 +1103,7 @@ export default function LiveWorkoutScreen() {
             </Text>
 
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 96 }}>
                 <Text style={{ fontWeight: '800', marginBottom: 6 }}>Reps</Text>
                 <TextInput
                   keyboardType="number-pad"
@@ -1029,7 +1112,7 @@ export default function LiveWorkoutScreen() {
                   style={inputStyle}
                 />
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, minWidth: 96 }}>
                 <Text style={{ fontWeight: '800', marginBottom: 6 }}>Weight</Text>
                 <TextInput
                   keyboardType="decimal-pad"
@@ -1086,7 +1169,7 @@ function TargetInput({
   onChangeText: (value: string) => void;
 }) {
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, minWidth: 96 }}>
       <Text style={{ color: '#64748b', fontSize: 12, fontWeight: '900', marginBottom: 6 }}>
         {label}
       </Text>
@@ -1109,6 +1192,7 @@ function CurrentSetValue({ label, value }: { label: string; value: string }) {
         borderRadius: 18,
         borderWidth: 1,
         flex: 1,
+        minWidth: 130,
         padding: 14,
       }}
     >
@@ -1130,7 +1214,9 @@ function QuickAdjustButton({ label, onPress }: { label: string; onPress: () => v
         alignItems: 'center',
         backgroundColor: pressed ? '#e2e8f0' : '#f8fafc',
         borderRadius: 14,
-        flex: 1,
+        flexGrow: 1,
+        minWidth: 74,
+        paddingHorizontal: 8,
         paddingVertical: 12,
       })}
     >
@@ -1148,6 +1234,7 @@ function StatBox({ label, value }: { label: string; value: string }) {
         borderRadius: 14,
         borderWidth: 1,
         flex: 1,
+        minWidth: 112,
         padding: 12,
       }}
     >

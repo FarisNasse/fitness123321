@@ -1,8 +1,10 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 import { Text, View } from 'react-native';
 
+import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
+import { EmptyState } from '@/src/components/EmptyState';
 import { Screen } from '@/src/components/Screen';
 import {
   getExerciseById,
@@ -30,14 +32,45 @@ export default function WorkoutHistoryDetailScreen() {
     return id;
   }, [id]);
 
-  const session = useMemo(
-    () => (sessionId ? getLocalWorkoutSession(sessionId) : null),
-    [sessionId]
-  );
-  const sets = useMemo(
-    () => (sessionId ? getLocalWorkoutSets(sessionId) : []),
-    [sessionId]
-  );
+  const sessionResult = useMemo(() => {
+    if (!sessionId) {
+      return {
+        session: null,
+        error: 'No local workout id was provided.',
+      };
+    }
+
+    try {
+      const session = getLocalWorkoutSession(sessionId);
+
+      return {
+        session,
+        error: session ? null : 'This local workout session is not available on this device.',
+      };
+    } catch (error) {
+      return {
+        session: null,
+        error: error instanceof Error ? error.message : 'Workout history could not be read.',
+      };
+    }
+  }, [sessionId]);
+
+  const session = sessionResult.session;
+  const setsResult = useMemo(() => {
+    if (!sessionId || !session) {
+      return { sets: [], error: null };
+    }
+
+    try {
+      return { sets: getLocalWorkoutSets(sessionId), error: null };
+    } catch (error) {
+      return {
+        sets: [],
+        error: error instanceof Error ? error.message : 'Workout sets could not be read.',
+      };
+    }
+  }, [sessionId, session]);
+  const sets = setsResult.sets;
 
   const groupedSets = useMemo(() => {
     return sets.reduce(
@@ -66,12 +99,37 @@ export default function WorkoutHistoryDetailScreen() {
     return (
       <Screen>
         <Card>
-          <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 24, fontWeight: '900' }}>Workout not found</Text>
-            <Text style={{ color: '#64748b', lineHeight: 21 }}>
-              This local workout session is not available on this device.
-            </Text>
-          </View>
+          <EmptyState
+            title="Workout not found"
+            message={sessionResult.error ?? 'This local workout session is not available on this device.'}
+            action={
+              <Button
+                title="Back to workouts"
+                onPress={() => router.replace('/workouts')}
+                variant="outline"
+              />
+            }
+          />
+        </Card>
+      </Screen>
+    );
+  }
+
+  if (setsResult.error) {
+    return (
+      <Screen>
+        <Card>
+          <EmptyState
+            title="Could not load workout sets"
+            message={`The session was found, but its saved sets could not be read. ${setsResult.error}`}
+            action={
+              <Button
+                title="Back to workouts"
+                onPress={() => router.replace('/workouts')}
+                variant="outline"
+              />
+            }
+          />
         </Card>
       </Screen>
     );
@@ -89,7 +147,7 @@ export default function WorkoutHistoryDetailScreen() {
         </View>
 
         <Card>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             <StatBox label="Duration" value={formatDuration(session.duration_seconds)} />
             <StatBox label="Total sets" value={String(sets.length)} />
           </View>
@@ -130,6 +188,8 @@ export default function WorkoutHistoryDetailScreen() {
                           borderRadius: 14,
                           borderWidth: 1,
                           flexDirection: 'row',
+                          flexWrap: 'wrap',
+                          gap: 8,
                           justifyContent: 'space-between',
                           padding: 12,
                         }}
@@ -160,6 +220,7 @@ function StatBox({ label, value }: { label: string; value: string }) {
         borderRadius: 14,
         borderWidth: 1,
         flex: 1,
+        minWidth: 112,
         padding: 12,
       }}
     >

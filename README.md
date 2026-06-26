@@ -39,6 +39,15 @@ npx expo start -c
 The exercise library uses local seeded data by default, so you do not need a
 Supabase project just to run and test the workout screen from the terminal.
 
+
+## Workout reviewer docs
+
+The gym-use workflow now has short reviewer-facing docs so the feature can be understood without reading every source file:
+
+- [`docs/workout-local-first-architecture.md`](docs/workout-local-first-architecture.md) explains the local-first data flow, local tables, sync behavior, and clean-checkout path.
+- [`docs/workout-recommendation-logic.md`](docs/workout-recommendation-logic.md) explains smart defaults and next-time progression guidance in plain language.
+- [`docs/workout-demo-script.md`](docs/workout-demo-script.md) gives a short script for demoing the main workout flow.
+
 ## Optional Supabase setup
 
 Supabase is only needed once you want cloud auth/sync. Fill in `.env` and set
