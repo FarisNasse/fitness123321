@@ -31,6 +31,18 @@ export type LocalWorkoutSessionExercise = {
   updated_at: string;
 };
 
+export type ExerciseTargetLocal = {
+  local_id: string;
+  exercise_id: string;
+  target_sets: number;
+  rep_min: number;
+  rep_max: number;
+  increment_size: number;
+  deload_percentage: number;
+  sync_status: 'pending' | 'synced' | 'failed';
+  updated_at: string;
+};
+
 export type LocalWorkoutSet = {
   local_id: string;
   server_id: string | null;
@@ -87,6 +99,7 @@ export type LocalWaterLog = {
 type WebStore = {
   workout_sessions_local: Record<string, unknown>[];
   workout_session_exercises_local: Record<string, unknown>[];
+  exercise_targets_local: Record<string, unknown>[];
   workout_sets_local: Record<string, unknown>[];
   meal_logs_local: Record<string, unknown>[];
   meal_items_local: Record<string, unknown>[];
@@ -118,6 +131,7 @@ function createEmptyWebStore(): WebStore {
   return {
     workout_sessions_local: [],
     workout_session_exercises_local: [],
+    exercise_targets_local: [],
     workout_sets_local: [],
     meal_logs_local: [],
     meal_items_local: [],
@@ -230,6 +244,42 @@ function createWebDbAdapter(): DbAdapter {
             created_at: createdAt,
             updated_at: updatedAt,
           });
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('insert into exercise_targets_local')) {
+        const [
+          localId,
+          exerciseId,
+          targetSets,
+          repMin,
+          repMax,
+          incrementSize,
+          deloadPercentage,
+          updatedAt,
+        ] = params;
+        const existingTarget = store.exercise_targets_local.find(
+          (item) => item.exercise_id === exerciseId
+        );
+        const targetRow = {
+          local_id: existingTarget?.local_id ?? localId,
+          exercise_id: exerciseId,
+          target_sets: targetSets,
+          rep_min: repMin,
+          rep_max: repMax,
+          increment_size: incrementSize,
+          deload_percentage: deloadPercentage,
+          sync_status: 'pending',
+          updated_at: updatedAt,
+        };
+
+        if (existingTarget) {
+          Object.assign(existingTarget, targetRow);
+        } else {
+          store.exercise_targets_local.push(targetRow);
         }
 
         writeWebStore(store);
@@ -715,6 +765,55 @@ function createWebDbAdapter(): DbAdapter {
       }
 
       if (
+        normalized.includes('from exercise_targets_local') &&
+        normalized.includes('exercise_id = ?')
+      ) {
+        const [exerciseId] = params;
+
+        return store.exercise_targets_local.filter(
+          (target) => target.exercise_id === exerciseId
+        ) as T[];
+      }
+
+      if (
+        normalized.includes('from workout_sets_local ws') &&
+        normalized.includes('join workout_sessions_local s') &&
+        normalized.includes('ws.exercise_id = ?')
+      ) {
+        const [exerciseId] = params;
+        const latestSession = store.workout_sessions_local
+          .filter((session) => Boolean(session.completed_at) && !isDeletedRecord(session))
+          .filter((session) =>
+            store.workout_sets_local.some(
+              (set) =>
+                set.session_local_id === session.local_id &&
+                set.exercise_id === exerciseId &&
+                !isDeletedRecord(set)
+            )
+          )
+          .sort(
+            (a, b) =>
+              Date.parse(String(b.completed_at ?? b.started_at)) -
+              Date.parse(String(a.completed_at ?? a.started_at))
+          )[0];
+
+        if (!latestSession) {
+          return [] as T[];
+        }
+
+        return store.workout_sets_local
+          .filter(
+            (set) =>
+              set.session_local_id === latestSession.local_id &&
+              set.exercise_id === exerciseId &&
+              !isDeletedRecord(set)
+          )
+          .sort(
+            (a, b) => Number(a.set_number ?? 0) - Number(b.set_number ?? 0)
+          ) as T[];
+      }
+
+      if (
         normalized.includes('from workout_sets_local') &&
         normalized.includes('group by exercise_id')
       ) {
@@ -1053,6 +1152,18 @@ export function initializeLocalDb() {
       unique(session_local_id, exercise_id)
     );
 
+    create table if not exists exercise_targets_local (
+      local_id text primary key,
+      exercise_id text not null unique,
+      target_sets integer not null default 3,
+      rep_min integer not null default 8,
+      rep_max integer not null default 12,
+      increment_size real not null default 5,
+      deload_percentage real not null default 10,
+      sync_status text not null default 'pending',
+      updated_at text not null
+    );
+
     create table if not exists workout_sets_local (
       local_id text primary key,
       server_id text,
@@ -1119,6 +1230,9 @@ export function initializeLocalDb() {
 
     create index if not exists idx_workout_session_exercises_session
     on workout_session_exercises_local(session_local_id, sort_order);
+
+    create index if not exists idx_exercise_targets_exercise
+    on exercise_targets_local(exercise_id);
 
     create index if not exists idx_workout_sets_session
     on workout_sets_local(session_local_id);
