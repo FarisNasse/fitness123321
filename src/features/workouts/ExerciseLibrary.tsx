@@ -116,6 +116,7 @@ export function ExerciseLibrary({
 }: ExerciseLibraryProps) {
   const [filters, setFilters] = useState(emptyFilters);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
 
   const {
@@ -177,13 +178,18 @@ export function ExerciseLibrary({
     setSearchQuery('');
   }
 
+  function clearStructuredFilters() {
+    setFilters(emptyFilters);
+  }
+
   function selectExercise(exercise: Exercise) {
     onSelect?.(exercise);
     setSelectedExercise(null);
   }
 
-  const hasActiveFilters =
-    Boolean(searchQuery.trim()) || FILTERS.some((filter) => filters[filter.key]);
+  const activeFilterCount = FILTERS.filter((filter) => filters[filter.key]).length;
+  const hasActiveSearch = Boolean(searchQuery.trim());
+  const hasActiveFilters = hasActiveSearch || activeFilterCount > 0;
 
   const renderedExercises = (
     <View style={{ gap: 10 }}>
@@ -273,7 +279,7 @@ export function ExerciseLibrary({
 
         <TextInput
           autoCapitalize="none"
-          placeholder="Search exercise, muscle, equipment..."
+          placeholder="Search exercise, muscle, or equipment"
           value={searchQuery}
           onChangeText={setSearchQuery}
           style={{
@@ -302,51 +308,145 @@ export function ExerciseLibrary({
         />
       ) : (
         <>
-          <View style={{ gap: 12 }}>
-            {FILTERS.map((filter) => (
-              <View key={filter.key} style={{ gap: 8 }}>
-                <Text style={{ color: '#475569', fontWeight: '900' }}>
-                  {filter.label}
-                </Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ gap: 8, paddingRight: 4 }}
-                >
-                  <FilterChip
-                    label={filter.allLabel}
-                    selected={!filters[filter.key]}
-                    onPress={() => setFilter(filter.key, null)}
-                  />
-                  {filterOptions[filter.key].map((option) => (
-                    <FilterChip
-                      key={option}
-                      label={option}
-                      selected={filters[filter.key] === option}
-                      onPress={() => setFilter(filter.key, option)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
-            ))}
-          </View>
-
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View
+            style={{
+              alignItems: 'center',
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: 10,
+              justifyContent: 'space-between',
+            }}
+          >
             <Text style={{ color: '#64748b', fontWeight: '800' }}>
-              {filteredExercises.length} of {exercises.length} exercises
+              {filteredExercises.length} of {exercises.length} exercises visible
             </Text>
-            {hasActiveFilters ? (
-              <Pressable onPress={clearFilters}>
+            <View style={{ alignItems: 'center', flexDirection: 'row', gap: 12 }}>
+              {hasActiveFilters ? (
+                <Pressable onPress={clearFilters}>
+                  <Text style={{ color: '#0f172a', fontWeight: '900' }}>
+                    Clear
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={() => setIsFilterSheetOpen(true)}
+                style={({ pressed }) => ({
+                  backgroundColor: '#ffffff',
+                  borderColor: activeFilterCount > 0 ? '#0f172a' : '#cbd5e1',
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  opacity: pressed ? 0.75 : 1,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                })}
+              >
                 <Text style={{ color: '#0f172a', fontWeight: '900' }}>
-                  Clear
+                  {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
                 </Text>
               </Pressable>
-            ) : null}
+            </View>
           </View>
 
           {renderedExercises}
         </>
       )}
+
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setIsFilterSheetOpen(false)}
+        transparent
+        visible={isFilterSheetOpen}
+      >
+        <Pressable
+          onPress={() => setIsFilterSheetOpen(false)}
+          style={{
+            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            flex: 1,
+            justifyContent: 'flex-end',
+          }}
+        >
+          <Pressable
+            onPress={(event: GestureResponderEvent) => event.stopPropagation()}
+            style={{
+              backgroundColor: '#ffffff',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              gap: 16,
+              maxHeight: '85%',
+              padding: 20,
+              paddingBottom: 28,
+            }}
+          >
+            <View
+              style={{
+                alignSelf: 'center',
+                backgroundColor: '#cbd5e1',
+                borderRadius: 999,
+                height: 4,
+                width: 46,
+              }}
+            />
+
+            <View
+              style={{
+                alignItems: 'flex-start',
+                flexDirection: 'row',
+                gap: 12,
+                justifyContent: 'space-between',
+              }}
+            >
+              <View style={{ flex: 1, gap: 6 }}>
+                <Text style={{ fontSize: 24, fontWeight: '900' }}>Filters</Text>
+                <Text style={{ color: '#64748b', lineHeight: 21 }}>
+                  Narrow the library by muscle, equipment, movement, or level.
+                </Text>
+              </View>
+              {activeFilterCount > 0 ? (
+                <Pressable onPress={clearStructuredFilters} style={{ paddingVertical: 4 }}>
+                  <Text style={{ color: '#0f172a', fontWeight: '900' }}>Clear all</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ gap: 18, paddingBottom: 4 }}
+            >
+              {FILTERS.map((filter) => (
+                <View key={filter.key} style={{ gap: 8 }}>
+                  <Text style={{ color: '#475569', fontWeight: '900' }}>
+                    {filter.label}
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    <FilterChip
+                      label={filter.allLabel}
+                      selected={!filters[filter.key]}
+                      onPress={() => setFilter(filter.key, null)}
+                    />
+                    {filterOptions[filter.key].map((option) => (
+                      <FilterChip
+                        key={option}
+                        label={option}
+                        selected={filters[filter.key] === option}
+                        onPress={() => setFilter(filter.key, option)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: '#64748b', fontWeight: '800', textAlign: 'center' }}>
+                {filteredExercises.length} exercises visible
+              </Text>
+              <Button title="Show exercises" onPress={() => setIsFilterSheetOpen(false)} />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         animationType="slide"
