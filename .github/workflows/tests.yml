@@ -32,8 +32,15 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Install dependencies and refresh lockfile
+        run: npm install --no-audit --no-fund
+
+      - name: Verify dependency lockfile is committed
+        run: |
+          if ! git diff --exit-code -- package.json package-lock.json; then
+            echo "::error::package.json and package-lock.json are out of sync. Run npm install locally and commit both files together."
+            exit 1
+          fi
 
       - name: Run all checks and tests
         run: npm run test:all
