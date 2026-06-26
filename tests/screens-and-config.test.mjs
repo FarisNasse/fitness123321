@@ -234,9 +234,19 @@ test('workouts tab is wired as a simplified workout hub', () => {
   assert.match(workouts, /title="Start workout"[\s\S]*title="Browse exercises"/);
   assert.match(workouts, /function browseExercises\(\) \{[\s\S]*router\.push\('\/workout\/exercises'\);[\s\S]*\}/);
   assert.match(workouts, /title="Browse exercises"[\s\S]*onPress=\{browseExercises\}[\s\S]*variant="outline"/);
-  for (const phrase of ['Supabase setup', 'Cloud sync on', 'Local mode', 'remote database', 'local data persist', 'starting the demo']) {
+  for (const phrase of [
+    'Supabase setup',
+    'Cloud sync on',
+    'Local mode',
+    'remote database',
+    'local data persist',
+    'starting the demo',
+    'npm run check:exercises',
+    'seed file',
+  ]) {
     assert.doesNotMatch(workouts, new RegExp(phrase));
   }
+  assert.doesNotMatch(workouts, /<MiniStat[^>]*label="Sync"/s);
   assert.doesNotMatch(workouts, /<ExerciseLibrary scrollMode="page" \/>/);
   assert.doesNotMatch(workouts, /import \{ ExerciseLibrary \}/);
   assert.match(workouts, /router\.push\(`\/workout\/history\/\$\{session\.local_id\}`\)/);
@@ -341,6 +351,9 @@ test('exercise library supports loading, searching, filtering, clearing, details
   assert.match(library, /exercise\.name,[\s\S]*exercise\.muscleGroup,[\s\S]*exercise\.equipment,[\s\S]*exercise\.movementType,[\s\S]*exercise\.difficulty,/);
   assert.match(library, /function clearFilters\(\)/);
   assert.match(library, /setSearchQuery\(''\)/);
+  assert.match(library, /const \[isFilterSheetOpen, setIsFilterSheetOpen\] = useState\(false\)/);
+  assert.match(library, /const activeFilterCount = FILTERS\.filter\(\(filter\) => filters\[filter\.key\]\)\.length/);
+  assert.match(library, /<Modal[\s\S]*visible=\{isFilterSheetOpen\}/);
   assert.match(library, /onSelect\?\.\(exercise\)/);
   assert.match(library, /<Modal[\s\S]*visible=\{Boolean\(selectedExercise\)\}/);
 
@@ -368,6 +381,9 @@ test('exercise library and live picker use theme-aware tokens instead of pasted-
   assert.match(library, /rounded-input border border-base-300 bg-base-100 px-4 py-3 text-base font-body text-base-content/);
   assert.match(library, /placeholderTextColor=\{colors\.baseMuted\}/);
   assert.match(library, /rounded-t-card border border-base-300 bg-base-200/);
+  for (const phrase of ['npm run check:exercises', 'seed file', 'Supabase', 'remote database', 'Local mode', 'Cloud sync on', 'seeded']) {
+    assert.doesNotMatch(library, new RegExp(phrase, 'i'));
+  }
   assert.match(library, /StyleSheet\.create\(\{[\s\S]*exerciseCard:\s*\{[\s\S]*backgroundColor: colors\.base100,[\s\S]*color: colors\.baseContent,[\s\S]*modalSheet:\s*\{[\s\S]*backgroundColor: colors\.base200,/);
   assert.match(library, /style=\{styles\.searchInput\}/);
   assert.doesNotMatch(library, /#(?:ffffff|f8fafc|f1f5f9|e2e8f0|cbd5e1|64748b|475569|334155|0f172a|0369a1|bae6fd|e0f2fe|94a3b8)/i);
