@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,9 +15,8 @@ function stripProgressionServiceTypescript(source) {
   };
 
   return source
-    .replace(/^export type \w+ = \{[\s\S]*?^\};\n/gm, '')
-    .replace(/^type \w+ = \{[\s\S]*?^\};\n/gm, '')
-    .replace(/^export type \w+ =[^;]+;\n/gm, '')
+    .replace(/^(?:export\s+)?type\s+\w+\s*=\s*\{[\s\S]*?^\};\r?\n/gm, '')
+    .replace(/^export\s+type\s+\w+\s*=[^;]+;\r?\n/gm, '')
     .replace(/\((\w+)\)\s*:\s*[^=]+=>/g, '($1) =>')
     .replace(/function(\s+[A-Za-z_$][\w$]*\s*)\(([\s\S]*?)\)\s*(?::\s*[A-Za-z_$][\w$<>\[\]\s|&,.]*)?/g, stripFunctionParameters);
 }
@@ -27,39 +25,6 @@ async function loadProgressionService() {
   const tempDir = mkdtempSync(join(tmpdir(), 'progression-service-'));
 
   try {
-    const localTsc = resolve('node_modules', 'typescript', 'bin', 'tsc');
-
-    if (existsSync(localTsc)) {
-      try {
-        execFileSync(
-          process.execPath,
-          [
-            localTsc,
-            'src/features/workouts/progression-service.ts',
-            '--target',
-            'ES2022',
-            '--module',
-            'ES2022',
-            '--moduleResolution',
-            'node',
-            '--skipLibCheck',
-            '--outDir',
-            tempDir,
-          ],
-          { cwd: resolve('.'), stdio: 'pipe' }
-        );
-
-        const compiledJs = join(tempDir, 'progression-service.js');
-        const compiledMjs = join(tempDir, 'progression-service.mjs');
-        copyFileSync(compiledJs, compiledMjs);
-
-        return await import(pathToFileURL(resolve(compiledMjs)).href);
-      } catch {
-        // Some TypeScript versions reject single-file compilation when a tsconfig exists.
-        // Fall through to the dependency-free loader so these behavior tests remain stable.
-      }
-    }
-
     const serviceSource = readFileSync(
       resolve('src/features/workouts/progression-service.ts'),
       'utf8'
