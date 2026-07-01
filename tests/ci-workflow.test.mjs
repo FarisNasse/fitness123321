@@ -6,6 +6,8 @@ import { readProjectFile } from './helpers/project.mjs';
 test('CI explains stale package locks instead of failing with npm ci internals', () => {
   const workflow = readProjectFile('.github/workflows/tests.yml');
 
+  assert.match(workflow, /node-version-file: \.nvmrc/);
+  assert.match(workflow, /npm install -g npm@10\.9\.2 --no-audit --no-fund/);
   assert.match(workflow, /npm install --no-audit --no-fund/);
   assert.match(workflow, /git diff --exit-code -- package\.json package-lock\.json/);
   assert.match(

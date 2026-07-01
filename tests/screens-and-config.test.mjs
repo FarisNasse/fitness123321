@@ -22,6 +22,11 @@ const appScreens = [
 test('package exposes fast test commands without adding heavy native test dependencies', () => {
   const pkg = readProjectJson('package.json');
 
+  assert.equal(pkg.packageManager, 'npm@10.9.2');
+  assert.equal(pkg.engines?.node, '>=20 <23');
+  assert.equal(pkg.engines?.npm, '10.x');
+  assert.equal(readProjectFile('.nvmrc').trim(), '20');
+  assert.match(readProjectFile('.npmrc'), /engine-strict=true/);
   assert.equal(pkg.scripts.test, 'node --test tests/*.test.mjs');
   assert.equal(
     pkg.scripts['test:all'],

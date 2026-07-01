@@ -29,8 +29,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
+
+      - name: Use pinned npm
+        run: npm install -g npm@10.9.2 --no-audit --no-fund
 
       - name: Install dependencies and refresh lockfile
         run: npm install --no-audit --no-fund
