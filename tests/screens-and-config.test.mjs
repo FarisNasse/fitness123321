@@ -27,7 +27,7 @@ test('package exposes fast test commands without adding heavy native test depend
   assert.equal(pkg.engines?.npm, '10.x');
   assert.equal(readProjectFile('.nvmrc').trim(), '20');
   assert.match(readProjectFile('.npmrc'), /engine-strict=true/);
-  assert.equal(pkg.scripts.test, 'node --test tests/*.test.mjs');
+  assert.equal(pkg.scripts.test, 'node --test tests');
   assert.equal(
     pkg.scripts['test:all'],
     'npm run test && npm run check:exercises && npm run check:local && npm run typecheck'
