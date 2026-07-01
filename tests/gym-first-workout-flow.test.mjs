@@ -18,17 +18,21 @@ function assertInOrder(source, snippets, message = 'expected snippets to appear 
   }
 }
 
-test('live workout screen builds a current-set draft from the selected exercise and current inputs', () => {
+test('live workout screen builds a current-set draft from the active exercise draft state', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
+  assert.match(live, /type SetDraft = \{\s*reps: string;\s*weight: string;\s*\}/s);
+  assert.match(live, /const \[draftsByExerciseId, setDraftsByExerciseId\] = useState<DraftsByExerciseId>\(\{\}\)/);
+  assert.match(live, /const selectedExerciseDraft = selectedExercise\s*\? getDraftForExercise\(selectedExercise\.id\)\s*: DEFAULT_SET_DRAFT/s);
   assert.match(live, /const currentSetDraft = useMemo\(/);
   assert.match(live, /exerciseName: selectedExercise\?\.name \?\? 'Choose an exercise'/);
   assert.match(live, /setNumber: selectedExercise \? selectedExerciseSets\.length \+ 1 : 1/);
-  assert.match(live, /suggestedReps: reps/);
-  assert.match(live, /suggestedWeight: weight/);
+  assert.match(live, /suggestedReps: selectedExerciseDraft\.reps/);
+  assert.match(live, /suggestedWeight: selectedExerciseDraft\.weight/);
+  assert.match(live, /logButtonLabel: buildLogSetButtonLabel\(/);
 });
 
-test('active exercise card prominently shows the next set, draft values, and logged sets together', () => {
+test('active exercise card prominently shows the next set, editable draft, and logged sets together', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
   assertInOrder(live, [
@@ -36,26 +40,30 @@ test('active exercise card prominently shows the next set, draft values, and log
     '{currentSetDraft.exerciseName}',
     'NEXT SET',
     'Set {currentSetDraft.setNumber}',
-    'label="Reps"',
-    "value={currentSetDraft.suggestedReps || \'—\'}",
-    'label="Weight"',
-    "value={`${currentSetDraft.suggestedWeight || '—'} lb`}",
+    '<SetDraftEditor',
+    'reps={currentSetDraft.suggestedReps}',
+    'weight={currentSetDraft.suggestedWeight}',
+    '{currentSetDraft.logButtonLabel}',
     'Logged sets',
-    'selectedExerciseSets.map((set) => (',
+    '<LoggedSetList',
   ], 'active exercise card should keep logging and review in one place');
 
-  assert.match(live, /function CurrentSetValue\(\{ label, value \}: \{ label: string; value: string \}\)/);
+  assert.match(live, /function SetDraftEditor\(/);
+  assert.match(live, /function DraftInput\(/);
+  assert.match(live, /function LoggedSetList\(/);
 });
 
-test('Done is the one-tap logging action and still starts the rest timer through addSet', () => {
+test('explicit Log set action saves through addSet and starts the rest timer', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
+  assert.match(live, /function buildLogSetButtonLabel\(setNumber: number, draft: SetDraft\)/);
+  assert.match(live, /return `Log set \$\{setNumber\} — \$\{repsLabel\} @ \$\{formatWeightInput\(parsedWeight\)\} lb`/);
   assert.match(live, /<Pressable\s+disabled=\{!selectedExercise\}\s+onPress=\{addSet\}/s);
   assertInOrder(live, [
-    '<Text style={{ color: colors.primaryContent, fontSize: 24, fontWeight: \'900\' }}>',
-    'Done',
-    'Log this set and start rest timer',
-  ], 'Done button should be visually prominent and clear');
+    '<Text style={{ color: colors.primaryContent, fontSize: 21, fontWeight: \'900\' }}>',
+    '{currentSetDraft.logButtonLabel}',
+    'Save this set and start rest timer',
+  ], 'Log set button should be visually prominent and self-describing');
   assertInOrder(live, [
     'function logSetForExercise(exercise: Exercise) {',
     'addLocalWorkoutSet({',
@@ -67,25 +75,22 @@ test('Done is the one-tap logging action and still starts the rest timer through
     'function addSet() {',
     'if (!selectedExercise) return;',
     'logSetForExercise(selectedExercise);',
-  ], 'Done should route through the normal selected-exercise set logger');
+  ], 'Log set should route through the normal selected-exercise set logger');
 });
 
-test('quick adjustment controls change the same reps and weight values that are saved', () => {
+test('quick adjustment controls change the active exercise draft values that are saved', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
   const compact = normalizeWhitespace(live);
 
   assert.match(live, /const REP_STEP = 1/);
   assert.match(live, /const WEIGHT_STEP = 5/);
-  assert.match(live, /function adjustReps\(delta: number\) \{[\s\S]*setReps\(\(current\) => \{[\s\S]*Math\.max\(1,/);
-  assert.match(live, /function adjustWeight\(delta: number\) \{[\s\S]*setWeight\(\(current\) => \{[\s\S]*Math\.max\(0,/);
-  assert.match(live, /return formatWeightInput\(nextValue\);/);
-  assert.match(live, /<QuickAdjustButton label="− rep" onPress=\{\(\) => adjustReps\(-REP_STEP\)\} \/>/);
-  assert.match(live, /<QuickAdjustButton label="\+ rep" onPress=\{\(\) => adjustReps\(REP_STEP\)\} \/>/);
-  assert.match(live, /label=\{`− \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
-  assert.match(live, /onPress=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
-  assert.match(live, /label=\{`\+ \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
-  assert.match(live, /onPress=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
-  assert.match(compact, /const parsedReps = Number\.parseInt\(reps, 10\).*const parsedWeight = Number\.parseFloat\(weight\).*reps: parsed\.parsedReps, weight: parsed\.parsedWeight/);
+  assert.match(live, /function adjustReps\(delta: number\) \{[\s\S]*const draft = getDraftForExercise\(selectedExercise\.id\)[\s\S]*updateExerciseDraft\(selectedExercise\.id, \{ reps: String\(nextValue\) \}\);/);
+  assert.match(live, /function adjustWeight\(delta: number\) \{[\s\S]*const draft = getDraftForExercise\(selectedExercise\.id\)[\s\S]*updateExerciseDraft\(selectedExercise\.id, \{ weight: formatWeightInput\(nextValue\) \}\);/);
+  assert.match(live, /<StepperButton label=\{decrementLabel\} onPress=\{onDecrement\} \/>/);
+  assert.match(live, /<StepperButton label=\{incrementLabel\} onPress=\{onIncrement\} \/>/);
+  assert.match(live, /onWeightDown=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
+  assert.match(live, /onWeightUp=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
+  assert.match(compact, /const draft = getDraftForExercise\(exerciseId\); const parsedReps = Number\.parseInt\(draft\.reps, 10\); const parsedWeight = Number\.parseFloat\(draft\.weight \|\| '0'\).*reps: parsed\.parsedReps, weight: parsed\.parsedWeight/s);
 });
 
 test('duplicated manual fallback is removed while editing and target settings remain available', () => {
@@ -93,7 +98,7 @@ test('duplicated manual fallback is removed while editing and target settings re
 
   assert.doesNotMatch(live, /MANUAL FALLBACK/);
   assert.doesNotMatch(live, /<Button title="Add set" onPress=\{addSet\} disabled=\{!selectedExercise\} \/>/);
-  assertIncludes(live, 'Adjust targets');
+  assertIncludes(live, 'Edit targets');
   assert.match(live, /const \[isTargetSheetOpen, setIsTargetSheetOpen\] = useState\(false\)/);
   assert.match(live, /visible=\{isTargetSheetOpen && Boolean\(selectedExercise\)\}/);
   assert.match(live, /<TargetInput[\s\S]*label="Sets"[\s\S]*value=\{targetSetsInput\}/);

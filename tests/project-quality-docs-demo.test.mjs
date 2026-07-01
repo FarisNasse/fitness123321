@@ -88,10 +88,9 @@ test('key workout cards use mobile-safe wrapping and minimum widths', () => {
   assert.match(workouts, /className="flex-row flex-wrap gap-3"/);
   assert.match(workouts, /style=\{\{ minWidth: 96 \}\}/);
 
-  assertIncludes(live, "flexDirection: 'row', flexWrap: 'wrap', gap: 12");
   assertIncludes(live, "flexDirection: 'row', flexWrap: 'wrap', gap: 10");
-  assert.match(live, /minWidth: 130, padding: 14/);
-  assert.match(live, /flexGrow: 1, minWidth: 74/);
+  assert.match(live, /minWidth: 96/);
+  assert.match(live, /minWidth: 56/);
   assert.match(live, /flex: 1, minWidth: 104/);
 
   assert.match(history, /flexDirection: 'row', flexWrap: 'wrap', gap: 10/);

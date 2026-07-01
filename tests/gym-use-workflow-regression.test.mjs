@@ -582,18 +582,18 @@ test('suggested defaults come from the most recent completed history for that ex
   ]);
 });
 
-test('one-tap Done saves the reps and weight currently displayed in the live workout card', () => {
+test('one-tap Log set saves the active exercise draft currently displayed in the live workout card', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
   const compact = normalizeWhitespace(live);
 
-  assert.match(live, /suggestedReps: reps/);
-  assert.match(live, /suggestedWeight: weight/);
+  assert.match(live, /suggestedReps: selectedExerciseDraft\.reps/);
+  assert.match(live, /suggestedWeight: selectedExerciseDraft\.weight/);
   assert.match(live, /<Pressable\s+disabled=\{!selectedExercise\}\s+onPress=\{addSet\}/s);
   assert.match(compact, /function addSet\(\) \{ if \(!selectedExercise\) return; logSetForExercise\(selectedExercise\); \}/);
   assert.match(
     compact,
-    /function parseSetInputs\(\) \{ const parsedReps = Number\.parseInt\(reps, 10\); const parsedWeight = Number\.parseFloat\(weight\);/,
-    'the parser should read the same reps and weight state shown in the card'
+    /function parseSetInputs\(exerciseId: string\) \{ const draft = getDraftForExercise\(exerciseId\); const parsedReps = Number\.parseInt\(draft\.reps, 10\); const parsedWeight = Number\.parseFloat\(draft\.weight \|\| '0'\);/,
+    'the parser should read the same per-exercise draft state shown in the card'
   );
   assert.match(
     compact,
@@ -602,20 +602,20 @@ test('one-tap Done saves the reps and weight currently displayed in the live wor
   );
 });
 
-test('quick adjustments mutate the displayed values that the next saved set uses', () => {
+test('quick adjustments mutate the active exercise draft that the next saved set uses', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
   const compact = normalizeWhitespace(live);
 
-  assert.match(live, /function adjustReps\(delta: number\) \{[\s\S]*setReps\(\(current\) => \{[\s\S]*return String\(nextValue\);[\s\S]*\}/);
-  assert.match(live, /function adjustWeight\(delta: number\) \{[\s\S]*setWeight\(\(current\) => \{[\s\S]*return formatWeightInput\(nextValue\);[\s\S]*\}/);
-  assert.match(live, /<QuickAdjustButton label="− rep" onPress=\{\(\) => adjustReps\(-REP_STEP\)\} \/>/);
-  assert.match(live, /<QuickAdjustButton label="\+ rep" onPress=\{\(\) => adjustReps\(REP_STEP\)\} \/>/);
-  assert.match(live, /onPress=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
-  assert.match(live, /onPress=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
+  assert.match(live, /function adjustReps\(delta: number\) \{[\s\S]*const draft = getDraftForExercise\(selectedExercise\.id\)[\s\S]*updateExerciseDraft\(selectedExercise\.id, \{ reps: String\(nextValue\) \}\);/);
+  assert.match(live, /function adjustWeight\(delta: number\) \{[\s\S]*const draft = getDraftForExercise\(selectedExercise\.id\)[\s\S]*updateExerciseDraft\(selectedExercise\.id, \{ weight: formatWeightInput\(nextValue\) \}\);/);
+  assert.match(live, /<StepperButton label=\{decrementLabel\} onPress=\{onDecrement\} \/>/);
+  assert.match(live, /<StepperButton label=\{incrementLabel\} onPress=\{onIncrement\} \/>/);
+  assert.match(live, /onWeightDown=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
+  assert.match(live, /onWeightUp=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
   assert.match(
     compact,
-    /suggestedReps: reps, suggestedWeight: weight,[\s\S]*const parsedReps = Number\.parseInt\(reps, 10\); const parsedWeight = Number\.parseFloat\(weight\);/,
-    'quick-adjusted display state should be the same state parsed for persistence'
+    /suggestedReps: selectedExerciseDraft\.reps, suggestedWeight: selectedExerciseDraft\.weight,[\s\S]*const draft = getDraftForExercise\(exerciseId\); const parsedReps = Number\.parseInt\(draft\.reps, 10\); const parsedWeight = Number\.parseFloat\(draft\.weight \|\| '0'\);/,
+    'quick-adjusted display state should be the same draft parsed for persistence'
   );
 });
 

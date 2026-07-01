@@ -67,15 +67,15 @@ test('live workout screen applies smart defaults when exercises are selected and
   assert.match(live, /getSmartExerciseDefaults/);
   assert.match(live, /upsertLocalExerciseTarget/);
   assert.match(live, /const \[smartDefaultsByExerciseId, setSmartDefaultsByExerciseId\] = useState/);
-  assert.match(live, /async function applySmartDefaultsForExercise\([\s\S]*const defaults = await getSmartExerciseDefaults\(exercise\.id\)[\s\S]*const nextSet = getSuggestedSetForIndex\(defaults, currentSetCount\)[\s\S]*setReps\(String\(nextSet\.reps\)\)[\s\S]*setWeight\(formatWeightInput\(nextSet\.weight\)\)/);
+  assert.match(live, /async function applySmartDefaultsForExercise\([\s\S]*const defaults = await getSmartExerciseDefaults\(exercise\.id\)[\s\S]*setDraftFromSuggestedSet\(exercise, defaults, currentSetCount, options\)/);
   assert.match(live, /async function chooseExercise\(exercise: Exercise\)[\s\S]*await applySmartDefaultsForExercise/);
-  assert.match(live, /void applySmartDefaultsForExercise\(exercise, currentExerciseSets\.length \+ 1\)/);
+  assert.match(live, /void applySmartDefaultsForExercise\(exercise, currentExerciseSets\.length \+ 1, \{ replaceDraft: true \}\)/);
 });
 
 test('live workout screen keeps target configuration optional and uses dynamic increment buttons', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assertIncludes(live, 'Adjust targets');
+  assertIncludes(live, 'Edit targets');
   assertIncludes(live, 'OPTIONAL TARGETS');
   assertIncludes(live, 'Logging still works without changing these.');
   assert.match(live, /visible=\{isTargetSheetOpen && Boolean\(selectedExercise\)\}/);
@@ -85,10 +85,10 @@ test('live workout screen keeps target configuration optional and uses dynamic i
   assert.match(live, /<TargetInput[\s\S]*label="Increment"[\s\S]*value=\{incrementSizeInput\}/);
   assert.match(live, /<TargetInput[\s\S]*label="Deload %"[\s\S]*value=\{deloadPercentageInput\}/);
   assert.match(live, /title="Save targets"[\s\S]*onPress=\{saveSelectedExerciseTarget\}/);
-  assert.match(live, /label=\{`− \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
-  assert.match(live, /onPress=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
-  assert.match(live, /label=\{`\+ \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
-  assert.match(live, /onPress=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
+  assert.match(live, /decrementLabel=\{`−\$\{formatWeightInput\(incrementSize\)\}`\}/);
+  assert.match(live, /onWeightDown=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
+  assert.match(live, /incrementLabel=\{`\+\$\{formatWeightInput\(incrementSize\)\}`\}/);
+  assert.match(live, /onWeightUp=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
 });
 
 test('progression service is local, beginner-friendly, and keeps 1RM as secondary insight', () => {
@@ -126,7 +126,7 @@ test('live workout screen collects optional effort feedback and shows completion
 
   assert.match(live, /ProgressionEffortFeedback/);
   assert.match(live, /const \[effortFeedback, setEffortFeedback\] = useState<ProgressionEffortFeedback \| null>\(null\)/);
-  assert.match(live, /How did that feel\?/);
+  assert.match(live, /Workout feedback \(optional\)/);
   assert.match(live, /\(\['easy', 'good', 'max'\] as const\)\.map/);
   assert.match(live, /getWorkoutCompletionProgressionReasonText/);
   assert.match(live, /const progressionReasonText = getWorkoutCompletionProgressionReasonText/);

@@ -7,7 +7,6 @@ import { Badge } from '@/src/components/Badge';
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { EmptyState } from '@/src/components/EmptyState';
-import { ProgressBar } from '@/src/components/ProgressBar';
 import { Screen } from '@/src/components/Screen';
 import { colors } from '@/src/lib/theme';
 import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
@@ -47,6 +46,15 @@ const REST_DURATION_SECONDS = 90;
 const REP_STEP = 1;
 const WEIGHT_STEP = 5;
 const FALLBACK_WEIGHT_INCREMENT = WEIGHT_STEP;
+
+type SetDraft = {
+  reps: string;
+  weight: string;
+};
+
+type DraftsByExerciseId = Record<string, SetDraft>;
+
+const DEFAULT_SET_DRAFT: SetDraft = { reps: '8', weight: '0' };
 
 function buildExerciseSetMap(sets: LocalWorkoutSetRow[]) {
   return sets.reduce((map, set) => {
@@ -96,6 +104,69 @@ function getSuggestedSetForIndex(
   );
 }
 
+function buildDraftFromSuggestedSet(
+  defaults: SmartExerciseDefaults,
+  currentSetCount: number
+): SetDraft {
+  const nextSet = getSuggestedSetForIndex(defaults, currentSetCount);
+
+  return {
+    reps: String(nextSet.reps),
+    weight: formatWeightInput(nextSet.weight),
+  };
+}
+
+function buildDraftFromLastSet(set: LocalWorkoutSetRow): SetDraft {
+  return {
+    reps: String(set.reps ?? DEFAULT_SET_DRAFT.reps),
+    weight: formatWeightInput(Number(set.weight ?? DEFAULT_SET_DRAFT.weight)),
+  };
+}
+
+function buildLogSetButtonLabel(setNumber: number, draft: SetDraft) {
+  const reps = draft.reps.trim();
+  const weight = draft.weight.trim();
+  const parsedWeight = Number.parseFloat(weight);
+  const repsLabel = reps ? `${reps} reps` : 'reps';
+
+  if (weight && Number.isFinite(parsedWeight) && parsedWeight > 0) {
+    return `Log set ${setNumber} — ${repsLabel} @ ${formatWeightInput(parsedWeight)} lb`;
+  }
+
+  return `Log set ${setNumber} — ${repsLabel}`;
+}
+
+function formatTargetSummary(defaults: SmartExerciseDefaults | null) {
+  if (!defaults) {
+    return 'Target 3 sets · 8-12 reps · 5 lb jumps';
+  }
+
+  return `Target ${defaults.targetSets} sets · ${formatRepRange(
+    defaults.repMin,
+    defaults.repMax
+  )} reps · ${formatWeightInput(defaults.incrementSize)} lb jumps`;
+}
+
+function formatCollapsedExerciseStatus(
+  exerciseSets: LocalWorkoutSetRow[],
+  defaults: SmartExerciseDefaults | undefined
+) {
+  if (exerciseSets.length === 0) {
+    return 'Not started · tap to begin';
+  }
+
+  const lastSet = exerciseSets[exerciseSets.length - 1];
+  const nextSetNumber = exerciseSets.length + 1;
+  const targetSuffix = defaults
+    ? ` · target ${formatRepRange(defaults.repMin, defaults.repMax)} reps`
+    : '';
+
+  return `${exerciseSets.length} set${
+    exerciseSets.length === 1 ? '' : 's'
+  } · last ${lastSet.reps ?? 0} × ${lastSet.weight ?? 0} lb · next set ${nextSetNumber}${targetSuffix}`;
+}
+
+
 export default function LiveWorkoutScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const exercises = useMemo(() => getSeededExercises(), []);
@@ -103,8 +174,7 @@ export default function LiveWorkoutScreen() {
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isTargetSheetOpen, setIsTargetSheetOpen] = useState(false);
-  const [reps, setReps] = useState('8');
-  const [weight, setWeight] = useState('0');
+  const [draftsByExerciseId, setDraftsByExerciseId] = useState<DraftsByExerciseId>({});
   const [sets, setSets] = useState<ReturnType<typeof getLocalWorkoutSets>>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [restSeconds, setRestSeconds] = useState<number | null>(null);
@@ -205,6 +275,78 @@ export default function LiveWorkoutScreen() {
     return exerciseLookup[exerciseId] ?? getExerciseById(exerciseId) ?? null;
   }
 
+  function getDraftForExercise(
+    exerciseId: string,
+    source: DraftsByExerciseId = draftsByExerciseId
+  ): SetDraft {
+    return source[exerciseId] ?? DEFAULT_SET_DRAFT;
+  }
+
+  function updateExerciseDraft(exerciseId: string, patch: Partial<SetDraft>) {
+    setDraftsByExerciseId((current) => ({
+      ...current,
+      [exerciseId]: {
+        ...getDraftForExercise(exerciseId, current),
+        ...patch,
+      },
+    }));
+  }
+
+  function getInitialDraftForExercise(
+    exercise: Exercise,
+    defaults?: SmartExerciseDefaults
+  ): SetDraft {
+    const exerciseSets = exerciseSetMap.get(exercise.id) ?? [];
+    const lastSet = exerciseSets[exerciseSets.length - 1];
+
+    if (lastSet) {
+      return buildDraftFromLastSet(lastSet);
+    }
+
+    if (defaults) {
+      return buildDraftFromSuggestedSet(defaults, exerciseSets.length);
+    }
+
+    return DEFAULT_SET_DRAFT;
+  }
+
+  function ensureDraftForExercise(
+    exercise: Exercise,
+    defaults?: SmartExerciseDefaults,
+    options: { replaceDraft?: boolean } = {}
+  ) {
+    setDraftsByExerciseId((current) => {
+      if (!options.replaceDraft && current[exercise.id]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [exercise.id]: getInitialDraftForExercise(exercise, defaults),
+      };
+    });
+  }
+
+  function setDraftFromSuggestedSet(
+    exercise: Exercise,
+    defaults: SmartExerciseDefaults,
+    currentSetCount: number,
+    options: { replaceDraft?: boolean } = {}
+  ) {
+    const nextDraft = buildDraftFromSuggestedSet(defaults, currentSetCount);
+
+    setDraftsByExerciseId((current) => {
+      if (!options.replaceDraft && current[exercise.id]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [exercise.id]: nextDraft,
+      };
+    });
+  }
+
   function refreshSets() {
     if (!sessionId || !session) return;
 
@@ -245,7 +387,16 @@ export default function LiveWorkoutScreen() {
   }, [sessionId, session?.local_id, sessionLoadState.status]);
 
   useEffect(() => {
-    if (!selectedExercise || smartDefaultsByExerciseId[selectedExercise.id]) {
+    if (!selectedExercise) {
+      return;
+    }
+
+    ensureDraftForExercise(
+      selectedExercise,
+      smartDefaultsByExerciseId[selectedExercise.id]
+    );
+
+    if (smartDefaultsByExerciseId[selectedExercise.id]) {
       return;
     }
 
@@ -295,13 +446,16 @@ export default function LiveWorkoutScreen() {
     : null;
   const activeIncrementSize =
     selectedExerciseSmartDefaults?.incrementSize ?? FALLBACK_WEIGHT_INCREMENT;
+  const selectedExerciseDraft = selectedExercise
+    ? getDraftForExercise(selectedExercise.id)
+    : DEFAULT_SET_DRAFT;
 
   const currentSetDraft = useMemo(
     () => ({
       exerciseName: selectedExercise?.name ?? 'Choose an exercise',
       setNumber: selectedExercise ? selectedExerciseSets.length + 1 : 1,
-      suggestedReps: reps,
-      suggestedWeight: weight,
+      suggestedReps: selectedExerciseDraft.reps,
+      suggestedWeight: selectedExerciseDraft.weight,
       repRange: selectedExerciseSmartDefaults
         ? formatRepRange(
             selectedExerciseSmartDefaults.repMin,
@@ -309,13 +463,18 @@ export default function LiveWorkoutScreen() {
           )
         : '8-12',
       sourceLabel: getSmartSourceLabel(selectedExerciseSmartDefaults?.source),
+      targetSummary: formatTargetSummary(selectedExerciseSmartDefaults),
+      logButtonLabel: buildLogSetButtonLabel(
+        selectedExercise ? selectedExerciseSets.length + 1 : 1,
+        selectedExerciseDraft
+      ),
     }),
     [
-      reps,
       selectedExercise,
+      selectedExerciseDraft.reps,
+      selectedExerciseDraft.weight,
       selectedExerciseSets.length,
       selectedExerciseSmartDefaults,
-      weight,
     ]
   );
 
@@ -337,22 +496,22 @@ export default function LiveWorkoutScreen() {
 
   async function applySmartDefaultsForExercise(
     exercise: Exercise,
-    currentSetCount: number
+    currentSetCount: number,
+    options: { replaceDraft?: boolean } = {}
   ) {
     const defaults = await getSmartExerciseDefaults(exercise.id);
-    const nextSet = getSuggestedSetForIndex(defaults, currentSetCount);
 
     setSmartDefaultsByExerciseId((current) => ({
       ...current,
       [exercise.id]: defaults,
     }));
     syncTargetInputs(defaults);
-    setReps(String(nextSet.reps));
-    setWeight(formatWeightInput(nextSet.weight));
+    setDraftFromSuggestedSet(exercise, defaults, currentSetCount, options);
   }
 
   async function selectExerciseForLogging(exercise: Exercise) {
     setSelectedExercise(exercise);
+    ensureDraftForExercise(exercise, smartDefaultsByExerciseId[exercise.id]);
     await applySmartDefaultsForExercise(
       exercise,
       exerciseSetMap.get(exercise.id)?.length ?? 0
@@ -394,21 +553,35 @@ export default function LiveWorkoutScreen() {
   }
 
   function adjustReps(delta: number) {
-    setReps((current) => {
-      const currentValue = Number.parseInt(current, 10);
-      const nextValue = Math.max(1, (Number.isFinite(currentValue) ? currentValue : 0) + delta);
+    if (!selectedExercise) return;
 
-      return String(nextValue);
-    });
+    const draft = getDraftForExercise(selectedExercise.id);
+    const currentValue = Number.parseInt(draft.reps, 10);
+    const nextValue = Math.max(
+      1,
+      (Number.isFinite(currentValue) ? currentValue : 0) + delta
+    );
+
+    updateExerciseDraft(selectedExercise.id, { reps: String(nextValue) });
   }
 
   function adjustWeight(delta: number) {
-    setWeight((current) => {
-      const currentValue = Number.parseFloat(current);
-      const nextValue = Math.max(0, (Number.isFinite(currentValue) ? currentValue : 0) + delta);
+    if (!selectedExercise) return;
 
-      return formatWeightInput(nextValue);
-    });
+    const draft = getDraftForExercise(selectedExercise.id);
+    const currentValue = Number.parseFloat(draft.weight);
+    const nextValue = Math.max(
+      0,
+      (Number.isFinite(currentValue) ? currentValue : 0) + delta
+    );
+
+    updateExerciseDraft(selectedExercise.id, { weight: formatWeightInput(nextValue) });
+  }
+
+  function updateSelectedDraft(patch: Partial<SetDraft>) {
+    if (!selectedExercise) return;
+
+    updateExerciseDraft(selectedExercise.id, patch);
   }
 
   async function saveSelectedExerciseTarget() {
@@ -453,14 +626,15 @@ export default function LiveWorkoutScreen() {
       incrementSize,
       deloadPercentage,
     });
-    await applySmartDefaultsForExercise(selectedExercise, selectedExerciseSets.length);
+    await applySmartDefaultsForExercise(selectedExercise, selectedExerciseSets.length, { replaceDraft: true });
     setIsTargetSheetOpen(false);
     Alert.alert('Targets saved', 'This exercise will use these defaults next time.');
   }
 
-  function parseSetInputs() {
-    const parsedReps = Number.parseInt(reps, 10);
-    const parsedWeight = Number.parseFloat(weight);
+  function parseSetInputs(exerciseId: string) {
+    const draft = getDraftForExercise(exerciseId);
+    const parsedReps = Number.parseInt(draft.reps, 10);
+    const parsedWeight = Number.parseFloat(draft.weight || '0');
 
     if (!Number.isFinite(parsedReps) || parsedReps <= 0) {
       Alert.alert('Invalid reps', 'Enter a valid rep count.');
@@ -479,7 +653,7 @@ export default function LiveWorkoutScreen() {
     if (!sessionId) return;
     if (!session) return;
 
-    const parsed = parseSetInputs();
+    const parsed = parseSetInputs(exercise.id);
 
     if (!parsed) return;
 
@@ -497,7 +671,7 @@ export default function LiveWorkoutScreen() {
     refreshSets();
     queueWorkoutSync('adding a set');
     setRestSeconds(REST_DURATION_SECONDS);
-    void applySmartDefaultsForExercise(exercise, currentExerciseSets.length + 1);
+    void applySmartDefaultsForExercise(exercise, currentExerciseSets.length + 1, { replaceDraft: true });
   }
 
   function addSet() {
@@ -618,45 +792,23 @@ export default function LiveWorkoutScreen() {
 
   return (
     <Screen>
-      <View style={{ gap: 16 }}>
+      <View style={{ gap: 16, paddingBottom: 104 }}>
         <Card>
           <View style={{ gap: 14 }}>
-            <View
-              style={{
-                alignItems: 'flex-start',
-                flexDirection: 'row',
-                gap: 12,
-                justifyContent: 'space-between',
-              }}
-            >
-              <View style={{ flex: 1, minWidth: 96 }}>
-                <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
-                  LIVE WORKOUT
-                </Text>
-                <Text style={{ color: colors.baseContent, fontSize: 30, fontWeight: '900', marginTop: 4 }}>
-                  {session?.name ?? 'Quick workout'}
-                </Text>
-                <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 4 }}>
-                  One active exercise at a time. Switch exercises below when you are ready.
-                </Text>
-              </View>
-              <Pressable
-                onPress={finishWorkout}
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? colors.base300 : colors.base100,
-                  borderColor: colors.base300,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                })}
-              >
-                <Text style={{ color: colors.primary, fontWeight: '900' }}>Finish</Text>
-              </Pressable>
+            <View>
+              <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
+                LIVE WORKOUT
+              </Text>
+              <Text style={{ color: colors.baseContent, fontSize: 30, fontWeight: '900', marginTop: 4 }}>
+                {session?.name ?? 'Quick workout'}
+              </Text>
+              <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 4 }}>
+                Pick an exercise, edit the next set, log it, then move to the next exercise.
+              </Text>
             </View>
 
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              <WorkoutStatusPill label="Time" value={formatClock(elapsedSeconds)} />
+              <WorkoutStatusPill label="Elapsed" value={formatClock(elapsedSeconds)} />
               <WorkoutStatusPill
                 label="Rest"
                 value={restSeconds !== null ? formatClock(restSeconds).slice(3) : 'Ready'}
@@ -668,11 +820,34 @@ export default function LiveWorkoutScreen() {
             </View>
 
             {restSeconds !== null ? (
-              <View style={{ gap: 8 }}>
-                <ProgressBar value={restSeconds / REST_DURATION_SECONDS} />
-                <Text style={{ color: colors.baseMuted, fontWeight: '800' }}>
-                  Rest running. Next set in {formatClock(restSeconds).slice(3)}.
+              <View
+                style={{
+                  alignItems: 'center',
+                  backgroundColor: rgba(163, 230, 53, 0.12),
+                  borderColor: rgba(163, 230, 53, 0.22),
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  padding: 14,
+                }}
+              >
+                <Text style={{ color: colors.baseContent, fontSize: 18, fontWeight: '900' }}>
+                  Rest {formatClock(restSeconds).slice(3)}
                 </Text>
+                <Pressable
+                  onPress={() => setRestSeconds(null)}
+                  style={({ pressed }) => ({
+                    backgroundColor: pressed ? colors.base300 : colors.base100,
+                    borderColor: colors.base300,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  })}
+                >
+                  <Text style={{ color: colors.primary, fontWeight: '900' }}>Skip</Text>
+                </Pressable>
               </View>
             ) : null}
           </View>
@@ -680,43 +855,49 @@ export default function LiveWorkoutScreen() {
 
         {selectedExercise ? (
           <Card variant="highlighted">
-            <View style={{ gap: 16 }}>
-              <View
-                style={{
-                  alignItems: 'flex-start',
-                  flexDirection: 'row',
-                  gap: 12,
-                  justifyContent: 'space-between',
-                }}
-              >
-                <View style={{ flex: 1, minWidth: 96 }}>
-                  <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
-                    ACTIVE EXERCISE
-                  </Text>
-                  <Text style={{ color: colors.baseContent, fontSize: 28, fontWeight: '900', marginTop: 4 }}>
-                    {currentSetDraft.exerciseName}
-                  </Text>
-                  {selectedExerciseMetadata ? (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                      {selectedExerciseMetadata.split(' • ').map((item) => (
-                        <Badge key={item} label={item} variant="neutral" />
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-                <Pressable
-                  onPress={() => setIsTargetSheetOpen(true)}
-                  style={({ pressed }) => ({
-                    backgroundColor: pressed ? colors.base300 : colors.base100,
-                    borderColor: colors.base300,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                  })}
+            <View style={{ gap: 18 }}>
+              <View style={{ gap: 12 }}>
+                <View
+                  style={{
+                    alignItems: 'flex-start',
+                    flexDirection: 'row',
+                    gap: 12,
+                    justifyContent: 'space-between',
+                  }}
                 >
-                  <Text style={{ color: colors.baseContent, fontWeight: '900' }}>Adjust targets</Text>
-                </Pressable>
+                  <View style={{ flex: 1, minWidth: 96 }}>
+                    <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
+                      ACTIVE EXERCISE
+                    </Text>
+                    <Text style={{ color: colors.baseContent, fontSize: 30, fontWeight: '900', marginTop: 4 }}>
+                      {currentSetDraft.exerciseName}
+                    </Text>
+                    <Text style={{ color: colors.baseMuted, fontWeight: '800', lineHeight: 21, marginTop: 6 }}>
+                      {currentSetDraft.targetSummary}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => setIsTargetSheetOpen(true)}
+                    style={({ pressed }) => ({
+                      backgroundColor: pressed ? colors.base300 : colors.base100,
+                      borderColor: colors.base300,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                    })}
+                  >
+                    <Text style={{ color: colors.baseContent, fontWeight: '900' }}>Edit targets</Text>
+                  </Pressable>
+                </View>
+
+                {selectedExerciseMetadata ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {selectedExerciseMetadata.split(' • ').map((item) => (
+                      <Badge key={item} label={item} variant="neutral" />
+                    ))}
+                  </View>
+                ) : null}
               </View>
 
               <View
@@ -725,7 +906,7 @@ export default function LiveWorkoutScreen() {
                   borderColor: colors.base300,
                   borderRadius: 24,
                   borderWidth: 1,
-                  gap: 16,
+                  gap: 18,
                   padding: 18,
                 }}
               >
@@ -752,29 +933,17 @@ export default function LiveWorkoutScreen() {
                   <Badge label="Ready" variant="primary" />
                 </View>
 
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                  <CurrentSetValue
-                    label="Reps"
-                    value={currentSetDraft.suggestedReps || '—'}
-                  />
-                  <CurrentSetValue
-                    label="Weight"
-                    value={`${currentSetDraft.suggestedWeight || '—'} lb`}
-                  />
-                </View>
-
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                  <QuickAdjustButton label="− rep" onPress={() => adjustReps(-REP_STEP)} />
-                  <QuickAdjustButton label="+ rep" onPress={() => adjustReps(REP_STEP)} />
-                  <QuickAdjustButton
-                    label={`− ${formatWeightInput(activeIncrementSize)} lb`}
-                    onPress={() => adjustWeight(-activeIncrementSize)}
-                  />
-                  <QuickAdjustButton
-                    label={`+ ${formatWeightInput(activeIncrementSize)} lb`}
-                    onPress={() => adjustWeight(activeIncrementSize)}
-                  />
-                </View>
+                <SetDraftEditor
+                  reps={currentSetDraft.suggestedReps}
+                  weight={currentSetDraft.suggestedWeight}
+                  incrementSize={activeIncrementSize}
+                  onRepsChange={(value) => updateSelectedDraft({ reps: value })}
+                  onWeightChange={(value) => updateSelectedDraft({ weight: value })}
+                  onRepsDown={() => adjustReps(-REP_STEP)}
+                  onRepsUp={() => adjustReps(REP_STEP)}
+                  onWeightDown={() => adjustWeight(-activeIncrementSize)}
+                  onWeightUp={() => adjustWeight(activeIncrementSize)}
+                />
 
                 <Pressable
                   disabled={!selectedExercise}
@@ -787,30 +956,14 @@ export default function LiveWorkoutScreen() {
                     paddingVertical: 20,
                   })}
                 >
-                  <Text style={{ color: colors.primaryContent, fontSize: 24, fontWeight: '900' }}>
-                    Done
+                  <Text style={{ color: colors.primaryContent, fontSize: 21, fontWeight: '900' }}>
+                    {currentSetDraft.logButtonLabel}
                   </Text>
                   <Text style={{ color: colors.primaryContent, fontWeight: '800', marginTop: 4 }}>
-                    Log this set and start rest timer
+                    Save this set and start rest timer
                   </Text>
                 </Pressable>
               </View>
-
-              {selectedExercise.instructions ? (
-                <View
-                  style={{
-                    backgroundColor: colors.base100,
-                    borderColor: colors.base300,
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    padding: 14,
-                  }}
-                >
-                  <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
-                    {selectedExercise.instructions}
-                  </Text>
-                </View>
-              ) : null}
 
               <View style={{ gap: 10 }}>
                 <View
@@ -840,56 +993,36 @@ export default function LiveWorkoutScreen() {
                     }}
                   >
                     <Text style={{ color: colors.baseMuted, fontWeight: '800' }}>
-                      No sets logged for this exercise yet.
+                      No sets yet. Enter your reps and weight, then log set {currentSetDraft.setNumber}.
                     </Text>
                   </View>
                 ) : (
-                  <View style={{ gap: 8 }}>
-                    {selectedExerciseSets.map((set) => (
-                      <Pressable
-                        key={set.local_id}
-                        onPress={() => openEditModal(set)}
-                        style={({ pressed }) => ({
-                          alignItems: 'center',
-                          backgroundColor: pressed ? colors.base300 : colors.base100,
-                          borderColor: colors.base300,
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          flexDirection: 'row',
-                          justifyContent: 'space-between',
-                          padding: 12,
-                        })}
-                      >
-                        <Text style={{ color: colors.baseContent, fontWeight: '900', minWidth: 52 }}>
-                          Set {set.set_number}
-                        </Text>
-
-                        <Text style={{ color: colors.baseMuted, flex: 1, fontWeight: '800' }}>
-                          {set.reps ?? 0} reps × {set.weight ?? 0} lb
-                        </Text>
-
-                        <Pressable
-                          hitSlop={10}
-                          onPress={(event) => {
-                            event.stopPropagation();
-                            confirmDeleteSet(set.local_id);
-                          }}
-                          style={({ pressed }) => ({
-                            backgroundColor: pressed ? rgba(248, 113, 113, 0.22) : rgba(248, 113, 113, 0.14),
-                            borderRadius: 8,
-                            paddingHorizontal: 10,
-                            paddingVertical: 5,
-                          })}
-                        >
-                          <Text style={{ color: colors.error, fontSize: 15, fontWeight: '900' }}>
-                            ✕
-                          </Text>
-                        </Pressable>
-                      </Pressable>
-                    ))}
-                  </View>
+                  <LoggedSetList
+                    sets={selectedExerciseSets}
+                    onEdit={openEditModal}
+                    onDelete={confirmDeleteSet}
+                  />
                 )}
               </View>
+
+              {selectedExercise.instructions ? (
+                <Pressable
+                  onPress={() => Alert.alert(selectedExercise.name, selectedExercise.instructions ?? '')}
+                  style={({ pressed }) => ({
+                    alignItems: 'center',
+                    backgroundColor: pressed ? colors.base300 : colors.base100,
+                    borderColor: colors.base300,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    padding: 14,
+                  })}
+                >
+                  <Text style={{ color: colors.baseContent, fontWeight: '900' }}>View instructions</Text>
+                  <Text style={{ color: colors.primary, fontWeight: '900' }}>Open</Text>
+                </Pressable>
+              ) : null}
             </View>
           </Card>
         ) : (
@@ -899,10 +1032,10 @@ export default function LiveWorkoutScreen() {
                 ACTIVE EXERCISE
               </Text>
               <Text style={{ color: colors.baseContent, fontSize: 24, fontWeight: '900' }}>
-                Choose an exercise to start
+                Add an exercise to start logging
               </Text>
               <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
-                The next screen section is the only place to add or switch exercises, so the logging area stays focused.
+                Use the + Exercise action below. Once an exercise is active, its reps, weight, and logged sets stay together in one card.
               </Text>
             </View>
           </Card>
@@ -910,73 +1043,42 @@ export default function LiveWorkoutScreen() {
 
         <Card>
           <View style={{ gap: 14 }}>
-            <View
-              style={{
-                alignItems: 'flex-start',
-                flexDirection: 'row',
-                gap: 12,
-                justifyContent: 'space-between',
-              }}
-            >
-              <View style={{ flex: 1, minWidth: 96 }}>
-                <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
-                  EXERCISES
-                </Text>
-                <Text style={{ color: colors.baseContent, fontSize: 22, fontWeight: '900', marginTop: 4 }}>
-                  {selectedExercises.length === 0
-                    ? 'No exercises added'
-                    : `${selectedExercises.length} exercise${selectedExercises.length === 1 ? '' : 's'} in workout`}
-                </Text>
-              </View>
-              <Button title="Add exercise" onPress={() => setIsPickerOpen(true)} size="sm" />
+            <View style={{ gap: 4 }}>
+              <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
+                OTHER EXERCISES
+              </Text>
+              <Text style={{ color: colors.baseContent, fontSize: 22, fontWeight: '900' }}>
+                {selectedExercises.length === 0
+                  ? 'No exercises added'
+                  : `${selectedExercises.length} exercise${selectedExercises.length === 1 ? '' : 's'} in workout`}
+              </Text>
             </View>
 
             {selectedExercises.length === 0 ? (
               <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
-                Add one exercise, log its sets, then switch only when you move to the next exercise.
+                Add an exercise to start logging this workout.
+              </Text>
+            ) : selectedExercises.filter((exercise) => exercise.id !== selectedExercise?.id).length === 0 ? (
+              <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
+                No other exercises yet. Add another movement when you are ready to switch.
               </Text>
             ) : (
               <View style={{ gap: 8 }}>
-                {selectedExercises.map((exercise) => {
-                  const exerciseSets = exerciseSetMap.get(exercise.id) ?? [];
-                  const isActiveExercise = selectedExercise?.id === exercise.id;
+                {selectedExercises
+                  .filter((exercise) => exercise.id !== selectedExercise?.id)
+                  .map((exercise) => {
+                    const exerciseSets = exerciseSetMap.get(exercise.id) ?? [];
+                    const defaults = smartDefaultsByExerciseId[exercise.id];
 
-                  return (
-                    <Pressable
-                      key={exercise.id}
-                      onPress={() => void selectExerciseForLogging(exercise)}
-                      style={({ pressed }) => ({
-                        alignItems: 'center',
-                        backgroundColor: isActiveExercise
-                          ? rgba(163, 230, 53, 0.12)
-                          : pressed
-                            ? colors.base300
-                            : colors.base100,
-                        borderColor: isActiveExercise ? colors.primary : colors.base300,
-                        borderRadius: 16,
-                        borderWidth: 1,
-                        flexDirection: 'row',
-                        gap: 12,
-                        justifyContent: 'space-between',
-                        padding: 14,
-                      })}
-                    >
-                      <View style={{ flex: 1, minWidth: 96 }}>
-                        <Text style={{ color: colors.baseContent, fontSize: 17, fontWeight: '900' }}>
-                          {exercise.name}
-                        </Text>
-                        <Text style={{ color: colors.baseMuted, fontWeight: '800', marginTop: 3 }}>
-                          {exerciseSets.length} set{exerciseSets.length === 1 ? '' : 's'} logged
-                        </Text>
-                      </View>
-                      {isActiveExercise ? (
-                        <Badge label="Active" variant="primary" />
-                      ) : (
-                        <Text style={{ color: colors.primary, fontWeight: '900' }}>Switch</Text>
-                      )}
-                    </Pressable>
-                  );
-                })}
+                    return (
+                      <CollapsedExerciseRow
+                        key={exercise.id}
+                        exercise={exercise}
+                        status={formatCollapsedExerciseStatus(exerciseSets, defaults)}
+                        onPress={() => void selectExerciseForLogging(exercise)}
+                      />
+                    );
+                  })}
               </View>
             )}
           </View>
@@ -986,10 +1088,11 @@ export default function LiveWorkoutScreen() {
           <Card>
             <View style={{ gap: 12 }}>
               <View style={{ gap: 4 }}>
-                <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900' }}>How did that feel?</Text>
+                <Text style={{ color: colors.baseContent, fontSize: 18, fontWeight: '900' }}>
+                  Workout feedback (optional)
+                </Text>
                 <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
-                  Optional feedback helps next-time suggestions decide whether to
-                  increase, repeat, or deload.
+                  Add this when you finish or when the whole workout feels clearly easy, good, or maximal.
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
@@ -1027,7 +1130,17 @@ export default function LiveWorkoutScreen() {
           </Card>
         ) : null}
 
-        <Button title="Finish workout" onPress={finishWorkout} />
+        <Card>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Button
+              title="+ Exercise"
+              onPress={() => setIsPickerOpen(true)}
+              variant="outline"
+              className="flex-1"
+            />
+            <Button title="Finish workout" onPress={finishWorkout} className="flex-1" />
+          </View>
+        </Card>
       </View>
 
       {/* Exercise picker modal */}
@@ -1261,44 +1374,206 @@ function TargetInput({
   );
 }
 
-function CurrentSetValue({ label, value }: { label: string; value: string }) {
+function SetDraftEditor({
+  reps,
+  weight,
+  incrementSize,
+  onRepsChange,
+  onWeightChange,
+  onRepsDown,
+  onRepsUp,
+  onWeightDown,
+  onWeightUp,
+}: {
+  reps: string;
+  weight: string;
+  incrementSize: number;
+  onRepsChange: (value: string) => void;
+  onWeightChange: (value: string) => void;
+  onRepsDown: () => void;
+  onRepsUp: () => void;
+  onWeightDown: () => void;
+  onWeightUp: () => void;
+}) {
   return (
-    <View
-      style={{
-        backgroundColor: 'rgba(255, 255, 255, 0.08)',
-        borderColor: 'rgba(255, 255, 255, 0.14)',
-        borderRadius: 18,
-        borderWidth: 1,
-        flex: 1,
-        minWidth: 130,
-        padding: 14,
-      }}
-    >
-      <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
-        {label}
-      </Text>
-      <Text style={{ color: colors.baseContent, fontSize: 26, fontWeight: '900', marginTop: 4 }}>
-        {value}
-      </Text>
+    <View style={{ gap: 14 }}>
+      <DraftInput
+        label="Reps"
+        value={reps}
+        keyboardType="number-pad"
+        decrementLabel="−"
+        incrementLabel="+"
+        onChangeText={onRepsChange}
+        onDecrement={onRepsDown}
+        onIncrement={onRepsUp}
+      />
+      <DraftInput
+        label="Weight"
+        value={weight}
+        keyboardType="decimal-pad"
+        decrementLabel={`−${formatWeightInput(incrementSize)}`}
+        incrementLabel={`+${formatWeightInput(incrementSize)}`}
+        onChangeText={onWeightChange}
+        onDecrement={onWeightDown}
+        onIncrement={onWeightUp}
+      />
     </View>
   );
 }
 
-function QuickAdjustButton({ label, onPress }: { label: string; onPress: () => void }) {
+function DraftInput({
+  label,
+  value,
+  keyboardType,
+  decrementLabel,
+  incrementLabel,
+  onChangeText,
+  onDecrement,
+  onIncrement,
+}: {
+  label: string;
+  value: string;
+  keyboardType: 'number-pad' | 'decimal-pad';
+  decrementLabel: string;
+  incrementLabel: string;
+  onChangeText: (value: string) => void;
+  onDecrement: () => void;
+  onIncrement: () => void;
+}) {
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
+        {label}
+      </Text>
+      <View style={{ alignItems: 'center', flexDirection: 'row', gap: 10 }}>
+        <StepperButton label={decrementLabel} onPress={onDecrement} />
+        <TextInput
+          keyboardType={keyboardType}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder="0"
+          placeholderTextColor={colors.baseMuted}
+          style={draftInputStyle}
+        />
+        <StepperButton label={incrementLabel} onPress={onIncrement} />
+      </View>
+    </View>
+  );
+}
+
+function StepperButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        alignItems: 'center',
+        backgroundColor: pressed ? colors.base300 : colors.base200,
+        borderColor: colors.base300,
+        borderRadius: 16,
+        borderWidth: 1,
+        minWidth: 56,
+        paddingVertical: 16,
+      })}
+    >
+      <Text style={{ color: colors.baseContent, fontSize: 18, fontWeight: '900' }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function LoggedSetList({
+  sets,
+  onEdit,
+  onDelete,
+}: {
+  sets: LocalWorkoutSetRow[];
+  onEdit: (set: LocalWorkoutSet) => void;
+  onDelete: (setLocalId: string) => void;
+}) {
+  return (
+    <View style={{ gap: 8 }}>
+      {sets.map((set) => (
+        <Pressable
+          key={set.local_id}
+          onPress={() => onEdit(set)}
+          style={({ pressed }) => ({
+            alignItems: 'center',
+            backgroundColor: pressed ? colors.base300 : colors.base100,
+            borderColor: colors.base300,
+            borderRadius: 14,
+            borderWidth: 1,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            padding: 12,
+          })}
+        >
+          <Text style={{ color: colors.baseContent, fontWeight: '900', minWidth: 52 }}>
+            Set {set.set_number}
+          </Text>
+
+          <Text style={{ color: colors.baseMuted, flex: 1, fontWeight: '800' }}>
+            {set.reps ?? 0} reps × {set.weight ?? 0} lb
+          </Text>
+
+          <Text style={{ color: colors.primary, fontWeight: '900', marginRight: 12 }}>
+            Edit
+          </Text>
+
+          <Pressable
+            hitSlop={10}
+            onPress={(event) => {
+              event.stopPropagation();
+              onDelete(set.local_id);
+            }}
+            style={({ pressed }) => ({
+              backgroundColor: pressed ? rgba(248, 113, 113, 0.22) : rgba(248, 113, 113, 0.14),
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+            })}
+          >
+            <Text style={{ color: colors.error, fontSize: 15, fontWeight: '900' }}>
+              ✕
+            </Text>
+          </Pressable>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function CollapsedExerciseRow({
+  exercise,
+  status,
+  onPress,
+}: {
+  exercise: Exercise;
+  status: string;
+  onPress: () => void;
+}) {
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
         alignItems: 'center',
         backgroundColor: pressed ? colors.base300 : colors.base100,
-        borderRadius: 14,
-        flexGrow: 1,
-        minWidth: 74,
-        paddingHorizontal: 8,
-        paddingVertical: 12,
+        borderColor: colors.base300,
+        borderRadius: 16,
+        borderWidth: 1,
+        flexDirection: 'row',
+        gap: 12,
+        justifyContent: 'space-between',
+        padding: 14,
       })}
     >
-      <Text style={{ color: colors.baseContent, fontWeight: '900' }}>{label}</Text>
+      <View style={{ flex: 1, minWidth: 96 }}>
+        <Text style={{ color: colors.baseContent, fontSize: 17, fontWeight: '900' }}>
+          {exercise.name}
+        </Text>
+        <Text style={{ color: colors.baseMuted, fontWeight: '800', lineHeight: 20, marginTop: 3 }}>
+          {status}
+        </Text>
+      </View>
+      <Text style={{ color: colors.primary, fontWeight: '900' }}>Resume exercise</Text>
     </Pressable>
   );
 }
@@ -1348,6 +1623,13 @@ const inputStyle = {
   fontSize: 18,
   fontWeight: '800' as const,
   padding: 14,
+};
+
+const draftInputStyle = {
+  ...inputStyle,
+  flex: 1,
+  fontSize: 24,
+  textAlign: 'center' as const,
 };
 
 function formatClock(totalSeconds: number) {

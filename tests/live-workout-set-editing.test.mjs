@@ -47,9 +47,9 @@ test('logged set UI replaces the old count-only experience with one active exerc
   assertIncludes(live, 'No exercises added');
   assertIncludes(live, 'ACTIVE EXERCISE');
   assertIncludes(live, 'Logged sets');
-  assertIncludes(live, 'No sets logged for this exercise yet.');
+  assertIncludes(live, 'No sets yet. Enter your reps and weight, then log set');
   assertIncludes(live, '<WorkoutStatusPill label="Sets" value={String(sets.length)} />');
-  assertIncludes(live, 'selectedExerciseSets.map((set) => (');
+  assertIncludes(live, '<LoggedSetList');
 });
 
 test('logged sets are grouped by exercise and restore exercise cards from logged set data', () => {
@@ -62,15 +62,15 @@ test('logged sets are grouped by exercise and restore exercise cards from logged
   assert.match(live, /function resolveExercise\(exerciseId: string\) \{/);
   assert.match(live, /exerciseLookup\[exerciseId\] \?\? getExerciseById\(exerciseId\) \?\? null/);
   assert.match(live, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
-  assert.match(live, /selectedExercises\.map\(\(exercise\) => \{/);
+  assert.match(live, /selectedExercises[\s\S]*\.map\(\(exercise\) => \{/);
   assertIncludes(live, '{exercise.name}');
 });
 
 test('each logged set renders as a tappable row showing set number plus reps times weight', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assert.match(live, /selectedExerciseSets\.map\(\(set\) => \(/);
-  assert.match(live, /<Pressable\s+key=\{set\.local_id\}\s+onPress=\{\(\) => openEditModal\(set\)\}/s);
+  assert.match(live, /sets\.map\(\(set\) => \(/);
+  assert.match(live, /<Pressable\s+key=\{set\.local_id\}\s+onPress=\{\(\) => onEdit\(set\)\}/s);
   assertIncludes(live, 'Set {set.set_number}');
   assertIncludes(live, '{set.reps ?? 0} reps × {set.weight ?? 0} lb');
 });
@@ -121,7 +121,7 @@ test('edit modal is wired to the editing state and uses the edit-specific input 
 test('delete control is separate from row editing and stops event propagation', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assert.match(live, /onPress=\{\((event|e)\) => \{\s*(event|e)\.stopPropagation\(\);\s*confirmDeleteSet\(set\.local_id\);\s*\}\}/s);
+  assert.match(live, /onPress=\{\((event|e)\) => \{\s*(event|e)\.stopPropagation\(\);\s*onDelete\(set\.local_id\);\s*\}\}/s);
   assertIncludes(live, 'hitSlop={10}');
   assertIncludes(live, '✕');
 });
@@ -148,11 +148,10 @@ test('new sets continue numbering within the exercise being logged', () => {
 test('compact exercise list only switches the active exercise and never logs from inactive rows', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assertIncludes(live, 'One active exercise at a time. Switch exercises below when you are ready.');
-  assert.match(live, /selectedExercises\.map\(\(exercise\) => \{/);
+  assertIncludes(live, 'OTHER EXERCISES');
+  assert.match(live, /selectedExercises[\s\S]*\.filter\(\(exercise\) => exercise\.id !== selectedExercise\?\.id\)[\s\S]*\.map\(\(exercise\) => \{/);
   assert.match(live, /onPress=\{\(\) => void selectExerciseForLogging\(exercise\)\}/);
-  assertIncludes(live, '<Badge label="Active" variant="primary" />');
-  assertIncludes(live, 'Switch</Text>');
+  assertIncludes(live, 'Resume exercise');
   assert.doesNotMatch(live, /onPress=\{\(\) => logSetForExercise\(exercise\)\}/);
   assert.doesNotMatch(live, /handleExerciseCardAction/);
 });
