@@ -22,6 +22,12 @@ export type Exercise = {
   difficulty?: string;
   instructions?: string;
   videoUrl?: string;
+  externalId?: string;
+  bodyPart?: string;
+  targetMuscle?: string;
+  secondaryMuscles?: string[];
+  instructionSteps?: string[];
+  mediaId?: string;
 };
 
 export type WorkoutSession = {
