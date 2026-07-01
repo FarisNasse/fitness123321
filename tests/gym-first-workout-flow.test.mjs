@@ -18,92 +18,82 @@ function assertInOrder(source, snippets, message = 'expected snippets to appear 
   }
 }
 
-test('live workout screen builds a current-set draft from the active exercise draft state', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('live workout route is now a small route shell instead of a 1600-line feature dashboard', () => {
+  const route = readProjectFile('app/workout/session/[id].tsx');
+  const lineCount = route.split('\n').length;
 
-  assert.match(live, /type SetDraft = \{\s*reps: string;\s*weight: string;\s*\}/s);
-  assert.match(live, /const \[draftsByExerciseId, setDraftsByExerciseId\] = useState<DraftsByExerciseId>\(\{\}\)/);
-  assert.match(live, /const selectedExerciseDraft = selectedExercise\s*\? getDraftForExercise\(selectedExercise\.id\)\s*: DEFAULT_SET_DRAFT/s);
-  assert.match(live, /const currentSetDraft = useMemo\(/);
-  assert.match(live, /exerciseName: selectedExercise\?\.name \?\? 'Choose an exercise'/);
-  assert.match(live, /setNumber: selectedExercise \? selectedExerciseSets\.length \+ 1 : 1/);
-  assert.match(live, /suggestedReps: selectedExerciseDraft\.reps/);
-  assert.match(live, /suggestedWeight: selectedExerciseDraft\.weight/);
-  assert.match(live, /logButtonLabel: buildLogSetButtonLabel\(/);
+  assert.ok(lineCount < 150, `route should stay below 150 lines, found ${lineCount}`);
+  assert.match(route, /useLiveWorkoutController/);
+  assert.match(route, /<LiveWorkoutScreenView controller=\{result\.controller\} \/>/);
+  assert.doesNotMatch(route, /ExerciseLibrary/);
+  assert.doesNotMatch(route, /addLocalWorkoutSet/);
+  assert.doesNotMatch(route, /Workout feedback \(optional\)/);
 });
 
-test('active exercise card prominently shows the next set, editable draft, and logged sets together', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('live workout state tracks draft provenance and dirty state so async defaults cannot overwrite manual edits', () => {
+  const state = readProjectFile('src/features/workouts/live/liveWorkoutState.ts');
+  const reducer = readProjectFile('src/features/workouts/live/liveWorkoutReducer.ts');
 
-  assertInOrder(live, [
-    'ACTIVE EXERCISE',
-    '{currentSetDraft.exerciseName}',
-    'NEXT SET',
-    'Set {currentSetDraft.setNumber}',
-    '<SetDraftEditor',
-    'reps={currentSetDraft.suggestedReps}',
-    'weight={currentSetDraft.suggestedWeight}',
-    '{currentSetDraft.logButtonLabel}',
-    'Logged sets',
-    '<LoggedSetList',
-  ], 'active exercise card should keep logging and review in one place');
-
-  assert.match(live, /function SetDraftEditor\(/);
-  assert.match(live, /function DraftInput\(/);
-  assert.match(live, /function LoggedSetList\(/);
+  assert.match(state, /export type SetDraftSource = 'suggested' \| 'last-set' \| 'manual'/);
+  assert.match(state, /reps: string;[\s\S]*weight: string;[\s\S]*source: SetDraftSource;[\s\S]*dirty: boolean;/);
+  assert.match(reducer, /case 'draft\.changed'/);
+  assert.match(reducer, /source: 'manual',[\s\S]*dirty: true/);
+  assert.match(reducer, /if \(currentDraft\?\.dirty && !event\.replaceDraft\) \{[\s\S]*return state;/);
 });
 
-test('explicit Log set action saves through addSet and starts the rest timer', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('controller builds the current set model from the active per-exercise draft and logs exactly those values', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const compact = normalizeWhitespace(controller);
 
-  assert.match(live, /function buildLogSetButtonLabel\(setNumber: number, draft: SetDraft\)/);
-  assert.match(live, /return `Log set \$\{setNumber\} — \$\{repsLabel\} @ \$\{formatWeightInput\(parsedWeight\)\} lb`/);
-  assert.match(live, /<Pressable\s+disabled=\{!selectedExercise\}\s+onPress=\{addSet\}/s);
-  assertInOrder(live, [
-    '<Text style={{ color: colors.primaryContent, fontSize: 21, fontWeight: \'900\' }}>',
-    '{currentSetDraft.logButtonLabel}',
-    'Save this set and start rest timer',
-  ], 'Log set button should be visually prominent and self-describing');
-  assertInOrder(live, [
-    'function logSetForExercise(exercise: Exercise) {',
-    'addLocalWorkoutSet({',
-    'reps: parsed.parsedReps,',
-    'weight: parsed.parsedWeight,',
-    'setRestSeconds(REST_DURATION_SECONDS);',
-  ], 'logSetForExercise should save the displayed values and keep the rest timer');
-  assertInOrder(live, [
-    'function addSet() {',
-    'if (!selectedExercise) return;',
-    'logSetForExercise(selectedExercise);',
-  ], 'Log set should route through the normal selected-exercise set logger');
+  assert.match(controller, /const activeDraft = selectedExercise\s*\? getDraftForExercise\(selectedExercise\.id\)\s*: DEFAULT_SET_DRAFT/s);
+  assert.match(controller, /logButtonTitle: buildLogSetTitle/);
+  assert.match(controller, /logButtonDetail: buildLogSetDetail\(activeDraft\)/);
+  assert.match(controller, /function addSet\(\) \{/);
+  assert.match(compact, /const parsed = parseSetInputs\(activeDraft\);/);
+  assert.match(compact, /addLocalWorkoutSet\(\{ sessionLocalId: sessionId, exerciseId: selectedExercise\.id, setNumber, reps: parsed\.parsedReps, weight: parsed\.parsedWeight, \}\);/);
+  assert.match(compact, /dispatch\(\{ type: 'rest\.started', seconds: REST_DURATION_SECONDS \}\);/);
 });
 
-test('quick adjustment controls change the active exercise draft values that are saved', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-  const compact = normalizeWhitespace(live);
+test('primary live workout view is organized as a compact logger with recent-first set review and a docked primary action', () => {
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
 
-  assert.match(live, /const REP_STEP = 1/);
-  assert.match(live, /const WEIGHT_STEP = 5/);
-  assert.match(live, /function adjustReps\(delta: number\) \{[\s\S]*const draft = getDraftForExercise\(selectedExercise\.id\)[\s\S]*updateExerciseDraft\(selectedExercise\.id, \{ reps: String\(nextValue\) \}\);/);
-  assert.match(live, /function adjustWeight\(delta: number\) \{[\s\S]*const draft = getDraftForExercise\(selectedExercise\.id\)[\s\S]*updateExerciseDraft\(selectedExercise\.id, \{ weight: formatWeightInput\(nextValue\) \}\);/);
-  assert.match(live, /<StepperButton label=\{decrementLabel\} onPress=\{onDecrement\} \/>/);
-  assert.match(live, /<StepperButton label=\{incrementLabel\} onPress=\{onIncrement\} \/>/);
-  assert.match(live, /onWeightDown=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
-  assert.match(live, /onWeightUp=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
-  assert.match(compact, /const draft = getDraftForExercise\(exerciseId\); const parsedReps = Number\.parseInt\(draft\.reps, 10\); const parsedWeight = Number\.parseFloat\(draft\.weight \|\| '0'\).*reps: parsed\.parsedReps, weight: parsed\.parsedWeight/s);
+  assertInOrder(view, [
+    '<LiveWorkoutHeader controller={controller} />',
+    '<ExerciseSwitcher controller={controller} />',
+    '<ActiveSetLogger controller={controller} />',
+    '<RecentSetList',
+    '<DockedWorkoutActions controller={controller} />',
+  ], 'view should prioritize header, switcher, logger, recent sets, docked action');
+  assertIncludes(view, 'LAST SET');
+  assertIncludes(view, 'Set {draft.setNumber}');
+  assertIncludes(view, '{controller.currentSetDraft.logButtonTitle}');
+  assertIncludes(view, '{controller.currentSetDraft.logButtonDetail}');
+  assertIncludes(view, 'Recent sets');
+  assert.doesNotMatch(view, /OTHER EXERCISES/);
+  assert.doesNotMatch(view, /Workout feedback \(optional\)/);
 });
 
-test('duplicated manual fallback is removed while editing and target settings remain available', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('quick adjustment controls mutate the same active draft that the logger persists', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
 
-  assert.doesNotMatch(live, /MANUAL FALLBACK/);
-  assert.doesNotMatch(live, /<Button title="Add set" onPress=\{addSet\} disabled=\{!selectedExercise\} \/>/);
-  assertIncludes(live, 'Edit targets');
-  assert.match(live, /const \[isTargetSheetOpen, setIsTargetSheetOpen\] = useState\(false\)/);
-  assert.match(live, /visible=\{isTargetSheetOpen && Boolean\(selectedExercise\)\}/);
-  assert.match(live, /<TargetInput[\s\S]*label="Sets"[\s\S]*value=\{targetSetsInput\}/);
-  assert.match(live, /<Button[\s\S]*title="Save targets"[\s\S]*onPress=\{saveSelectedExerciseTarget\}/);
-  assert.match(live, /function openEditModal\(set: LocalWorkoutSet\) \{/);
-  assert.match(live, /function saveEditedSet\(\) \{/);
-  assert.match(live, /visible=\{Boolean\(editingSet\)\}/);
+  assert.match(controller, /function adjustReps\(delta: number\)[\s\S]*updateSelectedDraft\(\{ reps: String\(nextValue\) \}\);/);
+  assert.match(controller, /function adjustWeight\(delta: number\)[\s\S]*updateSelectedDraft\(\{ weight: formatWeightInput\(nextValue\) \}\);/);
+  assert.match(view, /<StepperButton label=\{decrementLabel\} onPress=\{onDecrement\} \/>/);
+  assert.match(view, /<StepperButton label=\{incrementLabel\} onPress=\{onIncrement\} \/>/);
+  assert.match(view, /onChangeText=\{\(value\) => controller\.updateSelectedDraft\(\{ reps: value \}\)\}/);
+  assert.match(view, /onChangeText=\{\(value\) => controller\.updateSelectedDraft\(\{ weight: value \}\)\}/);
+});
+
+test('secondary tasks are pushed into sheets instead of competing with Log set in the main flow', () => {
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+
+  assert.match(view, /function TargetSettingsSheet/);
+  assert.match(view, /function ExerciseInstructionsSheet/);
+  assert.match(view, /function EditSetSheet/);
+  assert.match(view, /function FinishWorkoutSheet/);
+  assertIncludes(view, 'How did this workout feel?');
+  assertIncludes(view, 'Delete is inside this sheet so it is not a tiny inline row target.');
+  assert.doesNotMatch(view, /hitSlop=\{10\}/);
+  assert.doesNotMatch(view, /✕/);
 });

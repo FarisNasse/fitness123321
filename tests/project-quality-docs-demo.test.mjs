@@ -41,7 +41,7 @@ test('reviewer docs explain the local-first workout design, recommendations, and
   assertIncludes(demo, 'Start workout');
   assertIncludes(demo, 'Log a set with one tap');
   assertIncludes(demo, 'Repeat Last Workout');
-  assertIncludes(demo, 'The key workout cards use wrapping rows/minimum widths');
+  assertIncludes(demo, 'The key workout controls use wrapping rows/minimum widths');
 
   const roadmap = readProjectFile('docs/workout-roadmap.md');
 
@@ -49,14 +49,18 @@ test('reviewer docs explain the local-first workout design, recommendations, and
   assertIncludes(readme, 'docs/workout-local-first-architecture.md');
   assertIncludes(readme, 'docs/workout-recommendation-logic.md');
   assertIncludes(readme, 'docs/workout-demo-script.md');
+  assertIncludes(readme, 'docs/live-workout-ui-ux-research-diagnosis.md');
   assertIncludes(roadmap, 'Live workout flow cleanup now covered');
-  assertIncludes(roadmap, 'remove the duplicate manual fallback logger');
+  assertIncludes(roadmap, 'docked, dominant `Log set` action');
   assertIncludes(roadmap, 'preventing shared reps/weight draft state from silently logging under the wrong exercise');
 });
 
 test('workout screens have explicit loading, empty, and error states for normal edge cases', () => {
   const workouts = readProjectFile('app/(tabs)/workouts.tsx');
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const route = readProjectFile('app/workout/session/[id].tsx');
+  const state = readProjectFile('src/features/workouts/live/liveWorkoutState.ts');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
   const history = readProjectFile('app/workout/history/[id].tsx');
   const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
 
@@ -65,10 +69,12 @@ test('workout screens have explicit loading, empty, and error states for normal 
   assertIncludes(workouts, 'Loading recent workouts…');
   assertIncludes(workouts, 'No completed workouts yet');
 
-  assertIncludes(live, 'SessionLoadState');
-  assertIncludes(live, 'Loading workout session…');
-  assertIncludes(live, 'Workout session unavailable');
-  assertIncludes(live, 'Back to workouts');
+  assertIncludes(state, 'SessionLoadState');
+  assertIncludes(route, 'Loading workout session…');
+  assertIncludes(controller, 'Workout session unavailable');
+  assertIncludes(route, 'Back to workouts');
+  assertIncludes(view, 'Start logging');
+  assertIncludes(view, 'Add your first exercise.');
 
   assertIncludes(history, 'Could not load workout sets');
   assertIncludes(history, 'Workout not found');
@@ -82,16 +88,16 @@ test('workout screens have explicit loading, empty, and error states for normal 
 
 test('key workout cards use mobile-safe wrapping and minimum widths', () => {
   const workouts = readProjectFile('app/(tabs)/workouts.tsx');
-  const live = normalizeWhitespace(readProjectFile('app/workout/session/[id].tsx'));
+  const view = normalizeWhitespace(readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx'));
   const history = normalizeWhitespace(readProjectFile('app/workout/history/[id].tsx'));
 
   assert.match(workouts, /className="flex-row flex-wrap gap-3"/);
   assert.match(workouts, /style=\{\{ minWidth: 96 \}\}/);
 
-  assertIncludes(live, "flexDirection: 'row', flexWrap: 'wrap', gap: 10");
-  assert.match(live, /minWidth: 96/);
-  assert.match(live, /minWidth: 56/);
-  assert.match(live, /flex: 1, minWidth: 104/);
+  assertIncludes(view, "flexDirection: 'row', flexWrap: 'wrap', gap: 10");
+  assert.match(view, /minWidth: 96/);
+  assert.match(view, /minWidth: 58/);
+  assert.match(view, /minHeight: 48/);
 
   assert.match(history, /flexDirection: 'row', flexWrap: 'wrap', gap: 10/);
   assert.match(history, /flex: 1, minWidth: 112/);

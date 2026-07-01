@@ -582,39 +582,38 @@ test('suggested defaults come from the most recent completed history for that ex
   ]);
 });
 
-test('one-tap Log set saves the active exercise draft currently displayed in the live workout card', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-  const compact = normalizeWhitespace(live);
+test('one-tap Log set saves the active exercise draft currently displayed in the docked logger', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const compact = normalizeWhitespace(controller);
 
-  assert.match(live, /suggestedReps: selectedExerciseDraft\.reps/);
-  assert.match(live, /suggestedWeight: selectedExerciseDraft\.weight/);
-  assert.match(live, /<Pressable\s+disabled=\{!selectedExercise\}\s+onPress=\{addSet\}/s);
-  assert.match(compact, /function addSet\(\) \{ if \(!selectedExercise\) return; logSetForExercise\(selectedExercise\); \}/);
+  assert.match(controller, /const activeDraft = selectedExercise\s*\? getDraftForExercise\(selectedExercise\.id\)\s*: DEFAULT_SET_DRAFT/s);
+  assert.match(view, /disabled=\{Boolean\(controller\.currentSetDraft\.validationMessage\)\}/);
+  assert.match(view, /onPress=\{controller\.addSet\}/);
+  assert.match(view, /\{controller\.currentSetDraft\.logButtonTitle\}/);
+  assert.match(view, /\{controller\.currentSetDraft\.logButtonDetail\}/);
+  assert.match(compact, /function addSet\(\) \{ if \(!selectedExercise \|\| !sessionId \|\| !session\) return; const parsed = parseSetInputs\(activeDraft\);/);
   assert.match(
     compact,
-    /function parseSetInputs\(exerciseId: string\) \{ const draft = getDraftForExercise\(exerciseId\); const parsedReps = Number\.parseInt\(draft\.reps, 10\); const parsedWeight = Number\.parseFloat\(draft\.weight \|\| '0'\);/,
-    'the parser should read the same per-exercise draft state shown in the card'
-  );
-  assert.match(
-    compact,
-    /addLocalWorkoutSet\(\{ sessionLocalId: sessionId, exerciseId: exercise\.id, setNumber: currentExerciseSets\.length \+ 1, reps: parsed\.parsedReps, weight: parsed\.parsedWeight, \}\);/,
-    'the one-tap logger should persist the parsed displayed values'
+    /addLocalWorkoutSet\(\{ sessionLocalId: sessionId, exerciseId: selectedExercise\.id, setNumber, reps: parsed\.parsedReps, weight: parsed\.parsedWeight, \}\);/,
+    'the docked logger should persist the parsed displayed values'
   );
 });
 
 test('quick adjustments mutate the active exercise draft that the next saved set uses', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-  const compact = normalizeWhitespace(live);
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const compact = normalizeWhitespace(controller);
 
-  assert.match(live, /function adjustReps\(delta: number\) \{[\s\S]*const draft = getDraftForExercise\(selectedExercise\.id\)[\s\S]*updateExerciseDraft\(selectedExercise\.id, \{ reps: String\(nextValue\) \}\);/);
-  assert.match(live, /function adjustWeight\(delta: number\) \{[\s\S]*const draft = getDraftForExercise\(selectedExercise\.id\)[\s\S]*updateExerciseDraft\(selectedExercise\.id, \{ weight: formatWeightInput\(nextValue\) \}\);/);
-  assert.match(live, /<StepperButton label=\{decrementLabel\} onPress=\{onDecrement\} \/>/);
-  assert.match(live, /<StepperButton label=\{incrementLabel\} onPress=\{onIncrement\} \/>/);
-  assert.match(live, /onWeightDown=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
-  assert.match(live, /onWeightUp=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
+  assert.match(controller, /function adjustReps\(delta: number\)[\s\S]*updateSelectedDraft\(\{ reps: String\(nextValue\) \}\);/);
+  assert.match(controller, /function adjustWeight\(delta: number\)[\s\S]*updateSelectedDraft\(\{ weight: formatWeightInput\(nextValue\) \}\);/);
+  assert.match(view, /<StepperButton label=\{decrementLabel\} onPress=\{onDecrement\} \/>/);
+  assert.match(view, /<StepperButton label=\{incrementLabel\} onPress=\{onIncrement\} \/>/);
+  assert.match(view, /onDecrement=\{\(\) => controller\.adjustWeight\(-draft\.incrementSize\)\}/);
+  assert.match(view, /onIncrement=\{\(\) => controller\.adjustWeight\(draft\.incrementSize\)\}/);
   assert.match(
     compact,
-    /suggestedReps: selectedExerciseDraft\.reps, suggestedWeight: selectedExerciseDraft\.weight,[\s\S]*const draft = getDraftForExercise\(exerciseId\); const parsedReps = Number\.parseInt\(draft\.reps, 10\); const parsedWeight = Number\.parseFloat\(draft\.weight \|\| '0'\);/,
+    /const activeDraft = selectedExercise \? getDraftForExercise\(selectedExercise\.id\) : DEFAULT_SET_DRAFT;[\s\S]*const parsed = parseSetInputs\(activeDraft\);/,
     'quick-adjusted display state should be the same draft parsed for persistence'
   );
 });

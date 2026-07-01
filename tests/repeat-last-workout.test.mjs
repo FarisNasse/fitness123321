@@ -89,21 +89,21 @@ test('workouts tab exposes Repeat Last Workout only when history can be repeated
 });
 
 test('live workout screen preloads saved exercises before any new sets are logged', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
 
-  assert.match(live, /getLocalWorkoutSessionExercises/);
-  assert.match(live, /const savedExerciseRows = getLocalWorkoutSessionExercises\(sessionId\)/);
-  assert.match(live, /const orderedSessionExercises = savedExerciseRows[\s\S]*\.map\(\(row\) => resolveExercise\(row\.exercise_id\)\)/);
-  assert.match(live, /const nextExercises = \[\.\.\.orderedSessionExercises, \.\.\.exercisesFromLoggedSets\]/);
-  assert.match(live, /setSelectedExercises\(\(current\) => \{/);
-  assert.match(live, /setSelectedExercise\(\(current\) => current \?\? nextExercises\[0\]\)/);
+  assert.match(controller, /getLocalWorkoutSessionExercises/);
+  assert.match(controller, /const savedExerciseRows = getLocalWorkoutSessionExercises\(sessionId\)/);
+  assert.match(controller, /const orderedSessionExercises = savedExerciseRows[\s\S]*\.map\(\(row\) => resolveExercise\(row\.exercise_id\)\)/);
+  assert.match(controller, /const nextExercises = \[\.\.\.orderedSessionExercises, \.\.\.exercisesFromLoggedSets\]/);
+  assert.match(controller, /setSelectedExercises\(\(current\) => \{/);
+  assert.match(controller, /setSelectedExercise\(\(current\) => current \?\? nextExercises\[0\]\)/);
 });
 
 test('exercise picker persists the session exercise order independently of set rows', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
 
-  assertInOrder(live, [
-    'function chooseExercise(exercise: Exercise) {',
+  assertInOrder(controller, [
+    'async function chooseExercise(exercise: Exercise) {',
     'if (sessionId) {',
     'addLocalWorkoutSessionExercise(sessionId, exercise.id);',
     'rememberExercises([exercise]);',

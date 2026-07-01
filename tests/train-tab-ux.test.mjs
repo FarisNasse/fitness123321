@@ -88,7 +88,8 @@ test('repeat-last action is gated by history but the no-history guard remains', 
 
 test('exercise browser keeps filtering optional, detail modal intact, and picker selection wired', () => {
   const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
 
   assert.match(library, /const \[isFilterSheetOpen, setIsFilterSheetOpen\] = useState\(false\)/);
   assert.match(library, /const activeFilterCount = FILTERS\.filter\(\(filter\) => filters\[filter\.key\]\)\.length/);
@@ -98,8 +99,8 @@ test('exercise browser keeps filtering optional, detail modal intact, and picker
   assert.match(library, /<Modal[\s\S]*visible=\{Boolean\(selectedExercise\)\}[\s\S]*Muscle diagram placeholder/);
   assert.match(library, /function selectExercise\(exercise: Exercise\) \{[\s\S]*onSelect\?\.\(exercise\);[\s\S]*setSelectedExercise\(null\);[\s\S]*\}/);
   assert.match(library, /\{onSelect \? \([\s\S]*<LibraryButton[\s\S]*title=\{selectButtonTitle\}[\s\S]*onPress=\{\(\) => selectExercise\(selectedExercise\)\}/);
-  assert.match(live, /<ExerciseLibrary[\s\S]*onSelect=\{chooseExercise\}[\s\S]*selectButtonTitle="Use this exercise"/);
-  assert.match(live, /function chooseExercise\(exercise: Exercise\) \{[\s\S]*rememberExerciseSelection\(exercise\);[\s\S]*setSelectedExercise\(exercise\);[\s\S]*setIsPickerOpen\(false\);/);
+  assert.match(view, /<ExerciseLibrary\s+onSelect=\{controller\.chooseExercise\}[\s\S]*selectButtonTitle="Use this exercise"/);
+  assert.match(controller, /async function chooseExercise\(exercise: Exercise\)[\s\S]*rememberExerciseSelection\(exercise\);[\s\S]*setSelectedExercise\(exercise\);[\s\S]*dispatch\(\{ type: 'sheet\.closed' \}\);/);
 });
 
 test('normal Train and ExerciseLibrary surfaces avoid developer-facing copy', () => {

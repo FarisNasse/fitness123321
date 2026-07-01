@@ -51,11 +51,11 @@ Issues:
 
 The gym-first workflow also includes the live logging cleanup from the workout flow review:
 
-- remove the duplicate manual fallback logger so `Done` is the only primary set-writing action;
-- keep a single Add exercise entry point in the exercise summary card;
-- move optional exercise targets behind an Adjust targets sheet instead of rendering them inside the active logging loop;
-- require inactive exercise cards to become active before they can write a set, preventing shared reps/weight draft state from silently logging under the wrong exercise;
-- collapse the old separate current-set card plus repeated per-exercise cards into one active exercise workspace, with inactive exercises shown as compact switch rows.
+- replace the old `Done` wording with one docked, dominant `Log set` action that repeats exactly what will be saved;
+- keep Add exercise reachable through the compact exercise switcher and docked secondary action without competing with Log set;
+- move optional exercise targets, instructions, editing, deletion, and finish feedback into sheets instead of rendering them inside the active logging loop;
+- require inactive exercise chips to become active before they can write a set, preventing shared reps/weight draft state from silently logging under the wrong exercise;
+- collapse the old stacked dashboard/card layout into one active set logging instrument, with inactive exercises shown as compact progress chips.
 
 ## How to apply this cleanup to GitHub
 

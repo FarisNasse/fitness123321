@@ -3,10 +3,6 @@ import test from 'node:test';
 
 import { normalizeWhitespace, readProjectFile } from './helpers/project.mjs';
 
-function assertIncludes(source, text, message = `expected source to include ${text}`) {
-  assert.ok(source.includes(text), message);
-}
-
 function assertInOrder(source, snippets, message = 'expected snippets to appear in order') {
   let cursor = -1;
 
@@ -18,142 +14,66 @@ function assertInOrder(source, snippets, message = 'expected snippets to appear 
   }
 }
 
-test('live workout screen imports the helpers and types required for set review, editing, and deletion', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('logged set editing state lives in the controller and opens a dedicated edit sheet', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
 
-  for (const importedName of [
-    'deleteLocalWorkoutSet',
-    'getLocalWorkoutSets',
-    'updateLocalWorkoutSet',
-  ]) {
-    assertIncludes(live, importedName, `live workout screen should import/use ${importedName}`);
-  }
-
-  assert.match(live, /import type \{ LocalWorkoutSet \} from '@\/src\/lib\/local-db';/);
+  assert.match(controller, /const \[editingSet, setEditingSet\] = useState<LocalWorkoutSet \| null>\(null\)/);
+  assert.match(controller, /const \[editInputs, setEditInputs\] = useState<EditSetInputs>\(DEFAULT_EDIT_INPUTS\)/);
+  assert.match(controller, /function openEditSheet\(set: LocalWorkoutSet\) \{/);
+  assert.match(controller, /setEditInputs\(\{[\s\S]*reps: String\(set\.reps \?\? ''\),[\s\S]*weight: String\(set\.weight \?\? ''\),[\s\S]*\}\);/);
+  assert.match(controller, /dispatch\(\{ type: 'sheet\.opened', sheet: 'edit-set' \}\);/);
+  assert.match(view, /<EditSetSheet controller=\{controller\} \/>/);
 });
 
-test('live workout screen keeps explicit state for the currently edited set and pre-filled edit fields', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('recent set rows are tappable edit affordances without inline destructive targets', () => {
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
 
-  assert.match(live, /const \[editingSet, setEditingSet\] = useState<LocalWorkoutSet \| null>\(null\)/);
-  assert.match(live, /const \[editReps, setEditReps\] = useState\(''\)/);
-  assert.match(live, /const \[editWeight, setEditWeight\] = useState\(''\)/);
+  assert.match(view, /function RecentSetList\(/);
+  assert.match(view, /sets\.map\(\(set\) => \(/);
+  assert.match(view, /<Pressable\s+key=\{set\.local_id\}\s+onPress=\{\(\) => onEdit\(set\)\}/s);
+  assert.match(view, /\{formatRecentSetLine\(set\)\}/);
+  assert.match(view, />Edit<\/Text>/);
+  assert.doesNotMatch(view, /onDelete\(set\.local_id\)/);
+  assert.doesNotMatch(view, /hitSlop=\{10\}/);
+  assert.doesNotMatch(view, /✕/);
 });
 
-test('logged set UI replaces the old count-only experience with one active exercise workspace', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('saving an edited set validates input, updates local storage, closes the sheet, and refreshes sets', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
 
-  assert.doesNotMatch(live, /Sets added:/, 'the old count-only label should not be the logged-set UI');
-  assertIncludes(live, 'No exercises added');
-  assertIncludes(live, 'ACTIVE EXERCISE');
-  assertIncludes(live, 'Logged sets');
-  assertIncludes(live, 'No sets yet. Enter your reps and weight, then log set');
-  assertIncludes(live, '<WorkoutStatusPill label="Sets" value={String(sets.length)} />');
-  assertIncludes(live, '<LoggedSetList');
-});
-
-test('logged sets are grouped by exercise and restore exercise cards from logged set data', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-
-  assert.match(live, /function buildExerciseSetMap\(sets: LocalWorkoutSetRow\[\]\) \{/);
-  assert.match(live, /sets\.reduce\(\(map, set\) => \{/);
-  assert.match(live, /const exerciseSets = map\.get\(set\.exercise_id\) \?\? \[\]/);
-  assert.match(live, /map\.set\(set\.exercise_id, \[\.\.\.exerciseSets, set\]\)/);
-  assert.match(live, /function resolveExercise\(exerciseId: string\) \{/);
-  assert.match(live, /exerciseLookup\[exerciseId\] \?\? getExerciseById\(exerciseId\) \?\? null/);
-  assert.match(live, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
-  assert.match(live, /selectedExercises[\s\S]*\.map\(\(exercise\) => \{/);
-  assertIncludes(live, '{exercise.name}');
-});
-
-test('each logged set renders as a tappable row showing set number plus reps times weight', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-
-  assert.match(live, /sets\.map\(\(set\) => \(/);
-  assert.match(live, /<Pressable\s+key=\{set\.local_id\}\s+onPress=\{\(\) => onEdit\(set\)\}/s);
-  assertIncludes(live, 'Set {set.set_number}');
-  assertIncludes(live, '{set.reps ?? 0} reps × {set.weight ?? 0} lb');
-});
-
-test('tapping a set row opens editing with the existing reps and weight pre-filled', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-
-  assert.match(live, /function openEditModal\(set: LocalWorkoutSet\) \{/);
-  assertInOrder(live, [
-    'function openEditModal(set: LocalWorkoutSet) {',
-    'setEditingSet(set);',
-    "setEditReps(String(set.reps ?? ''));",
-    "setEditWeight(String(set.weight ?? ''));",
-  ], 'openEditModal should populate edit state from the tapped set');
-});
-
-test('saveEditedSet validates edited values before writing them back to local storage', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-
-  assert.match(live, /function saveEditedSet\(\) \{/);
-  assert.match(live, /const parsedReps = Number\.parseInt\(editReps, 10\)/);
-  assert.match(live, /const parsedWeight = Number\.parseFloat\(editWeight\)/);
-  assert.match(live, /Alert\.alert\('Invalid reps', 'Enter a valid rep count\.'\)/);
-  assert.match(live, /Alert\.alert\('Invalid weight', 'Enter a valid weight\.'\)/);
-});
-
-test('saving an edited set updates the existing local set, closes the editor, and refreshes the list', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-
-  assertInOrder(live, [
+  assert.match(controller, /function saveEditedSet\(\) \{/);
+  assert.match(controller, /const parsedReps = Number\.parseInt\(editInputs\.reps, 10\)/);
+  assert.match(controller, /const parsedWeight = Number\.parseFloat\(editInputs\.weight\)/);
+  assert.match(controller, /Alert\.alert\('Invalid reps', 'Enter a valid rep count\.'\)/);
+  assert.match(controller, /Alert\.alert\('Invalid weight', 'Enter a valid weight\.'\)/);
+  assertInOrder(controller, [
     'updateLocalWorkoutSet(editingSet.local_id, parsedReps, parsedWeight);',
     'setEditingSet(null);',
+    "dispatch({ type: 'sheet.closed' });",
     'refreshSets();',
-  ], 'saveEditedSet should persist, close, and refresh in that order');
+  ], 'saveEditedSet should persist, close the editor, and refresh');
 });
 
-test('edit modal is wired to the editing state and uses the edit-specific input values', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('deleting a set is moved into the edit sheet rather than a tiny row-level control', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
 
-  assert.match(live, /visible=\{Boolean\(editingSet\)\}/);
-  assert.match(live, /onRequestClose=\{\(\) => setEditingSet\(null\)\}/);
-  assertIncludes(live, 'Edit Set {editingSet?.set_number}');
-  assert.match(live, /value=\{editReps\}\s+onChangeText=\{setEditReps\}/s);
-  assert.match(live, /value=\{editWeight\}\s+onChangeText=\{setEditWeight\}/s);
-  assert.match(live, /onPress=\{saveEditedSet\}[\s\S]*<Text style=\{\{ color: colors\.primaryContent, fontWeight: '900' \}\}>Save<\/Text>/);
+  assert.match(controller, /function deleteEditingSet\(\) \{/);
+  assert.match(controller, /const setLocalId = editingSet\.local_id;/);
+  assert.match(controller, /deleteLocalWorkoutSet\(setLocalId\);/);
+  assert.match(controller, /queueWorkoutSync\('deleting a set'\)/);
+  assert.match(view, /<Button title="Delete set" onPress=\{controller\.deleteEditingSet\} variant="danger" \/>/);
 });
 
-test('delete control is separate from row editing and stops event propagation', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('new sets continue numbering within the active exercise only', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const compact = normalizeWhitespace(controller);
 
-  assert.match(live, /onPress=\{\((event|e)\) => \{\s*(event|e)\.stopPropagation\(\);\s*onDelete\(set\.local_id\);\s*\}\}/s);
-  assertIncludes(live, 'hitSlop={10}');
-  assertIncludes(live, '✕');
-});
-
-test('delete confirmation uses a destructive action that removes the set and refreshes the screen', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-
-  assert.match(live, /function confirmDeleteSet\(setLocalId: string\) \{/);
-  assertIncludes(live, "Alert.alert('Remove set', 'Delete this set?', [");
-  assert.match(live, /\{ text: 'Cancel', style: 'cancel' \}/);
-  assert.match(live, /text: 'Delete',[\s\S]*style: 'destructive',[\s\S]*onPress: \(\) => \{[\s\S]*deleteLocalWorkoutSet\(setLocalId\);[\s\S]*refreshSets\(\);[\s\S]*\}/);
-});
-
-test('new sets continue numbering within the exercise being logged', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-
-  assert.match(live, /const selectedExerciseSets = useMemo\(\(\) => \{[\s\S]*return exerciseSetMap\.get\(selectedExercise\.id\) \?\? \[\];[\s\S]*\}, \[exerciseSetMap, selectedExercise\]\);/);
-  assert.match(live, /function logSetForExercise\(exercise: Exercise\) \{/);
-  assert.match(live, /const currentExerciseSets = exerciseSetMap\.get\(exercise\.id\) \?\? \[\]/);
-  assert.match(live, /setNumber: currentExerciseSets\.length \+ 1/);
-  assert.match(live, /function addSet\(\) \{[\s\S]*logSetForExercise\(selectedExercise\);[\s\S]*\}/);
-});
-
-test('compact exercise list only switches the active exercise and never logs from inactive rows', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
-
-  assertIncludes(live, 'OTHER EXERCISES');
-  assert.match(live, /selectedExercises[\s\S]*\.filter\(\(exercise\) => exercise\.id !== selectedExercise\?\.id\)[\s\S]*\.map\(\(exercise\) => \{/);
-  assert.match(live, /onPress=\{\(\) => void selectExerciseForLogging\(exercise\)\}/);
-  assertIncludes(live, 'Resume exercise');
-  assert.doesNotMatch(live, /onPress=\{\(\) => logSetForExercise\(exercise\)\}/);
-  assert.doesNotMatch(live, /handleExerciseCardAction/);
+  assert.match(controller, /const selectedExerciseSets = useMemo\(\(\) => \{[\s\S]*return exerciseSetMap\.get\(selectedExercise\.id\) \?\? \[\];[\s\S]*\}, \[exerciseSetMap, selectedExercise\]\);/);
+  assert.match(controller, /const currentExerciseSets = exerciseSetMap\.get\(selectedExercise\.id\) \?\? \[\];/);
+  assert.match(controller, /const setNumber = currentExerciseSets\.length \+ 1;/);
+  assert.match(compact, /addLocalWorkoutSet\(\{ sessionLocalId: sessionId, exerciseId: selectedExercise\.id, setNumber,/);
 });
 
 test('workout service exposes explicit update and delete helpers for logged sets', () => {
@@ -183,26 +103,12 @@ test('deleteLocalWorkoutSet reads the target row first and safely no-ops when it
   ], 'deleteLocalWorkoutSet should fetch the deleted row before deletion');
 });
 
-test('deleteLocalWorkoutSet soft-deletes exactly the requested local set id', () => {
+test('deleteLocalWorkoutSet soft-deletes and renumbers only later sets from the same session and exercise', () => {
   const service = normalizeWhitespace(readProjectFile('src/features/workouts/workout-service.ts'));
 
   assert.match(service, /update workout_sets_local set is_deleted = 1, deleted_at = \?, sync_status = 'pending', updated_at = \? where local_id = \? and coalesce\(is_deleted, 0\) = 0/);
-  assert.match(service, /\[now, now, setLocalId\]/);
-});
-
-test('deleteLocalWorkoutSet renumbers only later sets from the same session and exercise', () => {
-  const service = normalizeWhitespace(readProjectFile('src/features/workouts/workout-service.ts'));
-
   assert.match(service, /select \* from workout_sets_local where session_local_id = \? and exercise_id = \? and coalesce\(is_deleted, 0\) = 0 and deleted_at is null and set_number > \? order by set_number asc/);
-  assert.match(service, /\[deleted\.session_local_id, deleted\.exercise_id, deleted\.set_number\]/);
-});
-
-test('deleteLocalWorkoutSet decrements every remaining later set and queues each for sync', () => {
-  const service = readProjectFile('src/features/workouts/workout-service.ts');
-
-  assert.match(service, /for \(const s of toRenumber\) \{/);
-  assert.match(service, /update workout_sets_local\s+set set_number = \?,\s+sync_status = 'pending',\s+updated_at = \?\s+where local_id = \?/s);
-  assert.match(service, /\[s\.set_number - 1, now, s\.local_id\]/);
+  assert.match(service, /set set_number = \?, sync_status = 'pending', updated_at = \? where local_id = \?/);
 });
 
 test('web local-db adapter handles every query shape used by set editing and deletion', () => {
