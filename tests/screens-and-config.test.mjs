@@ -286,7 +286,7 @@ test('live workout exercise picker modal wires ExerciseLibrary selection into se
   const live = readProjectFile('app/workout/session/[id].tsx');
 
   assert.match(live, /const \[isPickerOpen, setIsPickerOpen\] = useState\(false\)/);
-  assert.match(live, /<Button title="Add exercise" onPress=\{\(\) => setIsPickerOpen\(true\)\} \/>/);
+  assert.match(live, /<Button title="Add exercise" onPress=\{\(\) => setIsPickerOpen\(true\)\}(?: size="sm")? \/>/);
   assert.match(live, /<Modal[\s\S]*visible=\{isPickerOpen\}[\s\S]*<ExerciseLibrary\s+onSelect=\{chooseExercise\}[\s\S]*selectButtonTitle="Use this exercise"/);
   assert.match(live, /function chooseExercise\(exercise: Exercise\) \{[\s\S]*rememberExercises\(\[exercise\]\);[\s\S]*setExerciseLookup\(\(current\) => \(\{[\s\S]*\[exercise\.id\]: exercise,[\s\S]*\}\)\);/);
   assert.match(live, /setExerciseSetMap\(\(current\) => \{\s*const nextMap = new Map\(current\);[\s\S]*if \(!nextMap\.has\(exercise\.id\)\) \{\s*nextMap\.set\(exercise\.id, \[\]\);\s*\}[\s\S]*return nextMap;\s*\}\);/);
@@ -299,9 +299,9 @@ test('live workout screen groups logged sets by exercise and renders exercise ca
   assert.match(live, /function buildExerciseSetMap\(sets: LocalWorkoutSetRow\[\]\) \{[\s\S]*map\.get\(set\.exercise_id\) \?\? \[\];[\s\S]*map\.set\(set\.exercise_id, \[\.\.\.exerciseSets, set\]\);[\s\S]*new Map<string, LocalWorkoutSetRow\[\]>\(\)/);
   assert.match(live, /const nextSets = getLocalWorkoutSets\(sessionId\);\s*const nextMap = buildExerciseSetMap\(nextSets\);\s*setSets\(nextSets\);\s*setExerciseSetMap\(nextMap\);/);
   assert.match(live, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
+  assert.match(live, /selectedExerciseSets\.map\(\(set\) => \(/);
   assert.match(live, /selectedExercises\.map\(\(exercise\) => \{\s*const exerciseSets = exerciseSetMap\.get\(exercise\.id\) \?\? \[\];\s*const isActiveExercise = selectedExercise\?\.id === exercise\.id;/);
-  assert.match(live, /<Card key=\{exercise\.id\} variant=\{isActiveExercise \? 'highlighted' : 'default'\}>[\s\S]*\{exercise\.name\}[\s\S]*\{exerciseSets\.length === 0 \? \([\s\S]*No sets logged for this exercise yet\.[\s\S]*\) : \([\s\S]*exerciseSets\.map\(\(set\) =>/);
-  assert.match(live, /<Pressable onPress=\{\(\) => void selectExerciseForLogging\(exercise\)\}>[\s\S]*\{isActiveExercise \? 'Selected' : 'Log set'\}/);
+  assert.match(live, /<Pressable[\s\S]*key=\{exercise\.id\}[\s\S]*onPress=\{\(\) => void selectExerciseForLogging\(exercise\)\}[\s\S]*\{exercise\.name\}[\s\S]*<Badge label="Active" variant="primary" \/>[\s\S]*Switch<\/Text>/);
 });
 
 test('live workout screen supports exercise picking, validation, set logging, PR estimate, and finish flow', () => {
@@ -319,8 +319,8 @@ test('live workout screen supports exercise picking, validation, set logging, PR
   assert.match(live, /function logSetForExercise\(exercise: Exercise\)/);
   assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: exercise\.id,/s);
   assert.match(live, /setNumber: currentExerciseSets\.length \+ 1/);
-  assert.match(live, /isActiveExercise[\s\S]*\? 'Log first set'[\s\S]*: 'Add another set'[\s\S]*: 'Make active'/);
-  assert.match(live, /onPress=\{\(\) => void handleExerciseCardAction\(exercise\)\}/);
+  assert.match(live, /ACTIVE EXERCISE[\s\S]*NEXT SET[\s\S]*Logged sets/);
+  assert.match(live, /onPress=\{\(\) => void selectExerciseForLogging\(exercise\)\}/);
   assert.match(live, /estimatedOneRepMax\(Number\(set\.weight\), Number\(set\.reps\)\)/);
   assert.match(live, /completeLocalWorkoutSession\(sessionId\)/);
   assert.match(live, /syncPendingWorkoutSessions\(\)/);

@@ -506,14 +506,6 @@ export default function LiveWorkoutScreen() {
     logSetForExercise(selectedExercise);
   }
 
-  async function handleExerciseCardAction(exercise: Exercise) {
-    if (selectedExercise?.id !== exercise.id) {
-      await selectExerciseForLogging(exercise);
-      return;
-    }
-
-    addSet();
-  }
 
   function openEditModal(set: LocalWorkoutSet) {
     setEditingSet(set);
@@ -626,22 +618,298 @@ export default function LiveWorkoutScreen() {
 
   return (
     <Screen>
-      <View style={{ gap: 18 }}>
-        <View style={{ gap: 8 }}>
-          <Text style={{ color: colors.baseContent, fontSize: 34, fontWeight: '900' }}>Live Workout</Text>
-          <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '900' }}>
-            {formatClock(elapsedSeconds)}
-          </Text>
-          <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
-            {session?.name ?? 'Quick workout'} • {sets.length} set
-            {sets.length === 1 ? '' : 's'} logged
-            {bestEstimatedMax ? ` • best est. 1RM ${Math.round(bestEstimatedMax)} lb` : ''}
-            {' • Saved on device'}
-          </Text>
-        </View>
+      <View style={{ gap: 16 }}>
+        <Card>
+          <View style={{ gap: 14 }}>
+            <View
+              style={{
+                alignItems: 'flex-start',
+                flexDirection: 'row',
+                gap: 12,
+                justifyContent: 'space-between',
+              }}
+            >
+              <View style={{ flex: 1, minWidth: 96 }}>
+                <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
+                  LIVE WORKOUT
+                </Text>
+                <Text style={{ color: colors.baseContent, fontSize: 30, fontWeight: '900', marginTop: 4 }}>
+                  {session?.name ?? 'Quick workout'}
+                </Text>
+                <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 4 }}>
+                  One active exercise at a time. Switch exercises below when you are ready.
+                </Text>
+              </View>
+              <Pressable
+                onPress={finishWorkout}
+                style={({ pressed }) => ({
+                  backgroundColor: pressed ? colors.base300 : colors.base100,
+                  borderColor: colors.base300,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                })}
+              >
+                <Text style={{ color: colors.primary, fontWeight: '900' }}>Finish</Text>
+              </Pressable>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              <WorkoutStatusPill label="Time" value={formatClock(elapsedSeconds)} />
+              <WorkoutStatusPill
+                label="Rest"
+                value={restSeconds !== null ? formatClock(restSeconds).slice(3) : 'Ready'}
+              />
+              <WorkoutStatusPill label="Sets" value={String(sets.length)} />
+              {bestEstimatedMax ? (
+                <WorkoutStatusPill label="Best 1RM" value={`${Math.round(bestEstimatedMax)} lb`} />
+              ) : null}
+            </View>
+
+            {restSeconds !== null ? (
+              <View style={{ gap: 8 }}>
+                <ProgressBar value={restSeconds / REST_DURATION_SECONDS} />
+                <Text style={{ color: colors.baseMuted, fontWeight: '800' }}>
+                  Rest running. Next set in {formatClock(restSeconds).slice(3)}.
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </Card>
+
+        {selectedExercise ? (
+          <Card variant="highlighted">
+            <View style={{ gap: 16 }}>
+              <View
+                style={{
+                  alignItems: 'flex-start',
+                  flexDirection: 'row',
+                  gap: 12,
+                  justifyContent: 'space-between',
+                }}
+              >
+                <View style={{ flex: 1, minWidth: 96 }}>
+                  <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
+                    ACTIVE EXERCISE
+                  </Text>
+                  <Text style={{ color: colors.baseContent, fontSize: 28, fontWeight: '900', marginTop: 4 }}>
+                    {currentSetDraft.exerciseName}
+                  </Text>
+                  {selectedExerciseMetadata ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                      {selectedExerciseMetadata.split(' • ').map((item) => (
+                        <Badge key={item} label={item} variant="neutral" />
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+                <Pressable
+                  onPress={() => setIsTargetSheetOpen(true)}
+                  style={({ pressed }) => ({
+                    backgroundColor: pressed ? colors.base300 : colors.base100,
+                    borderColor: colors.base300,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                  })}
+                >
+                  <Text style={{ color: colors.baseContent, fontWeight: '900' }}>Adjust targets</Text>
+                </Pressable>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: colors.base100,
+                  borderColor: colors.base300,
+                  borderRadius: 24,
+                  borderWidth: 1,
+                  gap: 16,
+                  padding: 18,
+                }}
+              >
+                <View
+                  style={{
+                    alignItems: 'flex-start',
+                    flexDirection: 'row',
+                    gap: 12,
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <View style={{ flex: 1, minWidth: 96 }}>
+                    <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
+                      NEXT SET
+                    </Text>
+                    <Text style={{ color: colors.baseContent, fontSize: 34, fontWeight: '900', marginTop: 4 }}>
+                      Set {currentSetDraft.setNumber}
+                    </Text>
+                    <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 4 }}>
+                      {currentSetDraft.sourceLabel} • target {currentSetDraft.repRange} reps •{' '}
+                      {formatWeightInput(activeIncrementSize)} lb jumps
+                    </Text>
+                  </View>
+                  <Badge label="Ready" variant="primary" />
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                  <CurrentSetValue
+                    label="Reps"
+                    value={currentSetDraft.suggestedReps || '—'}
+                  />
+                  <CurrentSetValue
+                    label="Weight"
+                    value={`${currentSetDraft.suggestedWeight || '—'} lb`}
+                  />
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                  <QuickAdjustButton label="− rep" onPress={() => adjustReps(-REP_STEP)} />
+                  <QuickAdjustButton label="+ rep" onPress={() => adjustReps(REP_STEP)} />
+                  <QuickAdjustButton
+                    label={`− ${formatWeightInput(activeIncrementSize)} lb`}
+                    onPress={() => adjustWeight(-activeIncrementSize)}
+                  />
+                  <QuickAdjustButton
+                    label={`+ ${formatWeightInput(activeIncrementSize)} lb`}
+                    onPress={() => adjustWeight(activeIncrementSize)}
+                  />
+                </View>
+
+                <Pressable
+                  disabled={!selectedExercise}
+                  onPress={addSet}
+                  style={({ pressed }) => ({
+                    alignItems: 'center',
+                    backgroundColor: selectedExercise ? colors.primary : colors.baseMuted,
+                    borderRadius: 20,
+                    opacity: pressed ? 0.82 : 1,
+                    paddingVertical: 20,
+                  })}
+                >
+                  <Text style={{ color: colors.primaryContent, fontSize: 24, fontWeight: '900' }}>
+                    Done
+                  </Text>
+                  <Text style={{ color: colors.primaryContent, fontWeight: '800', marginTop: 4 }}>
+                    Log this set and start rest timer
+                  </Text>
+                </Pressable>
+              </View>
+
+              {selectedExercise.instructions ? (
+                <View
+                  style={{
+                    backgroundColor: colors.base100,
+                    borderColor: colors.base300,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    padding: 14,
+                  }}
+                >
+                  <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
+                    {selectedExercise.instructions}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={{ gap: 10 }}>
+                <View
+                  style={{
+                    alignItems: 'center',
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900' }}>
+                    Logged sets
+                  </Text>
+                  <Badge
+                    label={`${selectedExerciseSets.length} set${selectedExerciseSets.length === 1 ? '' : 's'}`}
+                    variant="neutral"
+                  />
+                </View>
+
+                {selectedExerciseSets.length === 0 ? (
+                  <View
+                    style={{
+                      backgroundColor: colors.base100,
+                      borderColor: colors.base300,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      padding: 14,
+                    }}
+                  >
+                    <Text style={{ color: colors.baseMuted, fontWeight: '800' }}>
+                      No sets logged for this exercise yet.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 8 }}>
+                    {selectedExerciseSets.map((set) => (
+                      <Pressable
+                        key={set.local_id}
+                        onPress={() => openEditModal(set)}
+                        style={({ pressed }) => ({
+                          alignItems: 'center',
+                          backgroundColor: pressed ? colors.base300 : colors.base100,
+                          borderColor: colors.base300,
+                          borderRadius: 14,
+                          borderWidth: 1,
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          padding: 12,
+                        })}
+                      >
+                        <Text style={{ color: colors.baseContent, fontWeight: '900', minWidth: 52 }}>
+                          Set {set.set_number}
+                        </Text>
+
+                        <Text style={{ color: colors.baseMuted, flex: 1, fontWeight: '800' }}>
+                          {set.reps ?? 0} reps × {set.weight ?? 0} lb
+                        </Text>
+
+                        <Pressable
+                          hitSlop={10}
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            confirmDeleteSet(set.local_id);
+                          }}
+                          style={({ pressed }) => ({
+                            backgroundColor: pressed ? rgba(248, 113, 113, 0.22) : rgba(248, 113, 113, 0.14),
+                            borderRadius: 8,
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                          })}
+                        >
+                          <Text style={{ color: colors.error, fontSize: 15, fontWeight: '900' }}>
+                            ✕
+                          </Text>
+                        </Pressable>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          </Card>
+        ) : (
+          <Card>
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
+                ACTIVE EXERCISE
+              </Text>
+              <Text style={{ color: colors.baseContent, fontSize: 24, fontWeight: '900' }}>
+                Choose an exercise to start
+              </Text>
+              <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
+                The next screen section is the only place to add or switch exercises, so the logging area stays focused.
+              </Text>
+            </View>
+          </Card>
+        )}
 
         <Card>
-          <View style={{ gap: 16 }}>
+          <View style={{ gap: 14 }}>
             <View
               style={{
                 alignItems: 'flex-start',
@@ -654,345 +922,110 @@ export default function LiveWorkoutScreen() {
                 <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
                   EXERCISES
                 </Text>
-                <Text style={{ color: colors.baseContent, fontSize: 24, fontWeight: '900', marginTop: 4 }}>
-                  {selectedExercises.length} added
-                </Text>
-                <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 6 }}>
-                  Add a real exercise from the library before logging sets.
+                <Text style={{ color: colors.baseContent, fontSize: 22, fontWeight: '900', marginTop: 4 }}>
+                  {selectedExercises.length === 0
+                    ? 'No exercises added'
+                    : `${selectedExercises.length} exercise${selectedExercises.length === 1 ? '' : 's'} in workout`}
                 </Text>
               </View>
+              <Button title="Add exercise" onPress={() => setIsPickerOpen(true)} size="sm" />
             </View>
 
-            <Button title="Add exercise" onPress={() => setIsPickerOpen(true)} />
-          </View>
-        </Card>
-
-        <Card>
-          <View style={{ gap: 16 }}>
-            <View style={{ gap: 6 }}>
-              <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
-                CURRENT SET
-              </Text>
-              <Text style={{ color: colors.baseContent, fontSize: 24, fontWeight: '900' }}>
-                {currentSetDraft.exerciseName}
-              </Text>
-              {selectedExerciseMetadata ? (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {selectedExerciseMetadata.split(' • ').map((item) => (
-                    <Badge key={item} label={item} variant="neutral" />
-                  ))}
-                </View>
-              ) : (
-                <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
-                  Select an exercise card below, or tap Add exercise to pick from the
-                  library.
-                </Text>
-              )}
-            </View>
-
-            <View
-              style={{
-                backgroundColor: colors.base100,
-                borderColor: colors.base300,
-                borderRadius: 24,
-                borderWidth: 1,
-                gap: 18,
-                padding: 18,
-              }}
-            >
-              <View
-                style={{
-                  alignItems: 'flex-start',
-                  flexDirection: 'row',
-                  gap: 12,
-                  justifyContent: 'space-between',
-                }}
-              >
-                <View style={{ flex: 1, minWidth: 96 }}>
-                  <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
-                    NEXT UP
-                  </Text>
-                  <Text style={{ color: colors.baseContent, fontSize: 30, fontWeight: '900' }}>
-                    Set {currentSetDraft.setNumber}
-                  </Text>
-                  <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 4 }}>
-                    Suggested for {currentSetDraft.exerciseName}
-                  </Text>
-                </View>
-                <Badge label="One tap" variant="success" />
-              </View>
-
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                <CurrentSetValue
-                  label="Suggested reps"
-                  value={currentSetDraft.suggestedReps || '—'}
-                />
-                <CurrentSetValue
-                  label="Suggested weight"
-                  value={`${currentSetDraft.suggestedWeight || '—'} lb`}
-                />
-              </View>
-
-              <Text style={{ color: colors.baseMuted, fontWeight: '800', lineHeight: 20 }}>
-                {currentSetDraft.sourceLabel} • target {currentSetDraft.repRange} reps •{' '}
-                {formatWeightInput(activeIncrementSize)} lb jumps
-              </Text>
-
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                <QuickAdjustButton label="− rep" onPress={() => adjustReps(-REP_STEP)} />
-                <QuickAdjustButton label="+ rep" onPress={() => adjustReps(REP_STEP)} />
-                {/* Legacy fallback shape covered by tests: <QuickAdjustButton label="− 5 lb" onPress={() => adjustWeight(-WEIGHT_STEP)} /> */}
-                {/* Legacy fallback shape covered by tests: <QuickAdjustButton label="+ 5 lb" onPress={() => adjustWeight(WEIGHT_STEP)} /> */}
-                <QuickAdjustButton
-                  label={`− ${formatWeightInput(activeIncrementSize)} lb`}
-                  onPress={() => adjustWeight(-activeIncrementSize)}
-                />
-                <QuickAdjustButton
-                  label={`+ ${formatWeightInput(activeIncrementSize)} lb`}
-                  onPress={() => adjustWeight(activeIncrementSize)}
-                />
-              </View>
-
-              <Pressable
-                disabled={!selectedExercise}
-                onPress={addSet}
-                style={({ pressed }) => ({
-                  alignItems: 'center',
-                  backgroundColor: selectedExercise ? colors.primary : colors.baseMuted,
-                  borderRadius: 20,
-                  opacity: pressed ? 0.82 : 1,
-                  paddingVertical: 20,
-                })}
-              >
-                <Text style={{ color: colors.primaryContent, fontSize: 24, fontWeight: '900' }}>
-                  Done
-                </Text>
-                <Text style={{ color: colors.primaryContent, fontWeight: '800', marginTop: 4 }}>
-                  Log displayed values and start rest timer
-                </Text>
-              </Pressable>
-            </View>
-
-            {selectedExercise ? (
-              <View
-                style={{
-                  backgroundColor: colors.base100,
-                  borderColor: colors.base300,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  padding: 14,
-                }}
-              >
-                <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
-                  {selectedExercise.instructions ||
-                    'Instructions have not been added for this exercise yet.'}
-                </Text>
-              </View>
-            ) : null}
-
-            {selectedExercise ? (
-              <Pressable
-                onPress={() => setIsTargetSheetOpen(true)}
-                style={({ pressed }) => ({
-                  backgroundColor: pressed ? colors.base300 : colors.base100,
-                  borderColor: colors.base300,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  gap: 6,
-                  padding: 14,
-                })}
-              >
-                <Text style={{ color: colors.baseContent, fontSize: 18, fontWeight: '900' }}>
-                  Adjust targets
-                </Text>
-                <Text style={{ color: colors.baseMuted, lineHeight: 20 }}>
-                  Optional sets, rep range, weight jump, and deload settings are tucked away so logging stays focused.
-                </Text>
-              </Pressable>
-            ) : null}
-
-            {restSeconds !== null ? (
-              <View style={{ gap: 8 }}>
-                <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
-                  REST TIMER
-                </Text>
-                <Text style={{ color: colors.baseContent, fontSize: 24, fontWeight: '900' }}>
-                  Next set in {formatClock(restSeconds).slice(3)}
-                </Text>
-                <ProgressBar value={restSeconds / REST_DURATION_SECONDS} />
-              </View>
-            ) : null}
-
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              <StatBox label="This exercise" value={String(selectedExerciseSets.length)} />
-              <StatBox label="Total sets" value={String(sets.length)} />
-            </View>
-          </View>
-        </Card>
-        {selectedExercises.length === 0 ? (
-          <Card>
-            <View style={{ gap: 8 }}>
-              <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900' }}>No exercises added</Text>
+            {selectedExercises.length === 0 ? (
               <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
-                Tap Add exercise to open the library, choose a movement, then log
-                reps and weight against that exercise.
+                Add one exercise, log its sets, then switch only when you move to the next exercise.
               </Text>
-            </View>
-          </Card>
-        ) : (
-          selectedExercises.map((exercise) => {
-            const exerciseSets = exerciseSetMap.get(exercise.id) ?? [];
-            const isActiveExercise = selectedExercise?.id === exercise.id;
+            ) : (
+              <View style={{ gap: 8 }}>
+                {selectedExercises.map((exercise) => {
+                  const exerciseSets = exerciseSetMap.get(exercise.id) ?? [];
+                  const isActiveExercise = selectedExercise?.id === exercise.id;
 
-            return (
-              <Card key={exercise.id} variant={isActiveExercise ? 'highlighted' : 'default'}>
-                <View style={{ gap: 14 }}>
-                  <View
-                    style={{
-                      alignItems: 'flex-start',
-                      flexDirection: 'row',
-                      gap: 12,
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <View style={{ flex: 1, minWidth: 96 }}>
-                      <Text style={{ color: colors.baseContent, fontSize: 22, fontWeight: '900' }}>
-                        {exercise.name}
-                      </Text>
-                      <Text style={{ color: colors.baseMuted, lineHeight: 21, marginTop: 4 }}>
-                        {[exercise.muscleGroup, exercise.equipment, exercise.difficulty]
-                          .filter(Boolean)
-                          .join(' • ')}
-                      </Text>
-                    </View>
-                    {/* Legacy selection shape covered by tests: <Pressable onPress={() => setSelectedExercise(exercise)}> */}
-                    <Pressable onPress={() => void selectExerciseForLogging(exercise)}>
-                      <Text style={{ color: isActiveExercise ? colors.primary : colors.baseContent, fontWeight: '900' }}>
-                        {isActiveExercise ? 'Selected' : 'Log set'}
-                      </Text>
-                    </Pressable>
-                  </View>
-
-                  {exerciseSets.length === 0 ? (
-                    <View
-                      style={{
-                        backgroundColor: colors.base100,
-                        borderColor: colors.base300,
+                  return (
+                    <Pressable
+                      key={exercise.id}
+                      onPress={() => void selectExerciseForLogging(exercise)}
+                      style={({ pressed }) => ({
+                        alignItems: 'center',
+                        backgroundColor: isActiveExercise
+                          ? rgba(163, 230, 53, 0.12)
+                          : pressed
+                            ? colors.base300
+                            : colors.base100,
+                        borderColor: isActiveExercise ? colors.primary : colors.base300,
                         borderRadius: 16,
                         borderWidth: 1,
+                        flexDirection: 'row',
+                        gap: 12,
+                        justifyContent: 'space-between',
                         padding: 14,
-                      }}
+                      })}
                     >
-                      <Text style={{ color: colors.baseMuted, fontWeight: '800' }}>
-                        No sets logged for this exercise yet.
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {exerciseSets.map((set) => (
-                        <Pressable
-                          key={set.local_id}
-                          onPress={() => openEditModal(set)}
-                          style={({ pressed }) => ({
-                            alignItems: 'center',
-                            backgroundColor: pressed ? colors.base300 : colors.base100,
-                            borderColor: colors.base300,
-                            borderRadius: 14,
-                            borderWidth: 1,
-                            flexDirection: 'row',
-                            justifyContent: 'space-between',
-                            padding: 12,
-                          })}
-                        >
-                          <Text style={{ color: colors.baseContent, fontWeight: '900', minWidth: 52 }}>
-                            Set {set.set_number}
-                          </Text>
-
-                          <Text style={{ color: colors.baseMuted, flex: 1, fontWeight: '800' }}>
-                            {set.reps ?? 0} reps × {set.weight ?? 0} lb
-                          </Text>
-
-                          <Pressable
-                            hitSlop={10}
-                            onPress={(event) => {
-                              event.stopPropagation();
-                              confirmDeleteSet(set.local_id);
-                            }}
-                            style={({ pressed }) => ({
-                              backgroundColor: pressed ? rgba(248, 113, 113, 0.22) : rgba(248, 113, 113, 0.14),
-                              borderRadius: 8,
-                              paddingHorizontal: 10,
-                              paddingVertical: 5,
-                            })}
-                          >
-                            <Text style={{ color: colors.error, fontSize: 15, fontWeight: '900' }}>
-                              ✕
-                            </Text>
-                          </Pressable>
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-
-                  <Button
-                    title={
-                      isActiveExercise
-                        ? exerciseSets.length === 0
-                          ? 'Log first set'
-                          : 'Add another set'
-                        : 'Make active'
-                    }
-                    onPress={() => void handleExerciseCardAction(exercise)}
-                    variant={isActiveExercise ? 'primary' : 'outline'}
-                  />
-                </View>
-              </Card>
-            );
-          })
-        )}
-
-        <Card>
-          <View style={{ gap: 12 }}>
-            <View style={{ gap: 4 }}>
-              <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900' }}>How did that feel?</Text>
-              <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
-                Optional feedback helps next-time suggestions decide whether to
-                increase, repeat, or deload.
-              </Text>
-            </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              {(['easy', 'good', 'max'] as const).map((feedback) => {
-                const selected = effortFeedback === feedback;
-                const label = feedback === 'easy' ? 'Easy' : feedback === 'good' ? 'Good' : 'Max';
-
-                return (
-                  <Pressable
-                    key={feedback}
-                    onPress={() => setEffortFeedback(selected ? null : feedback)}
-                    style={{
-                      alignItems: 'center',
-                      backgroundColor: selected ? colors.primary : colors.base100,
-                      borderColor: selected ? colors.primary : colors.base300,
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      flex: 1,
-                      padding: 12,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: selected ? colors.primaryContent : colors.baseContent,
-                        fontWeight: '900',
-                      }}
-                    >
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                      <View style={{ flex: 1, minWidth: 96 }}>
+                        <Text style={{ color: colors.baseContent, fontSize: 17, fontWeight: '900' }}>
+                          {exercise.name}
+                        </Text>
+                        <Text style={{ color: colors.baseMuted, fontWeight: '800', marginTop: 3 }}>
+                          {exerciseSets.length} set{exerciseSets.length === 1 ? '' : 's'} logged
+                        </Text>
+                      </View>
+                      {isActiveExercise ? (
+                        <Badge label="Active" variant="primary" />
+                      ) : (
+                        <Text style={{ color: colors.primary, fontWeight: '900' }}>Switch</Text>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
           </View>
         </Card>
+
+        {sets.length > 0 ? (
+          <Card>
+            <View style={{ gap: 12 }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900' }}>How did that feel?</Text>
+                <Text style={{ color: colors.baseMuted, lineHeight: 21 }}>
+                  Optional feedback helps next-time suggestions decide whether to
+                  increase, repeat, or deload.
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {(['easy', 'good', 'max'] as const).map((feedback) => {
+                  const selected = effortFeedback === feedback;
+                  const label = feedback === 'easy' ? 'Easy' : feedback === 'good' ? 'Good' : 'Max';
+
+                  return (
+                    <Pressable
+                      key={feedback}
+                      onPress={() => setEffortFeedback(selected ? null : feedback)}
+                      style={{
+                        alignItems: 'center',
+                        backgroundColor: selected ? colors.primary : colors.base100,
+                        borderColor: selected ? colors.primary : colors.base300,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        flex: 1,
+                        padding: 12,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: selected ? colors.primaryContent : colors.baseContent,
+                          fontWeight: '900',
+                        }}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </Card>
+        ) : null}
 
         <Button title="Finish workout" onPress={finishWorkout} />
       </View>
@@ -1270,23 +1303,25 @@ function QuickAdjustButton({ label, onPress }: { label: string; onPress: () => v
   );
 }
 
-function StatBox({ label, value }: { label: string; value: string }) {
+function WorkoutStatusPill({ label, value }: { label: string; value: string }) {
   return (
     <View
       style={{
         backgroundColor: colors.base100,
         borderColor: colors.base300,
-        borderRadius: 14,
+        borderRadius: 16,
         borderWidth: 1,
         flex: 1,
-        minWidth: 112,
+        minWidth: 104,
         padding: 12,
       }}
     >
       <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
         {label}
       </Text>
-      <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900', marginTop: 4 }}>{value}</Text>
+      <Text style={{ color: colors.baseContent, fontSize: 20, fontWeight: '900', marginTop: 4 }}>
+        {value}
+      </Text>
     </View>
   );
 }

@@ -21,17 +21,17 @@ Open the app and navigate to **Train**.
 
 2. **Start a workout**
    - Tap **Start workout**.
-   - The live workout screen should show a timer, a saved-on-device message, an exercise card, and a current-set card.
+   - The live workout screen should show the timer/status card, one active exercise workspace, and one compact exercise switcher.
 
 3. **Add an exercise**
    - Tap **Add exercise**.
    - Pick a seeded exercise from the library.
-   - Point out the exercise metadata badges and the current-set values.
+   - Point out the active exercise metadata badges, next-set values, and the logged-set list in the same card.
 
 4. **Log a set with one tap**
    - Use quick adjustments if needed.
    - Tap **Done**.
-   - Confirm the set appears under the exercise and the rest timer starts.
+   - Confirm the set appears immediately in the active exercise workspace and the rest timer starts.
 
 5. **Edit and delete edge cases**
    - Tap a logged set to open the edit sheet, change reps or weight, and save.
@@ -57,4 +57,4 @@ Open the app and navigate to **Train**.
 - Sync status is visible in plain language when cloud sync is enabled.
 - Recommendation defaults come from recent local history first, then saved targets, then starter defaults.
 - Empty and error states explain what happened instead of leaving blank workout cards.
-- The key workout cards use wrapping rows/minimum widths so controls remain usable on narrow phones.
+- The key workout cards use wrapping rows/minimum widths, and the live workout screen keeps only one logging workspace visible so it is easier to scan mid-set.

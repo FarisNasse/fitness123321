@@ -28,20 +28,21 @@ test('live workout screen builds a current-set draft from the selected exercise 
   assert.match(live, /suggestedWeight: weight/);
 });
 
-test('current-set card prominently shows exercise name, set number, suggested reps, and suggested weight', () => {
+test('active exercise card prominently shows the next set, draft values, and logged sets together', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
   assertInOrder(live, [
-    'CURRENT SET',
+    'ACTIVE EXERCISE',
     '{currentSetDraft.exerciseName}',
-    'NEXT UP',
+    'NEXT SET',
     'Set {currentSetDraft.setNumber}',
-    'Suggested for {currentSetDraft.exerciseName}',
-    'label="Suggested reps"',
-    'value={currentSetDraft.suggestedReps || \'—\'}',
-    'label="Suggested weight"',
+    'label="Reps"',
+    "value={currentSetDraft.suggestedReps || \'—\'}",
+    'label="Weight"',
     "value={`${currentSetDraft.suggestedWeight || '—'} lb`}",
-  ], 'current set card should expose every required draft field');
+    'Logged sets',
+    'selectedExerciseSets.map((set) => (',
+  ], 'active exercise card should keep logging and review in one place');
 
   assert.match(live, /function CurrentSetValue\(\{ label, value \}: \{ label: string; value: string \}\)/);
 });
@@ -53,7 +54,7 @@ test('Done is the one-tap logging action and still starts the rest timer through
   assertInOrder(live, [
     '<Text style={{ color: colors.primaryContent, fontSize: 24, fontWeight: \'900\' }}>',
     'Done',
-    'Log displayed values and start rest timer',
+    'Log this set and start rest timer',
   ], 'Done button should be visually prominent and clear');
   assertInOrder(live, [
     'function logSetForExercise(exercise: Exercise) {',
@@ -80,8 +81,10 @@ test('quick adjustment controls change the same reps and weight values that are 
   assert.match(live, /return formatWeightInput\(nextValue\);/);
   assert.match(live, /<QuickAdjustButton label="− rep" onPress=\{\(\) => adjustReps\(-REP_STEP\)\} \/>/);
   assert.match(live, /<QuickAdjustButton label="\+ rep" onPress=\{\(\) => adjustReps\(REP_STEP\)\} \/>/);
-  assert.match(live, /<QuickAdjustButton label="− 5 lb" onPress=\{\(\) => adjustWeight\(-WEIGHT_STEP\)\} \/>/);
-  assert.match(live, /<QuickAdjustButton label="\+ 5 lb" onPress=\{\(\) => adjustWeight\(WEIGHT_STEP\)\} \/>/);
+  assert.match(live, /label=\{`− \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
+  assert.match(live, /onPress=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
+  assert.match(live, /label=\{`\+ \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
+  assert.match(live, /onPress=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
   assert.match(compact, /const parsedReps = Number\.parseInt\(reps, 10\).*const parsedWeight = Number\.parseFloat\(weight\).*reps: parsed\.parsedReps, weight: parsed\.parsedWeight/);
 });
 

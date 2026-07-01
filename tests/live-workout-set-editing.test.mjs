@@ -40,14 +40,16 @@ test('live workout screen keeps explicit state for the currently edited set and 
   assert.match(live, /const \[editWeight, setEditWeight\] = useState\(''\)/);
 });
 
-test('logged set UI replaces the old count-only experience with reviewable exercise cards', () => {
+test('logged set UI replaces the old count-only experience with one active exercise workspace', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
   assert.doesNotMatch(live, /Sets added:/, 'the old count-only label should not be the logged-set UI');
   assertIncludes(live, 'No exercises added');
+  assertIncludes(live, 'ACTIVE EXERCISE');
+  assertIncludes(live, 'Logged sets');
   assertIncludes(live, 'No sets logged for this exercise yet.');
-  assertIncludes(live, '<StatBox label="This exercise" value={String(selectedExerciseSets.length)} />');
-  assertIncludes(live, '<StatBox label="Total sets" value={String(sets.length)} />');
+  assertIncludes(live, '<WorkoutStatusPill label="Sets" value={String(sets.length)} />');
+  assertIncludes(live, 'selectedExerciseSets.map((set) => (');
 });
 
 test('logged sets are grouped by exercise and restore exercise cards from logged set data', () => {
@@ -67,7 +69,7 @@ test('logged sets are grouped by exercise and restore exercise cards from logged
 test('each logged set renders as a tappable row showing set number plus reps times weight', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assert.match(live, /exerciseSets\.map\(\(set\) => \(/);
+  assert.match(live, /selectedExerciseSets\.map\(\(set\) => \(/);
   assert.match(live, /<Pressable\s+key=\{set\.local_id\}\s+onPress=\{\(\) => openEditModal\(set\)\}/s);
   assertIncludes(live, 'Set {set.set_number}');
   assertIncludes(live, '{set.reps ?? 0} reps × {set.weight ?? 0} lb');
@@ -143,23 +145,16 @@ test('new sets continue numbering within the exercise being logged', () => {
   assert.match(live, /function addSet\(\) \{[\s\S]*logSetForExercise\(selectedExercise\);[\s\S]*\}/);
 });
 
-test('exercise-card logging is scoped to the active exercise before it writes a set', () => {
+test('compact exercise list only switches the active exercise and never logs from inactive rows', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assertIncludes(live, 'async function handleExerciseCardAction(exercise: Exercise) {');
-  assertInOrder(live, [
-    'async function handleExerciseCardAction(exercise: Exercise) {',
-    'if (selectedExercise?.id !== exercise.id) {',
-    'await selectExerciseForLogging(exercise);',
-    'return;',
-    'addSet();',
-  ], 'inactive exercise-card actions should select before logging');
-  assertIncludes(live, "? 'Log first set'");
-  assertIncludes(live, ": 'Add another set'");
-  assertIncludes(live, "'Make active'");
-  assert.match(live, /onPress=\{\(\) => void handleExerciseCardAction\(exercise\)\}/);
-  assert.match(live, /variant=\{isActiveExercise \? 'primary' : 'outline'\}/);
+  assertIncludes(live, 'One active exercise at a time. Switch exercises below when you are ready.');
+  assert.match(live, /selectedExercises\.map\(\(exercise\) => \{/);
+  assert.match(live, /onPress=\{\(\) => void selectExerciseForLogging\(exercise\)\}/);
+  assertIncludes(live, '<Badge label="Active" variant="primary" />');
+  assertIncludes(live, 'Switch</Text>');
   assert.doesNotMatch(live, /onPress=\{\(\) => logSetForExercise\(exercise\)\}/);
+  assert.doesNotMatch(live, /handleExerciseCardAction/);
 });
 
 test('workout service exposes explicit update and delete helpers for logged sets', () => {

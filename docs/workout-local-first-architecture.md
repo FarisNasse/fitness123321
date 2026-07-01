@@ -42,7 +42,7 @@ The live screen uses `ExerciseLibrary`. When an exercise is chosen, the app stor
 
 ### Log set
 
-The one-tap `Done` button and the manual fallback both route through `addSet()`, which calls `logSetForExercise(selectedExercise)`. That function parses the displayed reps/weight state and calls `addLocalWorkoutSet()` with the current session id and exercise id. The service writes the set locally, marks the session `pending`, and the UI refreshes from local storage.
+The active exercise workspace has one primary `Done` button. It routes through `addSet()`, which calls `logSetForExercise(selectedExercise)`. That function parses the displayed reps/weight state and calls `addLocalWorkoutSet()` with the current session id and active exercise id. The service writes the set locally, marks the session `pending`, and the UI refreshes from local storage. Inactive exercise rows only switch the active exercise; they do not write sets from shared draft state.
 
 ### Edit or delete set
 
