@@ -143,12 +143,23 @@ test('new sets continue numbering within the exercise being logged', () => {
   assert.match(live, /function addSet\(\) \{[\s\S]*logSetForExercise\(selectedExercise\);[\s\S]*\}/);
 });
 
-test('each repeated exercise card has a direct set logging button', () => {
+test('exercise-card logging is scoped to the active exercise before it writes a set', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assertIncludes(live, "title={exerciseSets.length === 0 ? 'Log first set' : 'Add another set'}");
-  assert.match(live, /onPress=\{\(\) => logSetForExercise\(exercise\)\}/);
+  assertIncludes(live, 'async function handleExerciseCardAction(exercise: Exercise) {');
+  assertInOrder(live, [
+    'async function handleExerciseCardAction(exercise: Exercise) {',
+    'if (selectedExercise?.id !== exercise.id) {',
+    'await selectExerciseForLogging(exercise);',
+    'return;',
+    'addSet();',
+  ], 'inactive exercise-card actions should select before logging');
+  assertIncludes(live, "? 'Log first set'");
+  assertIncludes(live, ": 'Add another set'");
+  assertIncludes(live, "'Make active'");
+  assert.match(live, /onPress=\{\(\) => void handleExerciseCardAction\(exercise\)\}/);
   assert.match(live, /variant=\{isActiveExercise \? 'primary' : 'outline'\}/);
+  assert.doesNotMatch(live, /onPress=\{\(\) => logSetForExercise\(exercise\)\}/);
 });
 
 test('workout service exposes explicit update and delete helpers for logged sets', () => {

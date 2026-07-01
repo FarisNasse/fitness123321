@@ -85,13 +85,16 @@ test('quick adjustment controls change the same reps and weight values that are 
   assert.match(compact, /const parsedReps = Number\.parseInt\(reps, 10\).*const parsedWeight = Number\.parseFloat\(weight\).*reps: parsed\.parsedReps, weight: parsed\.parsedWeight/);
 });
 
-test('manual add and edit flow remains available as the fallback path', () => {
+test('duplicated manual fallback is removed while editing and target settings remain available', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assertIncludes(live, 'MANUAL FALLBACK');
-  assert.match(live, /value=\{reps\}\s+onChangeText=\{setReps\}/s);
-  assert.match(live, /value=\{weight\}\s+onChangeText=\{setWeight\}/s);
-  assert.match(live, /<Button title="Add set" onPress=\{addSet\} disabled=\{!selectedExercise\} \/>/);
+  assert.doesNotMatch(live, /MANUAL FALLBACK/);
+  assert.doesNotMatch(live, /<Button title="Add set" onPress=\{addSet\} disabled=\{!selectedExercise\} \/>/);
+  assertIncludes(live, 'Adjust targets');
+  assert.match(live, /const \[isTargetSheetOpen, setIsTargetSheetOpen\] = useState\(false\)/);
+  assert.match(live, /visible=\{isTargetSheetOpen && Boolean\(selectedExercise\)\}/);
+  assert.match(live, /<TargetInput[\s\S]*label="Sets"[\s\S]*value=\{targetSetsInput\}/);
+  assert.match(live, /<Button[\s\S]*title="Save targets"[\s\S]*onPress=\{saveSelectedExerciseTarget\}/);
   assert.match(live, /function openEditModal\(set: LocalWorkoutSet\) \{/);
   assert.match(live, /function saveEditedSet\(\) \{/);
   assert.match(live, /visible=\{Boolean\(editingSet\)\}/);

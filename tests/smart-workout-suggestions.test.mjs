@@ -75,14 +75,16 @@ test('live workout screen applies smart defaults when exercises are selected and
 test('live workout screen keeps target configuration optional and uses dynamic increment buttons', () => {
   const live = readProjectFile('app/workout/session/[id].tsx');
 
-  assertIncludes(live, 'Optional targets');
-  assertIncludes(live, 'Logging still works without touching it.');
+  assertIncludes(live, 'Adjust targets');
+  assertIncludes(live, 'OPTIONAL TARGETS');
+  assertIncludes(live, 'Logging still works without changing these.');
+  assert.match(live, /visible=\{isTargetSheetOpen && Boolean\(selectedExercise\)\}/);
   assert.match(live, /<TargetInput[\s\S]*label="Sets"[\s\S]*value=\{targetSetsInput\}/);
   assert.match(live, /<TargetInput[\s\S]*label="Rep min"[\s\S]*value=\{repMinInput\}/);
   assert.match(live, /<TargetInput[\s\S]*label="Rep max"[\s\S]*value=\{repMaxInput\}/);
   assert.match(live, /<TargetInput[\s\S]*label="Increment"[\s\S]*value=\{incrementSizeInput\}/);
   assert.match(live, /<TargetInput[\s\S]*label="Deload %"[\s\S]*value=\{deloadPercentageInput\}/);
-  assert.match(live, /<Button title="Save optional targets" onPress=\{saveSelectedExerciseTarget\} \/>/);
+  assert.match(live, /title="Save targets"[\s\S]*onPress=\{saveSelectedExerciseTarget\}/);
   assert.match(live, /label=\{`− \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
   assert.match(live, /onPress=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
   assert.match(live, /label=\{`\+ \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);

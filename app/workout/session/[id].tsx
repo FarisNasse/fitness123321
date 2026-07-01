@@ -102,6 +102,7 @@ export default function LiveWorkoutScreen() {
   const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isTargetSheetOpen, setIsTargetSheetOpen] = useState(false);
   const [reps, setReps] = useState('8');
   const [weight, setWeight] = useState('0');
   const [sets, setSets] = useState<ReturnType<typeof getLocalWorkoutSets>>([]);
@@ -453,6 +454,7 @@ export default function LiveWorkoutScreen() {
       deloadPercentage,
     });
     await applySmartDefaultsForExercise(selectedExercise, selectedExerciseSets.length);
+    setIsTargetSheetOpen(false);
     Alert.alert('Targets saved', 'This exercise will use these defaults next time.');
   }
 
@@ -502,6 +504,15 @@ export default function LiveWorkoutScreen() {
     if (!selectedExercise) return;
 
     logSetForExercise(selectedExercise);
+  }
+
+  async function handleExerciseCardAction(exercise: Exercise) {
+    if (selectedExercise?.id !== exercise.id) {
+      await selectExerciseForLogging(exercise);
+      return;
+    }
+
+    addSet();
   }
 
   function openEditModal(set: LocalWorkoutSet) {
@@ -650,9 +661,6 @@ export default function LiveWorkoutScreen() {
                   Add a real exercise from the library before logging sets.
                 </Text>
               </View>
-              <Pressable onPress={() => setIsPickerOpen(true)}>
-                <Text style={{ color: colors.primary, fontWeight: '900' }}>Add exercise</Text>
-              </Pressable>
             </View>
 
             <Button title="Add exercise" onPress={() => setIsPickerOpen(true)} />
@@ -783,89 +791,25 @@ export default function LiveWorkoutScreen() {
             ) : null}
 
             {selectedExercise ? (
-              <View
-                style={{
-                  backgroundColor: colors.base100,
+              <Pressable
+                onPress={() => setIsTargetSheetOpen(true)}
+                style={({ pressed }) => ({
+                  backgroundColor: pressed ? colors.base300 : colors.base100,
                   borderColor: colors.base300,
                   borderRadius: 16,
                   borderWidth: 1,
-                  gap: 12,
+                  gap: 6,
                   padding: 14,
-                }}
+                })}
               >
-                <View style={{ gap: 4 }}>
-                  <Text style={{ color: colors.baseContent, fontSize: 18, fontWeight: '900' }}>
-                    Optional targets
-                  </Text>
-                  <Text style={{ color: colors.baseMuted, lineHeight: 20 }}>
-                    Configure this only when you want custom set counts, rep ranges,
-                    jumps, or deloads. Logging still works without touching it.
-                  </Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                  <TargetInput
-                    label="Sets"
-                    value={targetSetsInput}
-                    onChangeText={setTargetSetsInput}
-                  />
-                  <TargetInput
-                    label="Rep min"
-                    value={repMinInput}
-                    onChangeText={setRepMinInput}
-                  />
-                  <TargetInput
-                    label="Rep max"
-                    value={repMaxInput}
-                    onChangeText={setRepMaxInput}
-                  />
-                </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                  <TargetInput
-                    label="Increment"
-                    value={incrementSizeInput}
-                    onChangeText={setIncrementSizeInput}
-                  />
-                  <TargetInput
-                    label="Deload %"
-                    value={deloadPercentageInput}
-                    onChangeText={setDeloadPercentageInput}
-                  />
-                </View>
-
-                <Button title="Save optional targets" onPress={saveSelectedExerciseTarget} />
-              </View>
+                <Text style={{ color: colors.baseContent, fontSize: 18, fontWeight: '900' }}>
+                  Adjust targets
+                </Text>
+                <Text style={{ color: colors.baseMuted, lineHeight: 20 }}>
+                  Optional sets, rep range, weight jump, and deload settings are tucked away so logging stays focused.
+                </Text>
+              </Pressable>
             ) : null}
-
-            <View style={{ gap: 10 }}>
-              <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
-                MANUAL FALLBACK
-              </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                <View style={{ flex: 1, minWidth: 130 }}>
-                  <Text style={{ color: colors.baseContent, fontWeight: '800', marginBottom: 6 }}>Reps</Text>
-                  <TextInput
-                    keyboardType="number-pad"
-                    value={reps}
-                    onChangeText={setReps}
-                    placeholderTextColor={colors.baseMuted}
-                  style={inputStyle}
-                  />
-                </View>
-                <View style={{ flex: 1, minWidth: 130 }}>
-                  <Text style={{ color: colors.baseContent, fontWeight: '800', marginBottom: 6 }}>Weight</Text>
-                  <TextInput
-                    keyboardType="decimal-pad"
-                    value={weight}
-                    onChangeText={setWeight}
-                    placeholderTextColor={colors.baseMuted}
-                  style={inputStyle}
-                  />
-                </View>
-              </View>
-
-              <Button title="Add set" onPress={addSet} disabled={!selectedExercise} />
-            </View>
 
             {restSeconds !== null ? (
               <View style={{ gap: 8 }}>
@@ -901,7 +845,7 @@ export default function LiveWorkoutScreen() {
             const isActiveExercise = selectedExercise?.id === exercise.id;
 
             return (
-              <Card key={exercise.id}>
+              <Card key={exercise.id} variant={isActiveExercise ? 'highlighted' : 'default'}>
                 <View style={{ gap: 14 }}>
                   <View
                     style={{
@@ -991,8 +935,14 @@ export default function LiveWorkoutScreen() {
                   )}
 
                   <Button
-                    title={exerciseSets.length === 0 ? 'Log first set' : 'Add another set'}
-                    onPress={() => logSetForExercise(exercise)}
+                    title={
+                      isActiveExercise
+                        ? exerciseSets.length === 0
+                          ? 'Log first set'
+                          : 'Add another set'
+                        : 'Make active'
+                    }
+                    onPress={() => void handleExerciseCardAction(exercise)}
                     variant={isActiveExercise ? 'primary' : 'outline'}
                   />
                 </View>
@@ -1071,6 +1021,93 @@ export default function LiveWorkoutScreen() {
               onSelect={chooseExercise}
               selectButtonTitle="Use this exercise"
             />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Optional target settings modal */}
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setIsTargetSheetOpen(false)}
+        transparent
+        visible={isTargetSheetOpen && Boolean(selectedExercise)}
+      >
+        <Pressable
+          onPress={() => setIsTargetSheetOpen(false)}
+          style={{
+            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+            flex: 1,
+            justifyContent: 'flex-end',
+          }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              backgroundColor: colors.base200,
+              borderColor: colors.base300,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              borderWidth: 1,
+              gap: 18,
+              padding: 24,
+              paddingBottom: 36,
+            }}
+          >
+            <View style={{ gap: 6 }}>
+              <Text style={{ color: colors.baseMuted, fontSize: 12, fontWeight: '900' }}>
+                OPTIONAL TARGETS
+              </Text>
+              <Text style={{ color: colors.baseContent, fontSize: 22, fontWeight: '900' }}>
+                {selectedExercise?.name ?? 'Exercise'} targets
+              </Text>
+              <Text style={{ color: colors.baseMuted, lineHeight: 20 }}>
+                Configure custom set counts, rep ranges, weight jumps, or deloads. Logging still works without changing these.
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              <TargetInput
+                label="Sets"
+                value={targetSetsInput}
+                onChangeText={setTargetSetsInput}
+              />
+              <TargetInput
+                label="Rep min"
+                value={repMinInput}
+                onChangeText={setRepMinInput}
+              />
+              <TargetInput
+                label="Rep max"
+                value={repMaxInput}
+                onChangeText={setRepMaxInput}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              <TargetInput
+                label="Increment"
+                value={incrementSizeInput}
+                onChangeText={setIncrementSizeInput}
+              />
+              <TargetInput
+                label="Deload %"
+                value={deloadPercentageInput}
+                onChangeText={setDeloadPercentageInput}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <Button
+                title="Cancel"
+                onPress={() => setIsTargetSheetOpen(false)}
+                variant="outline"
+                className="flex-1"
+              />
+              <Button
+                title="Save targets"
+                onPress={saveSelectedExerciseTarget}
+                className="flex-1"
+              />
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

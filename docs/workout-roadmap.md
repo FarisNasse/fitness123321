@@ -46,6 +46,16 @@ Issues:
 - Project quality: tests for gym-use workflows
 - Project quality: docs, demo script, and empty states
 
+
+## Live workout flow cleanup now covered
+
+The gym-first workflow also includes the live logging cleanup from the workout flow review:
+
+- remove the duplicate manual fallback logger so `Done` is the only primary set-writing action;
+- keep a single Add exercise entry point in the exercise summary card;
+- move optional exercise targets behind an Adjust targets sheet instead of rendering them inside the active logging loop;
+- require inactive exercise cards to become active before they can write a set, preventing shared reps/weight draft state from silently logging under the wrong exercise.
+
 ## How to apply this cleanup to GitHub
 
 From the repo root:

@@ -41,7 +41,7 @@ function assertNoDeveloperCopy(source, surfaceName) {
 test('train tab UX coverage stays in the fast test suite', () => {
   const pkg = readProjectJson('package.json');
 
-  assert.equal(pkg.scripts.test, 'node --test tests');
+  assert.equal(pkg.scripts.test, 'node --test');
   assert.match(pkg.scripts['test:all'], /npm run test/);
 
   for (const dependency of ['jest', 'jest-expo', '@testing-library/react-native', 'react-test-renderer']) {

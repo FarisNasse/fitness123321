@@ -27,7 +27,7 @@ test('package exposes fast test commands without adding heavy native test depend
   assert.equal(pkg.engines?.npm, '10.x');
   assert.equal(readProjectFile('.nvmrc').trim(), '20');
   assert.match(readProjectFile('.npmrc'), /engine-strict=true/);
-  assert.equal(pkg.scripts.test, 'node --test tests');
+  assert.equal(pkg.scripts.test, 'node --test');
   assert.equal(
     pkg.scripts['test:all'],
     'npm run test && npm run check:exercises && npm run check:local && npm run typecheck'
@@ -278,7 +278,7 @@ test('live workout screen no longer depends on a placeholder exercise id', () =>
   assert.match(live, /const \[selectedExercise, setSelectedExercise\] = useState<Exercise \| null>\(null\)/);
   assert.match(live, /function logSetForExercise\(exercise: Exercise\) \{\s*if \(!sessionId\) return;/s);
   assert.match(live, /function addSet\(\) \{\s*if \(!selectedExercise\) return;\s*logSetForExercise\(selectedExercise\);\s*\}/s);
-  assert.match(live, /<Button title="Add set" onPress=\{addSet\} disabled=\{!selectedExercise\} \/>/);
+  assert.match(live, /<Pressable\s+disabled=\{!selectedExercise\}\s+onPress=\{addSet\}/s);
   assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: exercise\.id,/s);
 });
 
@@ -300,8 +300,8 @@ test('live workout screen groups logged sets by exercise and renders exercise ca
   assert.match(live, /const nextSets = getLocalWorkoutSets\(sessionId\);\s*const nextMap = buildExerciseSetMap\(nextSets\);\s*setSets\(nextSets\);\s*setExerciseSetMap\(nextMap\);/);
   assert.match(live, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
   assert.match(live, /selectedExercises\.map\(\(exercise\) => \{\s*const exerciseSets = exerciseSetMap\.get\(exercise\.id\) \?\? \[\];\s*const isActiveExercise = selectedExercise\?\.id === exercise\.id;/);
-  assert.match(live, /<Card key=\{exercise\.id\}>[\s\S]*\{exercise\.name\}[\s\S]*\{exerciseSets\.length === 0 \? \([\s\S]*No sets logged for this exercise yet\.[\s\S]*\) : \([\s\S]*exerciseSets\.map\(\(set\) =>/);
-  assert.match(live, /<Pressable onPress=\{\(\) => setSelectedExercise\(exercise\)\}>[\s\S]*\{isActiveExercise \? 'Selected' : 'Log set'\}/);
+  assert.match(live, /<Card key=\{exercise\.id\} variant=\{isActiveExercise \? 'highlighted' : 'default'\}>[\s\S]*\{exercise\.name\}[\s\S]*\{exerciseSets\.length === 0 \? \([\s\S]*No sets logged for this exercise yet\.[\s\S]*\) : \([\s\S]*exerciseSets\.map\(\(set\) =>/);
+  assert.match(live, /<Pressable onPress=\{\(\) => void selectExerciseForLogging\(exercise\)\}>[\s\S]*\{isActiveExercise \? 'Selected' : 'Log set'\}/);
 });
 
 test('live workout screen supports exercise picking, validation, set logging, PR estimate, and finish flow', () => {
@@ -319,7 +319,8 @@ test('live workout screen supports exercise picking, validation, set logging, PR
   assert.match(live, /function logSetForExercise\(exercise: Exercise\)/);
   assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: exercise\.id,/s);
   assert.match(live, /setNumber: currentExerciseSets\.length \+ 1/);
-  assert.match(live, /title=\{exerciseSets\.length === 0 \? 'Log first set' : 'Add another set'\}/);
+  assert.match(live, /isActiveExercise[\s\S]*\? 'Log first set'[\s\S]*: 'Add another set'[\s\S]*: 'Make active'/);
+  assert.match(live, /onPress=\{\(\) => void handleExerciseCardAction\(exercise\)\}/);
   assert.match(live, /estimatedOneRepMax\(Number\(set\.weight\), Number\(set\.reps\)\)/);
   assert.match(live, /completeLocalWorkoutSession\(sessionId\)/);
   assert.match(live, /syncPendingWorkoutSessions\(\)/);

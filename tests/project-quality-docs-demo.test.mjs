@@ -43,10 +43,15 @@ test('reviewer docs explain the local-first workout design, recommendations, and
   assertIncludes(demo, 'Repeat Last Workout');
   assertIncludes(demo, 'The key workout cards use wrapping rows/minimum widths');
 
+  const roadmap = readProjectFile('docs/workout-roadmap.md');
+
   assertIncludes(readme, 'Workout reviewer docs');
   assertIncludes(readme, 'docs/workout-local-first-architecture.md');
   assertIncludes(readme, 'docs/workout-recommendation-logic.md');
   assertIncludes(readme, 'docs/workout-demo-script.md');
+  assertIncludes(roadmap, 'Live workout flow cleanup now covered');
+  assertIncludes(roadmap, 'remove the duplicate manual fallback logger');
+  assertIncludes(roadmap, 'preventing shared reps/weight draft state from silently logging under the wrong exercise');
 });
 
 test('workout screens have explicit loading, empty, and error states for normal edge cases', () => {
@@ -96,6 +101,6 @@ test('key workout cards use mobile-safe wrapping and minimum widths', () => {
 test('project quality docs and empty-state coverage run through npm run test:all', () => {
   const packageJson = readProjectJson('package.json');
 
-  assert.equal(packageJson.scripts.test, 'node --test tests');
+  assert.equal(packageJson.scripts.test, 'node --test');
   assert.match(packageJson.scripts['test:all'], /npm run test/);
 });
