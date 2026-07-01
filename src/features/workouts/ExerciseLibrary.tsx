@@ -194,9 +194,12 @@ export function ExerciseLibrary({
       return [
         exercise.name,
         exercise.muscleGroup,
+        exercise.bodyPart,
+        exercise.targetMuscle,
         exercise.equipment,
         exercise.movementType,
         exercise.difficulty,
+        ...(exercise.secondaryMuscles ?? []),
       ]
         .filter(Boolean)
         .join(' ')
@@ -262,7 +265,9 @@ export function ExerciseLibrary({
                   {exercise.name}
                 </Text>
                 <Text className="mt-1 text-sm font-body text-base-muted" style={styles.exerciseCardSubtitle}>
-                  {exercise.muscleGroup}
+                  {exercise.targetMuscle
+                    ? `${exercise.muscleGroup} • Target: ${exercise.targetMuscle}`
+                    : exercise.muscleGroup}
                 </Text>
               </View>
               {exercise.equipment ? <ExerciseBadge label={exercise.equipment} /> : null}
@@ -467,16 +472,41 @@ export function ExerciseLibrary({
                     Muscle diagram placeholder
                   </Text>
                   <Text className="mt-1.5 text-base-muted/80" style={styles.diagramPlaceholderSubtitle}>
-                    {selectedExercise.muscleGroup}
+                    {selectedExercise.targetMuscle ?? selectedExercise.muscleGroup}
                   </Text>
+                </View>
+
+                <View className="gap-2" style={styles.exerciseMetadataCard}>
+                  <Text className="text-base font-black text-base-content" style={styles.instructionsTitle}>Exercise details</Text>
+                  <Text className="font-body leading-5 text-base-muted" style={styles.metadataText}>
+                    Body part: {selectedExercise.bodyPart ?? selectedExercise.muscleGroup}
+                  </Text>
+                  <Text className="font-body leading-5 text-base-muted" style={styles.metadataText}>
+                    Target: {selectedExercise.targetMuscle ?? selectedExercise.muscleGroup}
+                  </Text>
+                  {selectedExercise.secondaryMuscles?.length ? (
+                    <Text className="font-body leading-5 text-base-muted" style={styles.metadataText}>
+                      Secondary: {selectedExercise.secondaryMuscles.join(', ')}
+                    </Text>
+                  ) : null}
                 </View>
 
                 <View className="gap-1.5" style={styles.instructionsGroup}>
                   <Text className="text-base font-black text-base-content" style={styles.instructionsTitle}>Instructions</Text>
-                  <Text className="font-body leading-6 text-base-muted" style={styles.instructionsText}>
-                    {selectedExercise.instructions ||
-                      'Instructions have not been added for this exercise yet.'}
-                  </Text>
+                  {selectedExercise.instructionSteps?.length ? (
+                    <View className="gap-2" style={styles.instructionStepList}>
+                      {selectedExercise.instructionSteps.map((step, index) => (
+                        <Text key={`${selectedExercise.id}-step-${index + 1}`} className="font-body leading-6 text-base-muted" style={styles.instructionsText}>
+                          {index + 1}. {step}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text className="font-body leading-6 text-base-muted" style={styles.instructionsText}>
+                      {selectedExercise.instructions ||
+                        'Instructions have not been added for this exercise yet.'}
+                    </Text>
+                  )}
                 </View>
 
                 {onSelect ? (
@@ -856,6 +886,18 @@ const styles = StyleSheet.create({
     marginTop: 6,
     opacity: 0.8,
   },
+  exerciseMetadataCard: {
+    backgroundColor: colors.base100,
+    borderColor: colors.base300,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 8,
+    padding: 14,
+  },
+  metadataText: {
+    color: colors.baseMuted,
+    lineHeight: 20,
+  },
   instructionsGroup: {
     gap: 6,
   },
@@ -863,6 +905,9 @@ const styles = StyleSheet.create({
     color: colors.baseContent,
     fontSize: 16,
     fontWeight: '900',
+  },
+  instructionStepList: {
+    gap: 8,
   },
   instructionsText: {
     color: colors.baseMuted,
