@@ -106,6 +106,9 @@ test('exercise dataset importer is wired into package scripts and preserves meta
   assert.match(models, /secondaryMuscles\?: string\[\]/);
   assert.match(library, /Exercise details/);
   assert.match(library, /selectedExercise\.instructionSteps\?\.length/);
+  assert.match(library, /<FlatList<Exercise>/);
+  assert.match(library, /data=\{listData\}/);
+  assert.doesNotMatch(library, /filteredExercises\.map\(\(exercise\)/);
 });
 
 test('exercise data validation script passes', () => {

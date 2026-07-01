@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
   Pressable,
   ScrollView,
@@ -10,6 +11,7 @@ import {
   TextInput,
   View,
   type GestureResponderEvent,
+  type ListRenderItem,
 } from 'react-native';
 
 import { fetchExercises } from '@/src/features/workouts/exercise-service';
@@ -232,63 +234,46 @@ export function ExerciseLibrary({
   const activeFilterCount = FILTERS.filter((filter) => filters[filter.key]).length;
   const hasActiveSearch = Boolean(searchQuery.trim());
   const hasActiveFilters = hasActiveSearch || activeFilterCount > 0;
+  const isContained = scrollMode === 'contained';
+  const listData = isLoading || error ? [] : filteredExercises;
 
-  const renderedExercises = (
-    <View className="gap-3" style={styles.exerciseList}>
-      {filteredExercises.length === 0 ? (
-        <LibraryEmptyState
-          title={hasActiveFilters ? 'No exercises match these filters' : 'Exercise library is empty'}
-          message={
-            hasActiveFilters
-              ? 'Clear the search or filters to get back to the full exercise list.'
-              : 'No exercises are available right now. Try again in a moment.'
-          }
-          action={
-            hasActiveFilters ? (
-              <LibraryButton title="Clear search and filters" onPress={clearFilters} variant="outline" />
-            ) : (
-              <LibraryButton title="Retry exercise library" onPress={() => void refetch()} variant="outline" />
-            )
-          }
-        />
-      ) : (
-        filteredExercises.map((exercise) => (
-          <Pressable
-            key={exercise.id}
-            onPress={() => setSelectedExercise(exercise)}
-            className="gap-3 rounded-card border border-base-300 bg-base-100 p-4 active:border-primary/40 active:bg-base-300 active:opacity-90"
-            style={({ pressed }) => [styles.exerciseCard, pressed && styles.exerciseCardPressed]}
-          >
-            <View className="flex-row items-start justify-between gap-3" style={styles.exerciseCardHeader}>
-              <View className="flex-1" style={styles.exerciseCardTitleGroup}>
-                <Text className="text-lg font-black text-base-content" style={styles.exerciseCardTitle}>
-                  {exercise.name}
-                </Text>
-                <Text className="mt-1 text-sm font-body text-base-muted" style={styles.exerciseCardSubtitle}>
-                  {exercise.targetMuscle
-                    ? `${exercise.muscleGroup} • Target: ${exercise.targetMuscle}`
-                    : exercise.muscleGroup}
-                </Text>
-              </View>
-              {exercise.equipment ? <ExerciseBadge label={exercise.equipment} /> : null}
-            </View>
+  const keyExtractor = useCallback((exercise: Exercise) => exercise.id, []);
 
-            <View className="flex-row flex-wrap gap-2" style={styles.badgeRow}>
-              {exercise.movementType ? (
-                <ExerciseBadge label={exercise.movementType} tone="slate" />
-              ) : null}
-              {exercise.difficulty ? (
-                <ExerciseBadge label={exercise.difficulty} tone="slate" />
-              ) : null}
-            </View>
-          </Pressable>
-        ))
-      )}
-    </View>
-  );
+  const renderExerciseCard: ListRenderItem<Exercise> = useCallback(({ item: exercise }) => {
+    return (
+      <Pressable
+        onPress={() => setSelectedExercise(exercise)}
+        className="gap-3 rounded-card border border-base-300 bg-base-100 p-4 active:border-primary/40 active:bg-base-300 active:opacity-90"
+        style={({ pressed }) => [styles.exerciseCard, pressed && styles.exerciseCardPressed]}
+      >
+        <View className="flex-row items-start justify-between gap-3" style={styles.exerciseCardHeader}>
+          <View className="flex-1" style={styles.exerciseCardTitleGroup}>
+            <Text className="text-lg font-black text-base-content" style={styles.exerciseCardTitle}>
+              {exercise.name}
+            </Text>
+            <Text className="mt-1 text-sm font-body text-base-muted" style={styles.exerciseCardSubtitle}>
+              {exercise.targetMuscle
+                ? `${exercise.muscleGroup} • Target: ${exercise.targetMuscle}`
+                : exercise.muscleGroup}
+            </Text>
+          </View>
+          {exercise.equipment ? <ExerciseBadge label={exercise.equipment} /> : null}
+        </View>
 
-  const libraryContent = (
-    <>
+        <View className="flex-row flex-wrap gap-2" style={styles.badgeRow}>
+          {exercise.movementType ? (
+            <ExerciseBadge label={exercise.movementType} tone="slate" />
+          ) : null}
+          {exercise.difficulty ? (
+            <ExerciseBadge label={exercise.difficulty} tone="slate" />
+          ) : null}
+        </View>
+      </Pressable>
+    );
+  }, []);
+
+  const listHeader = (
+    <View className="gap-4" style={styles.listHeader}>
       <View className="gap-3" style={styles.headerSection}>
         <View className="flex-row items-start justify-between gap-3" style={styles.libraryHeader}>
           <View className="flex-1" style={styles.libraryHeaderText}>
@@ -311,60 +296,113 @@ export function ExerciseLibrary({
         />
       </View>
 
-      {isLoading ? (
+      {!isLoading && !error ? (
+        <View className="flex-row flex-wrap items-center justify-between gap-2.5" style={styles.toolbar}>
+          <Text className="font-bold text-base-muted" style={styles.visibleCountText}>
+            {filteredExercises.length} of {exercises.length} exercises visible
+          </Text>
+          <View className="flex-row items-center gap-3" style={styles.toolbarActions}>
+            {hasActiveFilters ? (
+              <Pressable onPress={clearFilters} className="rounded-pill px-2 py-2 active:opacity-75" style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
+                <Text className="font-black text-primary" style={styles.clearButtonText}>
+                  Clear
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => setIsFilterSheetOpen(true)}
+              className={`rounded-pill border px-4 py-2.5 active:opacity-75 ${
+                activeFilterCount > 0
+                  ? 'border-primary bg-primary/15'
+                  : 'border-base-300 bg-base-100 active:bg-base-300'
+              }`}
+              style={({ pressed }) => [
+                styles.filterButton,
+                activeFilterCount > 0 ? styles.filterChipSelected : styles.filterChipIdle,
+                pressed && (activeFilterCount > 0 ? styles.pressedSelected : styles.pressedIdle),
+              ]}
+            >
+              <Text
+                className={activeFilterCount > 0 ? 'font-black text-primary' : 'font-black text-base-content'}
+                style={[styles.filterButtonText, activeFilterCount > 0 ? styles.filterChipTextSelected : styles.filterChipTextIdle]}
+              >
+                {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+
+  function renderEmptyState() {
+    if (isLoading) {
+      return (
         <View className="items-center gap-2.5 py-7" style={styles.loadingState}>
           <ActivityIndicator color={colors.primary} />
           <Text className="font-bold text-base-muted" style={styles.loadingText}>
             Loading exercises…
           </Text>
         </View>
-      ) : error ? (
+      );
+    }
+
+    if (error) {
+      return (
         <LibraryEmptyState
           title="Could not load exercises"
           message={`The exercise list could not be loaded. Try again in a moment.${error?.message ? ` Detail: ${error.message}` : ''}`}
           action={<LibraryButton title="Try again" onPress={() => void refetch()} />}
         />
-      ) : (
-        <>
-          <View className="flex-row flex-wrap items-center justify-between gap-2.5" style={styles.toolbar}>
-            <Text className="font-bold text-base-muted" style={styles.visibleCountText}>
-              {filteredExercises.length} of {exercises.length} exercises visible
-            </Text>
-            <View className="flex-row items-center gap-3" style={styles.toolbarActions}>
-              {hasActiveFilters ? (
-                <Pressable onPress={clearFilters} className="rounded-pill px-2 py-2 active:opacity-75" style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
-                  <Text className="font-black text-primary" style={styles.clearButtonText}>
-                    Clear
-                  </Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={() => setIsFilterSheetOpen(true)}
-                className={`rounded-pill border px-4 py-2.5 active:opacity-75 ${
-                  activeFilterCount > 0
-                    ? 'border-primary bg-primary/15'
-                    : 'border-base-300 bg-base-100 active:bg-base-300'
-                }`}
-                style={({ pressed }) => [
-                  styles.filterButton,
-                  activeFilterCount > 0 ? styles.filterChipSelected : styles.filterChipIdle,
-                  pressed && (activeFilterCount > 0 ? styles.pressedSelected : styles.pressedIdle),
-                ]}
-              >
-                <Text
-                  className={activeFilterCount > 0 ? 'font-black text-primary' : 'font-black text-base-content'}
-                  style={[styles.filterButtonText, activeFilterCount > 0 ? styles.filterChipTextSelected : styles.filterChipTextIdle]}
-                >
-                  {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
+      );
+    }
 
-          {renderedExercises}
-        </>
-      )}
+    return (
+      <LibraryEmptyState
+        title={hasActiveFilters ? 'No exercises match these filters' : 'Exercise library is empty'}
+        message={
+          hasActiveFilters
+            ? 'Clear the search or filters to get back to the full exercise list.'
+            : 'No exercises are available right now. Try again in a moment.'
+        }
+        action={
+          hasActiveFilters ? (
+            <LibraryButton title="Clear search and filters" onPress={clearFilters} variant="outline" />
+          ) : (
+            <LibraryButton title="Retry exercise library" onPress={() => void refetch()} variant="outline" />
+          )
+        }
+      />
+    );
+  }
 
+  const libraryList = (
+    <FlatList<Exercise>
+      data={listData}
+      keyExtractor={keyExtractor}
+      keyboardShouldPersistTaps="handled"
+      ListEmptyComponent={renderEmptyState}
+      ListHeaderComponent={listHeader}
+      maxToRenderPerBatch={16}
+      nestedScrollEnabled={isContained}
+      renderItem={renderExerciseCard}
+      removeClippedSubviews={listData.length > 40}
+      showsVerticalScrollIndicator={false}
+      style={isContained ? styles.containedList : styles.pageList}
+      contentContainerStyle={[
+        styles.virtualListContent,
+        isContained ? styles.containedListContent : styles.pageListContent,
+        listData.length === 0 ? styles.virtualListEmptyContent : null,
+      ]}
+      initialNumToRender={16}
+      updateCellsBatchingPeriod={40}
+      windowSize={8}
+      ItemSeparatorComponent={() => <View style={styles.exerciseItemSeparator} />}
+    />
+  );
+
+  const libraryModals = (
+    <>
       <Modal
         animationType="slide"
         onRequestClose={() => setIsFilterSheetOpen(false)}
@@ -531,35 +569,56 @@ export function ExerciseLibrary({
     </>
   );
 
-  if (scrollMode === 'contained') {
+  if (isContained) {
     return (
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled
-        className="max-h-full"
-        style={styles.containedScroll}
-        contentContainerClassName="gap-4 pb-1"
-        contentContainerStyle={styles.scrollContent}
-      >
-        {libraryContent}
-      </ScrollView>
+      <View className="max-h-full" style={styles.containedListShell}>
+        {libraryList}
+        {libraryModals}
+      </View>
     );
   }
 
-  return <View className="gap-4" style={styles.pageLibrary}>{libraryContent}</View>;
+  return (
+    <View className="flex-1" style={styles.pageLibrary}>
+      {libraryList}
+      {libraryModals}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   pageLibrary: {
-    gap: 16,
+    backgroundColor: colors.base100,
+    flex: 1,
   },
-  containedScroll: {
+  containedListShell: {
     backgroundColor: colors.base200,
     maxHeight: '100%',
   },
-  scrollContent: {
+  pageList: {
+    backgroundColor: colors.base100,
+    flex: 1,
+  },
+  containedList: {
+    backgroundColor: colors.base200,
+    maxHeight: '100%',
+  },
+  virtualListContent: {
     gap: 16,
+  },
+  pageListContent: {
+    paddingBottom: 48,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  containedListContent: {
     paddingBottom: 4,
+  },
+  virtualListEmptyContent: {
+    flexGrow: 1,
+  },
+  listHeader: {
+    gap: 16,
   },
   headerSection: {
     gap: 12,
@@ -636,8 +695,8 @@ const styles = StyleSheet.create({
   filterButtonText: {
     fontWeight: '900',
   },
-  exerciseList: {
-    gap: 12,
+  exerciseItemSeparator: {
+    height: 12,
   },
   exerciseCard: {
     backgroundColor: colors.base100,

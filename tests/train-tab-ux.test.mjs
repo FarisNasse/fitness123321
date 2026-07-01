@@ -55,7 +55,7 @@ test('dedicated exercise browser route and stack screen are registered', () => {
 
   assert.equal(fileExists('app/workout/exercises.tsx'), true);
   assert.match(route, /export default function WorkoutExercisesScreen\(\)/);
-  assert.match(route, /<Screen>[\s\S]*<ExerciseLibrary scrollMode="page" \/>[\s\S]*<\/Screen>/);
+  assert.match(route, /<Screen scrollable=\{false\}>[\s\S]*<ExerciseLibrary scrollMode="page" \/>[\s\S]*<\/Screen>/);
   assert.match(layout, /<Stack\.Screen[\s\S]*name="workout\/exercises"[\s\S]*title: 'Exercise Browser'[\s\S]*headerTintColor: '#a3e635'/);
 });
 
