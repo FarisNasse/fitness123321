@@ -3,7 +3,7 @@ import { ExerciseLibrary } from '@/src/features/workouts/ExerciseLibrary';
 
 export default function WorkoutExercisesScreen() {
   return (
-    <Screen>
+    <Screen scrollable={false}>
       <ExerciseLibrary scrollMode="page" />
     </Screen>
   );

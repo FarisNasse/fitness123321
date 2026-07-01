@@ -22,7 +22,12 @@ const appScreens = [
 test('package exposes fast test commands without adding heavy native test dependencies', () => {
   const pkg = readProjectJson('package.json');
 
-  assert.equal(pkg.scripts.test, 'node --test tests/*.test.mjs');
+  assert.equal(pkg.packageManager, 'npm@10.9.2');
+  assert.equal(pkg.engines?.node, '>=20 <23');
+  assert.equal(pkg.engines?.npm, '10.x');
+  assert.equal(readProjectFile('.nvmrc').trim(), '20');
+  assert.match(readProjectFile('.npmrc'), /engine-strict=true/);
+  assert.equal(pkg.scripts.test, 'node --test tests');
   assert.equal(
     pkg.scripts['test:all'],
     'npm run test && npm run check:exercises && npm run check:local && npm run typecheck'
@@ -260,7 +265,7 @@ test('dedicated workout exercise browser reuses the shared ExerciseLibrary as a 
 
   assert.match(exerciseRoute, /import \{ Screen \} from '@\/src\/components\/Screen';/);
   assert.match(exerciseRoute, /import \{ ExerciseLibrary \} from '@\/src\/features\/workouts\/ExerciseLibrary';/);
-  assert.match(exerciseRoute, /<Screen>[\s\S]*<ExerciseLibrary scrollMode="page" \/>[\s\S]*<\/Screen>/);
+  assert.match(exerciseRoute, /<Screen scrollable=\{false\}>[\s\S]*<ExerciseLibrary scrollMode="page" \/>[\s\S]*<\/Screen>/);
   assert.match(layout, /name="workout\/exercises"[\s\S]*title: 'Exercise Browser'[\s\S]*headerStyle: \{ backgroundColor: '#0d1117' \}[\s\S]*headerTintColor: '#a3e635'/);
 });
 
@@ -344,9 +349,19 @@ test('exercise library supports loading, searching, filtering, clearing, details
   assert.match(library, /queryFn: fetchExercises/);
   assert.match(library, /scrollMode\?: 'page' \| 'contained'/);
   assert.match(library, /scrollMode = 'contained'/);
+  assert.match(library, /FlatList/);
+  assert.match(library, /<FlatList<Exercise>/);
+  assert.match(library, /data=\{listData\}/);
+  assert.match(library, /renderItem=\{renderExerciseCard\}/);
+  assert.match(library, /keyExtractor=\{keyExtractor\}/);
+  assert.match(library, /ListHeaderComponent=\{listHeader\}/);
+  assert.match(library, /ListEmptyComponent=\{renderEmptyState\}/);
+  assert.match(library, /initialNumToRender=\{16\}/);
+  assert.match(library, /windowSize=\{8\}/);
   assert.match(library, /keyboardShouldPersistTaps="handled"/);
   assert.match(library, /className="max-h-full"/);
-  assert.match(library, /return <View className="gap-4" style=\{styles\.pageLibrary\}>\{libraryContent\}<\/View>/);
+  assert.match(library, /return \([\s\S]*<View className="flex-1" style=\{styles\.pageLibrary\}>[\s\S]*\{libraryList\}[\s\S]*\{libraryModals\}/);
+  assert.doesNotMatch(library, /filteredExercises\.map\(\(exercise\)/);
   assert.match(library, /searchQuery\.trim\(\)\.toLowerCase\(\)/);
   assert.match(library, /exercise\.name,[\s\S]*exercise\.muscleGroup,[\s\S]*exercise\.equipment,[\s\S]*exercise\.movementType,[\s\S]*exercise\.difficulty,/);
   assert.match(library, /function clearFilters\(\)/);

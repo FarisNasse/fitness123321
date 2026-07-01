@@ -96,6 +96,6 @@ test('key workout cards use mobile-safe wrapping and minimum widths', () => {
 test('project quality docs and empty-state coverage run through npm run test:all', () => {
   const packageJson = readProjectJson('package.json');
 
-  assert.equal(packageJson.scripts.test, 'node --test tests/*.test.mjs');
+  assert.equal(packageJson.scripts.test, 'node --test tests');
   assert.match(packageJson.scripts['test:all'], /npm run test/);
 });

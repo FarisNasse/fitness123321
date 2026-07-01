@@ -622,7 +622,7 @@ test('quick adjustments mutate the displayed values that the next saved set uses
 test('gym workflow regression coverage runs through npm run test:all', () => {
   const packageJson = readProjectJson('package.json');
 
-  assert.equal(packageJson.scripts.test, 'node --test tests/*.test.mjs');
+  assert.equal(packageJson.scripts.test, 'node --test tests');
   assert.match(packageJson.scripts['test:all'], /npm run test/);
   assert.match(packageJson.scripts['test:all'], /npm run typecheck/);
 });

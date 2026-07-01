@@ -41,7 +41,7 @@ function assertNoDeveloperCopy(source, surfaceName) {
 test('train tab UX coverage stays in the fast test suite', () => {
   const pkg = readProjectJson('package.json');
 
-  assert.equal(pkg.scripts.test, 'node --test tests/*.test.mjs');
+  assert.equal(pkg.scripts.test, 'node --test tests');
   assert.match(pkg.scripts['test:all'], /npm run test/);
 
   for (const dependency of ['jest', 'jest-expo', '@testing-library/react-native', 'react-test-renderer']) {
@@ -55,7 +55,7 @@ test('dedicated exercise browser route and stack screen are registered', () => {
 
   assert.equal(fileExists('app/workout/exercises.tsx'), true);
   assert.match(route, /export default function WorkoutExercisesScreen\(\)/);
-  assert.match(route, /<Screen>[\s\S]*<ExerciseLibrary scrollMode="page" \/>[\s\S]*<\/Screen>/);
+  assert.match(route, /<Screen scrollable=\{false\}>[\s\S]*<ExerciseLibrary scrollMode="page" \/>[\s\S]*<\/Screen>/);
   assert.match(layout, /<Stack\.Screen[\s\S]*name="workout\/exercises"[\s\S]*title: 'Exercise Browser'[\s\S]*headerTintColor: '#a3e635'/);
 });
 
