@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { colors } from '@/src/lib/theme';
 
@@ -75,12 +75,24 @@ export function ActiveSetLogger({ controller }: { controller: LiveWorkoutControl
 
 function LoggerLink({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <Text
+    <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={8}
       onPress={onPress}
-      style={{ color: colors.primary, fontWeight: '900', paddingVertical: 6 }}
+      style={({ pressed }) => ({
+        alignItems: 'center',
+        backgroundColor: pressed ? colors.base300 : colors.base100,
+        borderColor: colors.base300,
+        borderRadius: 999,
+        borderWidth: 1,
+        justifyContent: 'center',
+        minHeight: 48,
+        minWidth: 96,
+        paddingHorizontal: 16,
+      })}
     >
-      {label}
-    </Text>
+      <Text style={{ color: colors.primary, fontWeight: '900' }}>{label}</Text>
+    </Pressable>
   );
 }

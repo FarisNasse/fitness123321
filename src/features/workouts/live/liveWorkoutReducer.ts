@@ -15,6 +15,7 @@ export type LiveWorkoutEvent =
   | { type: 'rest.skipped' }
   | { type: 'sheet.opened'; sheet: NonNullable<LiveWorkoutSheet> }
   | { type: 'sheet.closed' }
+  | { type: 'notice.shown'; notice: string }
   | { type: 'notice.cleared' };
 
 export function liveWorkoutReducer(
@@ -100,6 +101,9 @@ export function liveWorkoutReducer(
 
     case 'sheet.closed':
       return { ...state, activeSheet: null };
+
+    case 'notice.shown':
+      return { ...state, savedNotice: event.notice };
 
     case 'notice.cleared':
       return { ...state, savedNotice: null };

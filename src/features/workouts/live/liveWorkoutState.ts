@@ -44,6 +44,15 @@ export type LiveWorkoutUiState = {
   savedNotice: string | null;
 };
 
+export type PendingDeletedSet = {
+  setLocalId: string;
+  label: string;
+};
+
+export type LiveWorkoutCompletionOptions = {
+  discardDirtyDraft?: boolean;
+};
+
 export type LiveWorkoutController = {
   session: WorkoutSessionForScreen;
   exercises: Exercise[];
@@ -54,6 +63,7 @@ export type LiveWorkoutController = {
   elapsedSeconds: number;
   restSeconds: number | null;
   savedNotice: string | null;
+  pendingDeletedSet: PendingDeletedSet | null;
   activeSheet: LiveWorkoutSheet;
   currentSetDraft: CurrentSetDraft;
   lastSet: LocalWorkoutSetRow | null;
@@ -86,7 +96,8 @@ export type LiveWorkoutController = {
   updateEditInput: (key: keyof EditSetInputs, value: string) => void;
   saveEditedSet: () => void;
   deleteEditingSet: () => void;
-  completeWorkout: () => void;
+  undoDeletedSet: () => void;
+  completeWorkout: (options?: LiveWorkoutCompletionOptions) => void;
 };
 
 export type TargetInputs = {

@@ -32,7 +32,7 @@ export function FinishWorkoutSheet({ controller }: { controller: LiveWorkoutCont
           >
             <Text style={{ color: colors.baseContent, fontWeight: '900' }}>Unsaved current set</Text>
             <Text style={{ color: colors.baseMuted, fontWeight: '800', marginTop: 2 }}>
-              Log the set first, or complete without saving the draft.
+              Log the set first, discard the draft, or cancel.
             </Text>
           </View>
         ) : null}
@@ -79,9 +79,17 @@ export function FinishWorkoutSheet({ controller }: { controller: LiveWorkoutCont
 
         <View style={{ gap: 10 }}>
           {controller.hasDirtyActiveDraft ? (
-            <Button title="Log set first" onPress={controller.addSet} variant="outline" />
-          ) : null}
-          <Button title="Complete workout" onPress={controller.completeWorkout} />
+            <>
+              <Button title="Log set first" onPress={controller.addSet} variant="outline" />
+              <Button
+                title="Discard draft and complete"
+                onPress={() => controller.completeWorkout({ discardDirtyDraft: true })}
+                variant="danger"
+              />
+            </>
+          ) : (
+            <Button title="Complete workout" onPress={() => controller.completeWorkout()} />
+          )}
           <Button title="Cancel" onPress={controller.closeSheet} variant="ghost" />
         </View>
       </View>

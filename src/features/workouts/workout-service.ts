@@ -715,6 +715,65 @@ export function deleteLocalWorkoutSet(setLocalId: string) {
   markWorkoutSessionPending(deleted.session_local_id);
 }
 
+
+export function restoreLocalWorkoutSet(setLocalId: string) {
+  const deleted = db.getAllSync<LocalWorkoutSet>(
+    `
+    select *
+    from workout_sets_local
+    where local_id = ?
+    limit 1
+    `,
+    [setLocalId]
+  )[0];
+
+  if (!deleted || !deleted.is_deleted || !deleted.deleted_at) return;
+
+  const now = new Date().toISOString();
+  const toShift = db.getAllSync<LocalWorkoutSet>(
+    `
+    select *
+    from workout_sets_local
+    where session_local_id = ?
+      and exercise_id = ?
+      and coalesce(is_deleted, 0) = 0
+      and deleted_at is null
+      and set_number >= ?
+    order by set_number desc
+    `,
+    [deleted.session_local_id, deleted.exercise_id, deleted.set_number]
+  );
+
+  for (const s of toShift) {
+    db.runSync(
+      `
+      update workout_sets_local
+      set set_number = ?,
+          sync_status = 'pending',
+          updated_at = ?
+      where local_id = ?
+      `,
+      [s.set_number + 1, now, s.local_id]
+    );
+  }
+
+  db.runSync(
+    `
+    update workout_sets_local
+    set is_deleted = 0,
+        deleted_at = null,
+        set_number = ?,
+        sync_status = 'pending',
+        updated_at = ?
+    where local_id = ?
+      and coalesce(is_deleted, 0) = 1
+    `,
+    [deleted.set_number, now, setLocalId]
+  );
+
+  markWorkoutSessionPending(deleted.session_local_id);
+}
+
 export function deleteLocalWorkoutSession(sessionLocalId: string) {
   const now = new Date().toISOString();
 

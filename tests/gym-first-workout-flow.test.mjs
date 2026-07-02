@@ -62,7 +62,7 @@ test('primary live workout view is organized as a compact logger with recent-fir
     '<ExerciseSwitcher controller={controller} />',
     '<ActiveSetLogger controller={controller} />',
     '<RecentSetList',
-    '<DockedLogSetAction controller={controller} />',
+    '<DockedLogSetAction',
   ], 'view should prioritize header, switcher, logger, recent sets, docked action');
   assertIncludes(view, 'Last');
   assertIncludes(view, 'Set {draft.setNumber}');

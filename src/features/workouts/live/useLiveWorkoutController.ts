@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import {
   getExerciseById,
@@ -12,6 +12,7 @@ import {
   addLocalWorkoutSet,
   completeLocalWorkoutSession,
   deleteLocalWorkoutSet,
+  restoreLocalWorkoutSet,
   getLocalWorkoutSession,
   getLocalWorkoutSessionExercises,
   getLocalWorkoutSets,
@@ -53,6 +54,7 @@ import {
   type LocalWorkoutSetRow,
   type SessionLoadState,
   type SetDraft,
+  type PendingDeletedSet,
   type TargetInputs,
   type WorkoutSessionForScreen,
 } from './liveWorkoutState';
@@ -187,6 +189,8 @@ export function useLiveWorkoutController(
   const [targetValidationMessage, setTargetValidationMessage] = useState<string | null>(null);
   const [editValidationMessage, setEditValidationMessage] = useState<string | null>(null);
   const [session, setSession] = useState<WorkoutSessionForScreen | null>(null);
+  const [pendingDeletedSet, setPendingDeletedSet] = useState<PendingDeletedSet | null>(null);
+  const pendingDeleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sessionLoadState, setSessionLoadState] = useState<SessionLoadState>({
     status: 'loading',
   });
@@ -391,10 +395,10 @@ export function useLiveWorkoutController(
 
     const timer = setTimeout(() => {
       dispatch({ type: 'notice.cleared' });
-    }, 2400);
+    }, pendingDeletedSet ? 5200 : 2400);
 
     return () => clearTimeout(timer);
-  }, [uiState.savedNotice]);
+  }, [uiState.savedNotice, pendingDeletedSet]);
 
   const selectedExerciseSets = useMemo(() => {
     if (!selectedExercise) return [];
@@ -639,20 +643,72 @@ export function useLiveWorkoutController(
     queueWorkoutSync('editing a set');
   }
 
-  function deleteEditingSet() {
-    if (!editingSet) return;
+  function clearPendingDeleteTimer() {
+    if (!pendingDeleteTimerRef.current) return;
 
-    const setLocalId = editingSet.local_id;
-    deleteLocalWorkoutSet(setLocalId);
-    setEditingSet(null);
-    setEditInputs(DEFAULT_EDIT_INPUTS);
-    dispatch({ type: 'sheet.closed' });
-    refreshSets();
+    clearTimeout(pendingDeleteTimerRef.current);
+    pendingDeleteTimerRef.current = null;
+  }
+
+  function finalizePendingDeleteSync() {
+    clearPendingDeleteTimer();
+    setPendingDeletedSet(null);
     queueWorkoutSync('deleting a set');
   }
 
-  function completeWorkout() {
+  function deleteEditingSet() {
+    if (!editingSet) return;
+
+    if (pendingDeletedSet) {
+      finalizePendingDeleteSync();
+    }
+
+    const setLocalId = editingSet.local_id;
+    const notice = `Set ${editingSet.set_number} deleted`;
+
+    deleteLocalWorkoutSet(setLocalId);
+    setPendingDeletedSet({ setLocalId, label: notice });
+    setEditingSet(null);
+    setEditInputs(DEFAULT_EDIT_INPUTS);
+    dispatch({ type: 'sheet.closed' });
+    dispatch({ type: 'notice.shown', notice });
+    refreshSets();
+
+    pendingDeleteTimerRef.current = setTimeout(() => {
+      pendingDeleteTimerRef.current = null;
+      setPendingDeletedSet((current) =>
+        current?.setLocalId === setLocalId ? null : current
+      );
+      queueWorkoutSync('deleting a set');
+    }, 5000);
+  }
+
+  function undoDeletedSet() {
+    if (!pendingDeletedSet) return;
+
+    clearPendingDeleteTimer();
+    restoreLocalWorkoutSet(pendingDeletedSet.setLocalId);
+    setPendingDeletedSet(null);
+    dispatch({ type: 'notice.shown', notice: 'Set restored' });
+    refreshSets();
+    queueWorkoutSync('restoring a deleted set');
+  }
+
+  function completeWorkout(options: { discardDirtyDraft?: boolean } = {}) {
     if (!sessionId || !session) return;
+
+    if (selectedExercise && activeDraft.dirty && !options.discardDirtyDraft) {
+      dispatch({
+        type: 'notice.shown',
+        notice: 'Log the current set or discard the draft before finishing.',
+      });
+      dispatch({ type: 'sheet.opened', sheet: 'finish' });
+      return;
+    }
+
+    if (pendingDeletedSet) {
+      finalizePendingDeleteSync();
+    }
 
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     completeLocalWorkoutSession(sessionId);
@@ -699,6 +755,7 @@ export function useLiveWorkoutController(
     elapsedSeconds,
     restSeconds: uiState.restSeconds,
     savedNotice: uiState.savedNotice,
+    pendingDeletedSet,
     activeSheet: uiState.activeSheet,
     currentSetDraft,
     lastSet,
@@ -745,6 +802,7 @@ export function useLiveWorkoutController(
     },
     saveEditedSet,
     deleteEditingSet,
+    undoDeletedSet,
     completeWorkout,
   };
 

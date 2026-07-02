@@ -588,7 +588,8 @@ test('one-tap Log set saves the active exercise draft currently displayed in the
   const compact = normalizeWhitespace(controller);
 
   assert.match(controller, /const activeDraft = selectedExercise\s*\? getDraftForExercise\(selectedExercise\.id\)\s*: DEFAULT_SET_DRAFT/s);
-  assert.match(view, /disabled=\{Boolean\(controller\.currentSetDraft\.validationMessage\)\}/);
+  assert.match(view, /const disabled = Boolean\(controller\.currentSetDraft\.validationMessage\);/);
+  assert.match(view, /disabled=\{disabled\}/);
   assert.match(view, /onPress=\{controller\.addSet\}/);
   assert.match(view, /\{controller\.currentSetDraft\.logButtonTitle\}/);
   assert.match(view, /\{controller\.currentSetDraft\.logButtonDetail\}/);

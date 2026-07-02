@@ -1,4 +1,6 @@
-import { ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Screen } from '@/src/components/Screen';
 import { colors } from '@/src/lib/theme';
@@ -19,19 +21,32 @@ import { TargetSettingsSheet } from './sheets/TargetSettingsSheet';
 
 export function LiveWorkoutScreenView({ controller }: { controller: LiveWorkoutController }) {
   const hasExercises = controller.selectedExercises.length > 0;
+  const insets = useSafeAreaInsets();
+  const [dockedActionHeight, setDockedActionHeight] = useState(0);
+  const bottomScrollInset = dockedActionHeight + insets.bottom + 24;
 
   return (
     <Screen scrollable={false}>
-      <View style={{ flex: 1, backgroundColor: colors.base100 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+        style={{ flex: 1, backgroundColor: colors.base100 }}
+      >
         <LiveWorkoutHeader controller={controller} />
         {hasExercises ? <ExerciseSwitcher controller={controller} /> : null}
 
         <ScrollView
-          contentContainerStyle={{ gap: 14, padding: 18, paddingBottom: 112 }}
+          contentContainerStyle={{ gap: 14, padding: 18, paddingBottom: bottomScrollInset }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {controller.savedNotice ? <SavedSetNotice notice={controller.savedNotice} /> : null}
+          {controller.savedNotice ? (
+            <SavedSetNotice
+              actionLabel={controller.pendingDeletedSet ? 'Undo' : undefined}
+              notice={controller.savedNotice}
+              onAction={controller.pendingDeletedSet ? controller.undoDeletedSet : undefined}
+            />
+          ) : null}
 
           {controller.selectedExercise ? (
             <>
@@ -43,14 +58,23 @@ export function LiveWorkoutScreenView({ controller }: { controller: LiveWorkoutC
           )}
         </ScrollView>
 
-        <DockedLogSetAction controller={controller} />
+        <DockedLogSetAction
+          bottomInset={insets.bottom}
+          controller={controller}
+          onLayout={(event) => {
+            const nextHeight = event.nativeEvent.layout.height;
+            setDockedActionHeight((current) =>
+              Math.abs(current - nextHeight) > 1 ? nextHeight : current
+            );
+          }}
+        />
 
         <ExercisePickerSheet controller={controller} />
         <TargetSettingsSheet controller={controller} />
         <ExerciseInstructionsSheet controller={controller} />
         <EditSetSheet controller={controller} />
         <FinishWorkoutSheet controller={controller} />
-      </View>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
