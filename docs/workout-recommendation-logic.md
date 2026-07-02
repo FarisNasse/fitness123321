@@ -10,13 +10,11 @@ When an exercise is selected, `getSmartExerciseDefaults(exerciseId)` chooses def
 2. **Saved target**: if there is no history but the user saved optional targets, use the saved target set count, rep range, increment, and deload percentage.
 3. **Starter default**: if there is no history and no saved target, use 3 sets, 8-12 reps, 5 lb jumps, and a 10% deload value.
 
-The live screen shows the source as `Recent history`, `Saved target`, or `Starter default` so a reviewer can understand why a value appeared.
+The controller tracks the source as `Recent history`, `Saved target`, or `Starter default` so a reviewer can understand why a value appeared. If the user manually edits the draft, that dirty draft is protected from later async defaults.
 
 ## One-tap logging
 
-The current-set card displays the values that will be saved. The quick buttons mutate the same `reps` and `weight` state used by the parser, so pressing **Done** logs exactly what is on the screen.
-
-The manual input fields are still present as a fallback. They use the same state and the same `addSet()` path as the one-tap button.
+The active set logger displays the exact values that will be saved. The quick buttons and manual input fields mutate the same per-exercise `reps` and `weight` draft used by the parser, so pressing **Log set** logs exactly what is on the screen. The docked action repeats the key confirmation detail, such as `8 reps @ 135 lb`, so the user does not need to scan surrounding explanation.
 
 ## Optional targets
 
@@ -28,7 +26,7 @@ Targets are per exercise and intentionally optional:
 - weight increment
 - deload percentage
 
-Saving targets changes future suggestions for that exercise only. Logging still works when the reviewer never opens or edits this card.
+Saving targets changes future suggestions for that exercise only. Targets live in a sheet so logging still works when the reviewer never opens or edits them.
 
 ## Finish-workout guidance
 

@@ -47,6 +47,7 @@ The gym-use workflow now has short reviewer-facing docs so the feature can be un
 - [`docs/workout-local-first-architecture.md`](docs/workout-local-first-architecture.md) explains the local-first data flow, local tables, sync behavior, and clean-checkout path.
 - [`docs/workout-recommendation-logic.md`](docs/workout-recommendation-logic.md) explains smart defaults and next-time progression guidance in plain language.
 - [`docs/workout-demo-script.md`](docs/workout-demo-script.md) gives a short script for demoing the main workout flow.
+- [`docs/live-workout-ui-ux-research-diagnosis.md`](docs/live-workout-ui-ux-research-diagnosis.md) records the research-grounded live workout critique and definition of done that drove the focused logger redesign.
 
 ## Optional Supabase setup
 

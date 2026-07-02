@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { normalizeWhitespace, readProjectFile } from './helpers/project.mjs';
+import { normalizeWhitespace, readProjectFile, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 function assertIncludes(source, text, message = `expected source to include ${text}`) {
   assert.ok(source.includes(text), message);
@@ -62,31 +62,36 @@ test('workout service implements the smart defaults fallback cascade', () => {
 });
 
 test('live workout screen applies smart defaults when exercises are selected and after sets are logged', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
 
-  assert.match(live, /getSmartExerciseDefaults/);
-  assert.match(live, /upsertLocalExerciseTarget/);
-  assert.match(live, /const \[smartDefaultsByExerciseId, setSmartDefaultsByExerciseId\] = useState/);
-  assert.match(live, /async function applySmartDefaultsForExercise\([\s\S]*const defaults = await getSmartExerciseDefaults\(exercise\.id\)[\s\S]*const nextSet = getSuggestedSetForIndex\(defaults, currentSetCount\)[\s\S]*setReps\(String\(nextSet\.reps\)\)[\s\S]*setWeight\(formatWeightInput\(nextSet\.weight\)\)/);
-  assert.match(live, /async function chooseExercise\(exercise: Exercise\)[\s\S]*await applySmartDefaultsForExercise/);
-  assert.match(live, /void applySmartDefaultsForExercise\(exercise, currentExerciseSets\.length \+ 1\)/);
+  assert.match(controller, /getSmartExerciseDefaults/);
+  assert.match(controller, /upsertLocalExerciseTarget/);
+  assert.match(controller, /const \[smartDefaultsByExerciseId, setSmartDefaultsByExerciseId\] = useState/);
+  assert.match(controller, /async function applySmartDefaultsForExercise\([\s\S]*const defaults = await getSmartExerciseDefaults\(exercise\.id\)[\s\S]*draft: buildDraftFromSuggestedSet\(defaults, currentSetCount\)/);
+  assert.match(controller, /async function chooseExercise\(exercise: Exercise\)[\s\S]*await applySmartDefaultsForExercise/);
+  assert.match(controller, /void applySmartDefaultsForExercise\(selectedExercise, currentExerciseSets\.length \+ 1, \{[\s\S]*replaceDraft: true,/);
 });
 
 test('live workout screen keeps target configuration optional and uses dynamic increment buttons', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readLiveWorkoutUiSource();
 
-  assertIncludes(live, 'Optional targets');
-  assertIncludes(live, 'Logging still works without touching it.');
-  assert.match(live, /<TargetInput[\s\S]*label="Sets"[\s\S]*value=\{targetSetsInput\}/);
-  assert.match(live, /<TargetInput[\s\S]*label="Rep min"[\s\S]*value=\{repMinInput\}/);
-  assert.match(live, /<TargetInput[\s\S]*label="Rep max"[\s\S]*value=\{repMaxInput\}/);
-  assert.match(live, /<TargetInput[\s\S]*label="Increment"[\s\S]*value=\{incrementSizeInput\}/);
-  assert.match(live, /<TargetInput[\s\S]*label="Deload %"[\s\S]*value=\{deloadPercentageInput\}/);
-  assert.match(live, /<Button title="Save optional targets" onPress=\{saveSelectedExerciseTarget\} \/>/);
-  assert.match(live, /label=\{`− \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
-  assert.match(live, /onPress=\{\(\) => adjustWeight\(-activeIncrementSize\)\}/);
-  assert.match(live, /label=\{`\+ \$\{formatWeightInput\(activeIncrementSize\)\} lb`\}/);
-  assert.match(live, /onPress=\{\(\) => adjustWeight\(activeIncrementSize\)\}/);
+  assert.match(view, /<LoggerLink label="Targets"/);
+  assert.match(view, /function TargetSettingsSheet/);
+  assert.doesNotMatch(view, /Secondary settings stay out of the logging path/);
+  assert.match(view, /targetValidationMessage/);
+  assert.match(view, /visible=\{controller\.activeSheet === 'targets'\}/);
+  assert.match(view, /<TargetInput[\s\S]*label="Sets"[\s\S]*value=\{controller\.targetInputs\.targetSets\}/);
+  assert.match(view, /<TargetInput[\s\S]*label="Rep min"[\s\S]*value=\{controller\.targetInputs\.repMin\}/);
+  assert.match(view, /<TargetInput[\s\S]*label="Rep max"[\s\S]*value=\{controller\.targetInputs\.repMax\}/);
+  assert.match(view, /<TargetInput[\s\S]*label="Increment"[\s\S]*value=\{controller\.targetInputs\.incrementSize\}/);
+  assert.match(view, /<TargetInput[\s\S]*label="Deload %"[\s\S]*value=\{controller\.targetInputs\.deloadPercentage\}/);
+  assert.match(view, /title="Save targets"[\s\S]*onPress=\{controller\.saveSelectedExerciseTarget\}/);
+  assert.match(view, /decrementLabel=\{`−\$\{draft\.incrementSize\}`\}/);
+  assert.match(view, /onDecrement=\{\(\) => controller\.adjustWeight\(-draft\.incrementSize\)\}/);
+  assert.match(view, /incrementLabel=\{`\+\$\{draft\.incrementSize\}`\}/);
+  assert.match(view, /onIncrement=\{\(\) => controller\.adjustWeight\(draft\.incrementSize\)\}/);
+  assert.match(controller, /saveSelectedExerciseTarget/);
 });
 
 test('progression service is local, beginner-friendly, and keeps 1RM as secondary insight', () => {
@@ -119,15 +124,18 @@ test('workout service builds completion recommendations from local workout histo
   assert.match(service, /Next time:/);
 });
 
-test('live workout screen collects optional effort feedback and shows completion reasons', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('live workout screen collects optional effort feedback in the finish sheet and shows completion reasons', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readLiveWorkoutUiSource();
 
-  assert.match(live, /ProgressionEffortFeedback/);
-  assert.match(live, /const \[effortFeedback, setEffortFeedback\] = useState<ProgressionEffortFeedback \| null>\(null\)/);
-  assert.match(live, /How did that feel\?/);
-  assert.match(live, /\(\['easy', 'good', 'max'\] as const\)\.map/);
-  assert.match(live, /getWorkoutCompletionProgressionReasonText/);
-  assert.match(live, /const progressionReasonText = getWorkoutCompletionProgressionReasonText/);
-  assert.match(live, /const completionMessage = \[/);
-  assert.match(live, /Alert\.alert\('Workout complete', completionMessage\)/);
+  assert.match(controller, /const \[effortFeedback, setEffortFeedbackState\] = useState/);
+  assert.match(view, /function FinishWorkoutSheet/);
+  assert.match(view, /How did this workout feel\?/);
+  assert.match(view, /\(\['easy', 'good', 'max'\] as const\)\.map/);
+  assert.match(controller, /getWorkoutCompletionProgressionReasonText/);
+  assert.match(controller, /const progressionReasonText = getWorkoutCompletionProgressionReasonText/);
+  assert.match(controller, /const completionSummary = useMemo/);
+  assert.match(view, /\{controller\.completionSummary\}/);
+  assert.doesNotMatch(controller, /Alert\.alert\('Workout complete'/);
+  assert.doesNotMatch(view, /Workout feedback \(optional\)/);
 });

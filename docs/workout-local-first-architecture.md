@@ -14,7 +14,10 @@ This workout flow is designed so a reviewer can clone the repo, run the app, and
 | File | Responsibility |
 | --- | --- |
 | `app/(tabs)/workouts.tsx` | Train tab, quick start, repeat-last-workout, exercise library, recent workout history, sync retry affordance. |
-| `app/workout/session/[id].tsx` | Live session screen: exercise selection, one-tap set logging, quick adjustments, optional targets, effort feedback, finish flow. |
+| `app/workout/session/[id].tsx` | Small live-session route shell for loading/error states and handoff into the live workout controller/view. |
+| `src/features/workouts/live/useLiveWorkoutController.ts` | Live workout controller: session/exercise/set loading, per-exercise drafts, logging, target persistence, edit/delete, finish, rest state, and sync orchestration. |
+| `src/features/workouts/live/liveWorkoutReducer.ts` | Explicit state transitions for per-exercise drafts, dirty-draft protection, rest, sheets, and save notices. |
+| `src/features/workouts/live/components/LiveWorkoutScreenView.tsx` | Focused workout logging instrument: compact header, exercise switcher, active set logger, recent sets, docked action bar, and sheets. |
 | `app/workout/history/[id].tsx` | Completed workout summary grouped by exercise. |
 | `src/features/workouts/workout-service.ts` | Local write/read helpers, repeat-last-workout, smart defaults, progression summary, sync orchestration. |
 | `src/features/workouts/progression-service.ts` | Pure recommendation rules for increase/repeat/deload decisions. |
@@ -38,19 +41,19 @@ This workout flow is designed so a reviewer can clone the repo, run the app, and
 
 ### Pick exercise
 
-The live screen uses `ExerciseLibrary`. When an exercise is chosen, the app stores it in `workout_session_exercises_local` through `addLocalWorkoutSessionExercise()`. This makes the selected exercise card stable even if there are not any sets yet.
+The live workout feature opens `ExerciseLibrary` inside an exercise-picker sheet. When an exercise is chosen, the controller stores it in `workout_session_exercises_local` through `addLocalWorkoutSessionExercise()`. This makes the selected exercise stable even if there are not any sets yet, and immediately returns the user to the focused logger.
 
 ### Log set
 
-The one-tap `Done` button and the manual fallback both route through `addSet()`, which calls `logSetForExercise(selectedExercise)`. That function parses the displayed reps/weight state and calls `addLocalWorkoutSet()` with the current session id and exercise id. The service writes the set locally, marks the session `pending`, and the UI refreshes from local storage.
+The active exercise workspace has one primary docked `Log set` action. It routes through the controller `addSet()` command, which parses the visible per-exercise draft and calls `addLocalWorkoutSet()` with the current session id and active exercise id. The service writes the set locally, marks the session `pending`, and the UI refreshes from local storage. Inactive exercise chips only switch the active exercise; they do not write sets from shared draft state.
 
 ### Edit or delete set
 
-`updateLocalWorkoutSet()` rewrites reps/weight and marks the set/session pending. `deleteLocalWorkoutSet()` performs a soft delete by setting `is_deleted` and `deleted_at`, then the normal read helpers hide the row from the UI. The tombstone remains available for sync.
+`updateLocalWorkoutSet()` rewrites reps/weight and marks the set/session pending. Logged set rows open an edit sheet; deletion lives in that sheet instead of a small inline row target. `deleteLocalWorkoutSet()` performs a soft delete by setting `is_deleted` and `deleted_at`, then the normal read helpers hide the row from the UI. The tombstone remains available for sync.
 
 ### Finish workout
 
-`completeLocalWorkoutSession()` sets `completed_at`, calculates duration, and marks the session pending. The screen then builds a small next-time summary from local history and returns to the Train tab.
+`completeLocalWorkoutSession()` sets `completed_at`, calculates duration, and marks the session pending. Effort feedback is collected in the finish sheet instead of as a mid-workout card. The controller then builds a small next-time summary from local history and returns to the Train tab.
 
 ## Read flow
 
@@ -82,4 +85,4 @@ npm run test:all
 npm start
 ```
 
-Then open the app, go to **Train**, start a workout, add an exercise, press **Done**, adjust reps/weight, finish, and confirm the workout appears in recent history.
+Then open the app, go to **Train**, start a workout, add an exercise, adjust reps/weight in the active set logger, press **Log set**, finish from the finish sheet, and confirm the workout appears in recent history.

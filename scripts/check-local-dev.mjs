@@ -94,13 +94,26 @@ if (workoutService) {
 }
 
 const sessionScreen = readRequiredText('app/workout/session/[id].tsx');
+const liveController = readRequiredText('src/features/workouts/live/useLiveWorkoutController.ts');
+const liveView = [
+  readRequiredText('src/features/workouts/live/components/LiveWorkoutScreenView.tsx'),
+  readRequiredText('src/features/workouts/live/components/sheets/ExercisePickerSheet.tsx'),
+].filter(Boolean).join('\n');
 
-if (sessionScreen) {
-  for (const expected of ['ExerciseLibrary', 'addLocalWorkoutSet', 'getLocalWorkoutSets']) {
-    if (!sessionScreen.includes(expected)) {
-      errors.push(`Live workout screen is missing ${expected}.`);
+if (sessionScreen && !sessionScreen.includes('useLiveWorkoutController')) {
+  errors.push('Live workout route should delegate behavior to useLiveWorkoutController.');
+}
+
+if (liveController) {
+  for (const expected of ['addLocalWorkoutSet', 'getLocalWorkoutSets', 'syncPendingWorkoutSessions']) {
+    if (!liveController.includes(expected)) {
+      errors.push(`Live workout controller is missing ${expected}.`);
     }
   }
+}
+
+if (liveView && !liveView.includes('ExerciseLibrary')) {
+  errors.push('Live workout view is missing the ExerciseLibrary picker sheet.');
 }
 
 if (errors.length > 0) {
@@ -113,5 +126,5 @@ console.log('Local MVP check passed.');
 console.log(`Seed exercises: ${exercises.length}`);
 console.log('Auth: local dev user signs in automatically unless EXPO_PUBLIC_AUTH_MODE=supabase.');
 console.log('Workout start: local user, no Supabase auth required.');
-console.log('Workout session: exercise picker + set logging wired locally.');
+console.log('Workout session: controller + exercise picker + docked set logging wired locally.');
 console.log('Remote sync: off by default; enable with EXPO_PUBLIC_WORKOUT_SYNC_SOURCE=supabase.');

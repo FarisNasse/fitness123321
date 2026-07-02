@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fileExists, readProjectFile, readProjectJson } from './helpers/project.mjs';
+import { fileExists, readProjectFile, readProjectJson, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 const appScreens = [
   'app/index.tsx',
@@ -27,7 +27,7 @@ test('package exposes fast test commands without adding heavy native test depend
   assert.equal(pkg.engines?.npm, '10.x');
   assert.equal(readProjectFile('.nvmrc').trim(), '20');
   assert.match(readProjectFile('.npmrc'), /engine-strict=true/);
-  assert.equal(pkg.scripts.test, 'node --test tests');
+  assert.equal(pkg.scripts.test, 'node --test');
   assert.equal(
     pkg.scripts['test:all'],
     'npm run test && npm run check:exercises && npm run check:local && npm run typecheck'
@@ -271,59 +271,68 @@ test('dedicated workout exercise browser reuses the shared ExerciseLibrary as a 
 
 
 test('live workout screen no longer depends on a placeholder exercise id', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const route = readProjectFile('app/workout/session/[id].tsx');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readLiveWorkoutUiSource();
 
-  assert.doesNotMatch(live, /placeholderExerciseId|placeholder-exercise/i);
-  assert.doesNotMatch(live, /exerciseId:\s*['"`][^'"`]+['"`]/);
-  assert.match(live, /const \[selectedExercise, setSelectedExercise\] = useState<Exercise \| null>\(null\)/);
-  assert.match(live, /function logSetForExercise\(exercise: Exercise\) \{\s*if \(!sessionId\) return;/s);
-  assert.match(live, /function addSet\(\) \{\s*if \(!selectedExercise\) return;\s*logSetForExercise\(selectedExercise\);\s*\}/s);
-  assert.match(live, /<Button title="Add set" onPress=\{addSet\} disabled=\{!selectedExercise\} \/>/);
-  assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: exercise\.id,/s);
+  assert.doesNotMatch(route + controller + view, /placeholderExerciseId|placeholder-exercise/i);
+  assert.doesNotMatch(controller, /exerciseId:\s*['"][^'"]+['"]/);
+  assert.match(controller, /const \[selectedExercise, setSelectedExercise\] = useState<Exercise \| null>\(null\)/);
+  assert.match(controller, /function addSet\(\) \{\s*if \(!selectedExercise \|\| !sessionId \|\| !session\) return;/s);
+  assert.match(view, /onPress=\{controller\.addSet\}/);
+  assert.match(controller, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
 });
 
-test('live workout exercise picker modal wires ExerciseLibrary selection into session state', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('live workout exercise picker sheet wires ExerciseLibrary selection into session state', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readLiveWorkoutUiSource();
 
-  assert.match(live, /const \[isPickerOpen, setIsPickerOpen\] = useState\(false\)/);
-  assert.match(live, /<Button title="Add exercise" onPress=\{\(\) => setIsPickerOpen\(true\)\} \/>/);
-  assert.match(live, /<Modal[\s\S]*visible=\{isPickerOpen\}[\s\S]*<ExerciseLibrary\s+onSelect=\{chooseExercise\}[\s\S]*selectButtonTitle="Use this exercise"/);
-  assert.match(live, /function chooseExercise\(exercise: Exercise\) \{[\s\S]*rememberExercises\(\[exercise\]\);[\s\S]*setExerciseLookup\(\(current\) => \(\{[\s\S]*\[exercise\.id\]: exercise,[\s\S]*\}\)\);/);
-  assert.match(live, /setExerciseSetMap\(\(current\) => \{\s*const nextMap = new Map\(current\);[\s\S]*if \(!nextMap\.has\(exercise\.id\)\) \{\s*nextMap\.set\(exercise\.id, \[\]\);\s*\}[\s\S]*return nextMap;\s*\}\);/);
-  assert.match(live, /rememberExerciseSelection\(exercise\);\s*setSelectedExercise\(exercise\);\s*setIsPickerOpen\(false\);/);
+  assert.match(view, /openExercisePicker/);
+  assert.match(view, /<BaseSheet[\s\S]*visible=\{controller\.activeSheet === 'exercise-picker'\}/);
+  assert.match(view, /<ExerciseLibrary\s+onSelect=\{controller\.chooseExercise\}[\s\S]*selectButtonTitle="Use this exercise"/);
+  assert.match(controller, /async function chooseExercise\(exercise: Exercise\)[\s\S]*rememberExercises\(\[exercise\]\);[\s\S]*setExerciseLookup\(\(current\) => \(\{[\s\S]*\[exercise\.id\]: exercise,[\s\S]*\}\)\);/);
+  assert.match(controller, /setExerciseSetMap\(\(current\) => \{\s*const nextMap = new Map\(current\);[\s\S]*if \(!nextMap\.has\(exercise\.id\)\) \{\s*nextMap\.set\(exercise\.id, \[\]\);\s*\}[\s\S]*return nextMap;\s*\}\);/);
+  assert.match(controller, /rememberExerciseSelection\(exercise\);\s*setSelectedExercise\(exercise\);\s*dispatch\(\{ type: 'sheet\.closed' \}\);/);
 });
 
-test('live workout screen groups logged sets by exercise and renders exercise cards', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('live workout screen groups logged sets by exercise and renders compact exercise switcher plus recent set list', () => {
+  const selectors = readProjectFile('src/features/workouts/live/liveWorkoutSelectors.ts');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readLiveWorkoutUiSource();
 
-  assert.match(live, /function buildExerciseSetMap\(sets: LocalWorkoutSetRow\[\]\) \{[\s\S]*map\.get\(set\.exercise_id\) \?\? \[\];[\s\S]*map\.set\(set\.exercise_id, \[\.\.\.exerciseSets, set\]\);[\s\S]*new Map<string, LocalWorkoutSetRow\[\]>\(\)/);
-  assert.match(live, /const nextSets = getLocalWorkoutSets\(sessionId\);\s*const nextMap = buildExerciseSetMap\(nextSets\);\s*setSets\(nextSets\);\s*setExerciseSetMap\(nextMap\);/);
-  assert.match(live, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
-  assert.match(live, /selectedExercises\.map\(\(exercise\) => \{\s*const exerciseSets = exerciseSetMap\.get\(exercise\.id\) \?\? \[\];\s*const isActiveExercise = selectedExercise\?\.id === exercise\.id;/);
-  assert.match(live, /<Card key=\{exercise\.id\}>[\s\S]*\{exercise\.name\}[\s\S]*\{exerciseSets\.length === 0 \? \([\s\S]*No sets logged for this exercise yet\.[\s\S]*\) : \([\s\S]*exerciseSets\.map\(\(set\) =>/);
-  assert.match(live, /<Pressable onPress=\{\(\) => setSelectedExercise\(exercise\)\}>[\s\S]*\{isActiveExercise \? 'Selected' : 'Log set'\}/);
+  assert.match(selectors, /function buildExerciseSetMap\(sets: LocalWorkoutSetRow\[\]\)[\s\S]*map\.get\(set\.exercise_id\) \?\? \[\];[\s\S]*map\.set\(set\.exercise_id, \[\.\.\.exerciseSets, set\]\);[\s\S]*new Map<string, LocalWorkoutSetRow\[\]>\(\)/);
+  assert.match(controller, /const nextSets = getLocalWorkoutSets\(sessionId\);\s*const nextMap = buildExerciseSetMap\(nextSets\);\s*setSets\(nextSets\);\s*setExerciseSetMap\(nextMap\);/);
+  assert.match(controller, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
+  assert.match(view, /<RecentSetList[\s\S]*sets=\{controller\.recentSets\}/);
+  assert.match(view, /controller\.selectedExercises\.map\(\(exercise\) => \{/);
+  assert.match(view, /onPress=\{\(\) => void controller\.selectExerciseForLogging\(exercise\)\}/);
 });
 
-test('live workout screen supports exercise picking, validation, set logging, PR estimate, and finish flow', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+test('live workout module supports exercise picking, validation, set logging, rest, and finish flow', () => {
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readLiveWorkoutUiSource();
 
-  assert.match(live, /<ExerciseLibrary\s+onSelect=\{chooseExercise\}/s);
-  assert.match(live, /useState<Exercise\[\]>\(\[\]\)/);
-  assert.match(live, /Map<string, LocalWorkoutSetRow\[\]>/);
-  assert.match(live, /Button title="Add exercise"/);
-  assert.match(live, /selectedExercises\.map\(\(exercise\) =>/);
-  assert.match(live, /exerciseSetMap\.get\(exercise\.id\)/);
-  assert.match(live, /rememberExercises\(\[exercise\]\)/);
-  assert.match(live, /Alert\.alert\('Invalid reps', 'Enter a valid rep count\.'\)/);
-  assert.match(live, /Alert\.alert\('Invalid weight', 'Enter a valid weight\.'\)/);
-  assert.match(live, /function logSetForExercise\(exercise: Exercise\)/);
-  assert.match(live, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: exercise\.id,/s);
-  assert.match(live, /setNumber: currentExerciseSets\.length \+ 1/);
-  assert.match(live, /title=\{exerciseSets\.length === 0 \? 'Log first set' : 'Add another set'\}/);
-  assert.match(live, /estimatedOneRepMax\(Number\(set\.weight\), Number\(set\.reps\)\)/);
-  assert.match(live, /completeLocalWorkoutSession\(sessionId\)/);
-  assert.match(live, /syncPendingWorkoutSessions\(\)/);
-  assert.match(live, /router\.replace\('\/workouts'\)/);
+  assert.match(view, /<ExerciseLibrary\s+onSelect=\{controller\.chooseExercise\}/s);
+  assert.match(controller, /useState<Exercise\[\]>\(\[\]\)/);
+  assert.match(controller, /Map<string, LocalWorkoutSetRow\[\]>/);
+  assert.match(view, /accessibilityLabel="Add exercise"/);
+  assert.doesNotMatch(view, />\+ Exercise</);
+  assert.doesNotMatch(view, /title="\+ Exercise"/);
+  assert.match(view, /controller\.selectedExercises\.map\(\(exercise\) =>/);
+  assert.match(controller, /exerciseSetMap\.get\(selectedExercise\.id\)/);
+  assert.match(controller, /rememberExercises\(\[exercise\]\)/);
+  assert.doesNotMatch(controller, /Alert\.alert/);
+  assert.match(controller, /if \(!parsed\) return;/);
+  assert.match(controller, /setEditValidationMessage\('Enter a valid rep count\.'\)/);
+  assert.match(controller, /setEditValidationMessage\('Enter a valid weight\.'\)/);
+  assert.match(controller, /function addSet\(\)/);
+  assert.match(controller, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
+  assert.match(controller, /const setNumber = currentExerciseSets\.length \+ 1/);
+  assert.match(view, /Last[\s\S]*Set \{draft\.setNumber\}[\s\S]*Recent sets/);
+  assert.match(view, /onPress=\{\(\) => void controller\.selectExerciseForLogging\(exercise\)\}/);
+  assert.match(controller, /completeLocalWorkoutSession\(sessionId\)/);
+  assert.match(controller, /syncPendingWorkoutSessions\(\)/);
+  assert.match(controller, /router\.replace\('\/workouts'\)/);
 });
 
 test('workout history screen reads local session and groups sets by exercise', () => {
@@ -387,8 +396,7 @@ test('tailwind theme tokens keep dark readable fallbacks when CSS variables are 
 
 test('exercise library and live picker use theme-aware tokens instead of pasted-in light cards', () => {
   const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
-  const live = readProjectFile('app/workout/session/[id].tsx');
-  const pickerModal = live.match(/\{\/\* Exercise picker modal \*\/\}[\s\S]*?\{\/\* Inline set-edit modal \*\/\}/)?.[0] ?? '';
+  const view = readLiveWorkoutUiSource();
 
   assert.match(library, /border-primary\/40 bg-primary\/15/);
   assert.match(library, /border-base-300 bg-base-100 active:bg-base-300/);
@@ -403,21 +411,22 @@ test('exercise library and live picker use theme-aware tokens instead of pasted-
   assert.match(library, /style=\{styles\.searchInput\}/);
   assert.doesNotMatch(library, /#(?:ffffff|f8fafc|f1f5f9|e2e8f0|cbd5e1|64748b|475569|334155|0f172a|0369a1|bae6fd|e0f2fe|94a3b8)/i);
 
-  assert.match(pickerModal, /className="rounded-t-card border border-base-300 bg-base-200 p-4 pb-8"/);
-  assert.match(pickerModal, /style=\{pickerSheetStyle\}/);
-  assert.match(live, /const pickerSheetStyle = \{[\s\S]*backgroundColor: colors\.base200,[\s\S]*borderColor: colors\.base300,[\s\S]*overflow: 'hidden' as const,/);
-  assert.doesNotMatch(pickerModal, /backgroundColor:\s*'#ffffff'/);
+  assert.match(view, /backgroundColor: colors\.base200/);
+  assert.match(view, /borderColor: colors\.base300/);
+  assert.match(view, /overflow: 'hidden'/);
+  assert.doesNotMatch(view, /backgroundColor:\s*'#ffffff'/);
 });
 
 test('live workout screen uses readable dark-theme colors for the main session surfaces', () => {
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const route = readProjectFile('app/workout/session/[id].tsx');
+  const view = readLiveWorkoutUiSource();
 
-  assert.match(live, /import \{ colors \} from '@\/src\/lib\/theme';/);
-  assert.match(live, /backgroundColor: colors\.base100/);
-  assert.match(live, /borderColor: colors\.base300/);
-  assert.match(live, /color: colors\.baseContent/);
-  assert.match(live, /placeholderTextColor=\{colors\.baseMuted\}/);
-  assert.match(live, /backgroundColor: selected \? colors\.primary : colors\.base100/);
-  assert.match(live, /backgroundColor: colors\.base200,[\s\S]*borderColor: colors\.base300,[\s\S]*Edit Set \{editingSet\?\.set_number\}/);
-  assert.doesNotMatch(live, /#(?:ffffff|f8fafc|f1f5f9|e2e8f0|cbd5e1|64748b|475569|334155|0f172a|94a3b8)/i);
+  assert.match(route, /import \{ colors \} from '@\/src\/lib\/theme';/);
+  assert.match(view, /backgroundColor: colors\.base100/);
+  assert.match(view, /borderColor: colors\.base300/);
+  assert.match(view, /color: colors\.baseContent/);
+  assert.match(view, /placeholderTextColor=\{colors\.baseMuted\}/);
+  assert.match(view, /backgroundColor: selected \? colors\.primary : colors\.base100/);
+  assert.match(view, /backgroundColor: colors\.base200,[\s\S]*borderColor: colors\.base300,[\s\S]*Edit set \{controller\.editingSet\?\.set_number\}/);
+  assert.doesNotMatch(view, /#(?:ffffff|f8fafc|f1f5f9|e2e8f0|cbd5e1|64748b|475569|334155|0f172a|94a3b8)/i);
 });

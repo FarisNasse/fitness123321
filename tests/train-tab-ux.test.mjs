@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fileExists, readProjectFile, readProjectJson } from './helpers/project.mjs';
+import { fileExists, readProjectFile, readProjectJson, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 function assertInOrder(source, snippets, message = 'expected snippets to appear in order') {
   let cursor = -1;
@@ -41,7 +41,7 @@ function assertNoDeveloperCopy(source, surfaceName) {
 test('train tab UX coverage stays in the fast test suite', () => {
   const pkg = readProjectJson('package.json');
 
-  assert.equal(pkg.scripts.test, 'node --test tests');
+  assert.equal(pkg.scripts.test, 'node --test');
   assert.match(pkg.scripts['test:all'], /npm run test/);
 
   for (const dependency of ['jest', 'jest-expo', '@testing-library/react-native', 'react-test-renderer']) {
@@ -88,7 +88,8 @@ test('repeat-last action is gated by history but the no-history guard remains', 
 
 test('exercise browser keeps filtering optional, detail modal intact, and picker selection wired', () => {
   const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(library, /const \[isFilterSheetOpen, setIsFilterSheetOpen\] = useState\(false\)/);
   assert.match(library, /const activeFilterCount = FILTERS\.filter\(\(filter\) => filters\[filter\.key\]\)\.length/);
@@ -98,8 +99,8 @@ test('exercise browser keeps filtering optional, detail modal intact, and picker
   assert.match(library, /<Modal[\s\S]*visible=\{Boolean\(selectedExercise\)\}[\s\S]*Muscle diagram placeholder/);
   assert.match(library, /function selectExercise\(exercise: Exercise\) \{[\s\S]*onSelect\?\.\(exercise\);[\s\S]*setSelectedExercise\(null\);[\s\S]*\}/);
   assert.match(library, /\{onSelect \? \([\s\S]*<LibraryButton[\s\S]*title=\{selectButtonTitle\}[\s\S]*onPress=\{\(\) => selectExercise\(selectedExercise\)\}/);
-  assert.match(live, /<ExerciseLibrary[\s\S]*onSelect=\{chooseExercise\}[\s\S]*selectButtonTitle="Use this exercise"/);
-  assert.match(live, /function chooseExercise\(exercise: Exercise\) \{[\s\S]*rememberExerciseSelection\(exercise\);[\s\S]*setSelectedExercise\(exercise\);[\s\S]*setIsPickerOpen\(false\);/);
+  assert.match(view, /<ExerciseLibrary\s+onSelect=\{controller\.chooseExercise\}[\s\S]*selectButtonTitle="Use this exercise"/);
+  assert.match(controller, /async function chooseExercise\(exercise: Exercise\)[\s\S]*rememberExerciseSelection\(exercise\);[\s\S]*setSelectedExercise\(exercise\);[\s\S]*dispatch\(\{ type: 'sheet\.closed' \}\);/);
 });
 
 test('normal Train and ExerciseLibrary surfaces avoid developer-facing copy', () => {

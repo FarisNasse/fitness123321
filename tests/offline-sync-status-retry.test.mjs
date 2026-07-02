@@ -50,7 +50,7 @@ test('workout service marks local rows deleted and syncs tombstones as remote so
 test('sync status labels and retry UI use plain language and do not block logging', () => {
   const service = readProjectFile('src/features/workouts/workout-service.ts');
   const workouts = readProjectFile('app/(tabs)/workouts.tsx');
-  const live = readProjectFile('app/workout/session/[id].tsx');
+  const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
   const historyCard = readProjectFile('src/components/WorkoutHistoryCard.tsx');
 
   for (const label of ['Saved on device', 'Syncing', 'Synced', 'Sync failed']) {
@@ -60,8 +60,8 @@ test('sync status labels and retry UI use plain language and do not block loggin
   assert.match(workouts, /syncUiStatus === 'failed'[\s\S]*retryWorkoutSync\(session\.local_id\)/);
   assert.match(historyCard, /Retry sync/);
   assert.match(historyCard, /event\.stopPropagation\(\)/);
-  assert.match(live, /queueWorkoutSync\('adding a set'\)/);
-  assert.match(live, /queueWorkoutSync\('editing a set'\)/);
-  assert.match(live, /queueWorkoutSync\('deleting a set'\)/);
-  assert.match(live, /void syncPendingWorkoutSessions\(\)\.catch/);
+  assert.match(controller, /queueWorkoutSync\('adding a set'\)/);
+  assert.match(controller, /queueWorkoutSync\('editing a set'\)/);
+  assert.match(controller, /queueWorkoutSync\('deleting a set'\)/);
+  assert.match(controller, /void syncPendingWorkoutSessions\(\)\.catch/);
 });
