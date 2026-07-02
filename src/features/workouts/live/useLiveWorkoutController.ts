@@ -139,7 +139,23 @@ function resolveSessionId(id: string | string[] | undefined) {
   return id;
 }
 
-export function useLiveWorkoutController(id: string | string[] | undefined) {
+type LiveWorkoutControllerResult =
+  | {
+      status: 'loading';
+      sessionLoadState: Extract<SessionLoadState, { status: 'loading' }>;
+    }
+  | {
+      status: 'error';
+      sessionLoadState: Extract<SessionLoadState, { status: 'error' }>;
+    }
+  | {
+      status: 'ready';
+      controller: LiveWorkoutController;
+    };
+
+export function useLiveWorkoutController(
+  id: string | string[] | undefined
+): LiveWorkoutControllerResult {
   const sessionId = useMemo(() => resolveSessionId(id), [id]);
   const exercises = useMemo(() => getSeededExercises(), []);
   const [uiState, dispatch] = useReducer(
@@ -654,8 +670,23 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
     dispatch({ type: 'sheet.closed' });
   }
 
-  if (sessionLoadState.status !== 'ready' || !session) {
-    return { status: sessionLoadState.status, sessionLoadState } as const;
+  if (sessionLoadState.status === 'loading') {
+    return { status: 'loading', sessionLoadState };
+  }
+
+  if (sessionLoadState.status === 'error') {
+    return { status: 'error', sessionLoadState };
+  }
+
+  if (!session) {
+    return {
+      status: 'error',
+      sessionLoadState: {
+        status: 'error',
+        message: 'Workout session unavailable',
+        detail: 'The workout session finished loading, but no local session was available.',
+      },
+    };
   }
 
   const controller: LiveWorkoutController = {
