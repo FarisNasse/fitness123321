@@ -1,7 +1,6 @@
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useReducer, useState } from 'react';
-import { Alert } from 'react-native';
 
 import {
   getExerciseById,
@@ -38,7 +37,6 @@ import { liveWorkoutReducer } from './liveWorkoutReducer';
 import {
   buildExerciseSetMap,
   formatExerciseProgressLabel,
-  formatLastSetSummary,
   formatTargetSummary,
   getRecentSetsForExercise,
 } from './liveWorkoutSelectors';
@@ -170,6 +168,8 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
   >(null);
   const [editingSet, setEditingSet] = useState<LocalWorkoutSet | null>(null);
   const [editInputs, setEditInputs] = useState<EditSetInputs>(DEFAULT_EDIT_INPUTS);
+  const [targetValidationMessage, setTargetValidationMessage] = useState<string | null>(null);
+  const [editValidationMessage, setEditValidationMessage] = useState<string | null>(null);
   const [session, setSession] = useState<WorkoutSessionForScreen | null>(null);
   const [sessionLoadState, setSessionLoadState] = useState<SessionLoadState>({
     status: 'loading',
@@ -396,6 +396,22 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
   const lastSet = selectedExerciseSets[selectedExerciseSets.length - 1] ?? null;
   const recentSets = getRecentSetsForExercise(selectedExerciseSets);
   const validationMessage = validateSetDraft(activeDraft);
+  const completionSummary = useMemo(() => {
+    if (!sessionId) return 'Workout saved locally.';
+
+    const exerciseNamesById = Object.fromEntries(
+      Array.from(exerciseSetMap.keys()).map((exerciseId) => [
+        exerciseId,
+        resolveExercise(exerciseId)?.name ?? 'This exercise',
+      ])
+    );
+    const progressionReasonText = getWorkoutCompletionProgressionReasonText(
+      sessionId,
+      { effortFeedback, exerciseNamesById }
+    );
+
+    return ['Workout saved locally.', progressionReasonText].filter(Boolean).join('\n\n');
+  }, [sessionId, effortFeedback, exerciseSetMap, exerciseLookup, sets.length]);
 
   const currentSetDraft = {
     exerciseName: selectedExercise?.name ?? 'Choose an exercise',
@@ -490,10 +506,7 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
 
     const parsed = parseSetInputs(activeDraft);
 
-    if (!parsed) {
-      Alert.alert('Set not ready', validationMessage ?? 'Enter reps and weight first.');
-      return;
-    }
+    if (!parsed) return;
 
     const currentExerciseSets = exerciseSetMap.get(selectedExercise.id) ?? [];
     const setNumber = currentExerciseSets.length + 1;
@@ -534,7 +547,7 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
     const deloadPercentage = Number.parseFloat(targetInputs.deloadPercentage);
 
     if (!Number.isFinite(targetSets) || targetSets <= 0) {
-      Alert.alert('Invalid target', 'Enter at least one target set.');
+      setTargetValidationMessage('Enter at least one target set.');
       return;
     }
 
@@ -544,22 +557,21 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
       repMin <= 0 ||
       repMax < repMin
     ) {
-      Alert.alert(
-        'Invalid rep range',
-        'Enter a rep max that is greater than or equal to the rep min.'
-      );
+      setTargetValidationMessage('Enter a rep max that is greater than or equal to the rep min.');
       return;
     }
 
     if (!Number.isFinite(incrementSize) || incrementSize <= 0) {
-      Alert.alert('Invalid increment', 'Enter an increment greater than zero.');
+      setTargetValidationMessage('Enter an increment greater than zero.');
       return;
     }
 
     if (!Number.isFinite(deloadPercentage) || deloadPercentage <= 0) {
-      Alert.alert('Invalid deload', 'Enter a deload percentage greater than zero.');
+      setTargetValidationMessage('Enter a deload percentage greater than zero.');
       return;
     }
+
+    setTargetValidationMessage(null);
 
     upsertLocalExerciseTarget({
       exerciseId: selectedExercise.id,
@@ -576,6 +588,7 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
   }
 
   function openEditSheet(set: LocalWorkoutSet) {
+    setEditValidationMessage(null);
     setEditingSet(set);
     setEditInputs({
       reps: String(set.reps ?? ''),
@@ -591,14 +604,16 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
     const parsedWeight = Number.parseFloat(editInputs.weight);
 
     if (!Number.isFinite(parsedReps) || parsedReps <= 0) {
-      Alert.alert('Invalid reps', 'Enter a valid rep count.');
+      setEditValidationMessage('Enter a valid rep count.');
       return;
     }
 
     if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
-      Alert.alert('Invalid weight', 'Enter a valid weight.');
+      setEditValidationMessage('Enter a valid weight.');
       return;
     }
+
+    setEditValidationMessage(null);
 
     updateLocalWorkoutSet(editingSet.local_id, parsedReps, parsedWeight);
     setEditingSet(null);
@@ -623,32 +638,19 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
   function completeWorkout() {
     if (!sessionId || !session) return;
 
-    const exerciseNamesById = Object.fromEntries(
-      Array.from(exerciseSetMap.keys()).map((exerciseId) => [
-        exerciseId,
-        resolveExercise(exerciseId)?.name ?? 'This exercise',
-      ])
-    );
-    const progressionReasonText = getWorkoutCompletionProgressionReasonText(
-      sessionId,
-      { effortFeedback, exerciseNamesById }
-    );
-    const completionMessage = ['Workout saved locally.', progressionReasonText]
-      .filter(Boolean)
-      .join('\n\n');
-
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     completeLocalWorkoutSession(sessionId);
     void syncPendingWorkoutSessions().catch((error) => {
       console.warn('Failed to sync completed workout session.', error);
     });
 
-    Alert.alert('Workout complete', completionMessage);
     router.replace('/workouts');
   }
 
   function closeSheet() {
     setEditingSet(null);
+    setTargetValidationMessage(null);
+    setEditValidationMessage(null);
     dispatch({ type: 'sheet.closed' });
   }
 
@@ -674,6 +676,9 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
     effortFeedback,
     editingSet,
     editInputs,
+    targetValidationMessage,
+    editValidationMessage,
+    completionSummary,
     hasDirtyActiveDraft: Boolean(selectedExercise && activeDraft.dirty),
     exerciseProgressLabel: (exercise) =>
       formatExerciseProgressLabel(
@@ -684,7 +689,10 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
     chooseExercise,
     selectExerciseForLogging,
     openExercisePicker: () => dispatch({ type: 'sheet.opened', sheet: 'exercise-picker' }),
-    openTargetSheet: () => dispatch({ type: 'sheet.opened', sheet: 'targets' }),
+    openTargetSheet: () => {
+      setTargetValidationMessage(null);
+      dispatch({ type: 'sheet.opened', sheet: 'targets' });
+    },
     openInstructionsSheet: () => dispatch({ type: 'sheet.opened', sheet: 'instructions' }),
     openFinishSheet: () => dispatch({ type: 'sheet.opened', sheet: 'finish' }),
     closeSheet,
@@ -694,12 +702,14 @@ export function useLiveWorkoutController(id: string | string[] | undefined) {
     addSet,
     skipRest: () => dispatch({ type: 'rest.skipped' }),
     updateTargetInput: (key, value) => {
+      setTargetValidationMessage(null);
       setTargetInputs((current) => ({ ...current, [key]: value }));
     },
     saveSelectedExerciseTarget,
     setEffortFeedback: setEffortFeedbackState,
     openEditSheet,
     updateEditInput: (key, value) => {
+      setEditValidationMessage(null);
       setEditInputs((current) => ({ ...current, [key]: value }));
     },
     saveEditedSet,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fileExists, readProjectFile, readProjectJson } from './helpers/project.mjs';
+import { fileExists, readProjectFile, readProjectJson, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 const appScreens = [
   'app/index.tsx',
@@ -273,7 +273,7 @@ test('dedicated workout exercise browser reuses the shared ExerciseLibrary as a 
 test('live workout screen no longer depends on a placeholder exercise id', () => {
   const route = readProjectFile('app/workout/session/[id].tsx');
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.doesNotMatch(route + controller + view, /placeholderExerciseId|placeholder-exercise/i);
   assert.doesNotMatch(controller, /exerciseId:\s*['"][^'"]+['"]/);
@@ -285,7 +285,7 @@ test('live workout screen no longer depends on a placeholder exercise id', () =>
 
 test('live workout exercise picker sheet wires ExerciseLibrary selection into session state', () => {
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(view, /openExercisePicker/);
   assert.match(view, /<BaseSheet[\s\S]*visible=\{controller\.activeSheet === 'exercise-picker'\}/);
@@ -298,7 +298,7 @@ test('live workout exercise picker sheet wires ExerciseLibrary selection into se
 test('live workout screen groups logged sets by exercise and renders compact exercise switcher plus recent set list', () => {
   const selectors = readProjectFile('src/features/workouts/live/liveWorkoutSelectors.ts');
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(selectors, /function buildExerciseSetMap\(sets: LocalWorkoutSetRow\[\]\)[\s\S]*map\.get\(set\.exercise_id\) \?\? \[\];[\s\S]*map\.set\(set\.exercise_id, \[\.\.\.exerciseSets, set\]\);[\s\S]*new Map<string, LocalWorkoutSetRow\[\]>\(\)/);
   assert.match(controller, /const nextSets = getLocalWorkoutSets\(sessionId\);\s*const nextMap = buildExerciseSetMap\(nextSets\);\s*setSets\(nextSets\);\s*setExerciseSetMap\(nextMap\);/);
@@ -310,22 +310,25 @@ test('live workout screen groups logged sets by exercise and renders compact exe
 
 test('live workout module supports exercise picking, validation, set logging, rest, and finish flow', () => {
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(view, /<ExerciseLibrary\s+onSelect=\{controller\.chooseExercise\}/s);
   assert.match(controller, /useState<Exercise\[\]>\(\[\]\)/);
   assert.match(controller, /Map<string, LocalWorkoutSetRow\[\]>/);
-  assert.match(view, /\+ Exercise/);
+  assert.match(view, /accessibilityLabel="Add exercise"/);
+  assert.doesNotMatch(view, />\+ Exercise</);
+  assert.doesNotMatch(view, /title="\+ Exercise"/);
   assert.match(view, /controller\.selectedExercises\.map\(\(exercise\) =>/);
   assert.match(controller, /exerciseSetMap\.get\(selectedExercise\.id\)/);
   assert.match(controller, /rememberExercises\(\[exercise\]\)/);
-  assert.match(controller, /Alert\.alert\('Set not ready'/);
-  assert.match(controller, /Alert\.alert\('Invalid reps', 'Enter a valid rep count\.'\)/);
-  assert.match(controller, /Alert\.alert\('Invalid weight', 'Enter a valid weight\.'\)/);
+  assert.doesNotMatch(controller, /Alert\.alert/);
+  assert.match(controller, /if \(!parsed\) return;/);
+  assert.match(controller, /setEditValidationMessage\('Enter a valid rep count\.'\)/);
+  assert.match(controller, /setEditValidationMessage\('Enter a valid weight\.'\)/);
   assert.match(controller, /function addSet\(\)/);
   assert.match(controller, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
   assert.match(controller, /const setNumber = currentExerciseSets\.length \+ 1/);
-  assert.match(view, /LAST SET[\s\S]*Set \{draft\.setNumber\}[\s\S]*Recent sets/);
+  assert.match(view, /Last[\s\S]*Set \{draft\.setNumber\}[\s\S]*Recent sets/);
   assert.match(view, /onPress=\{\(\) => void controller\.selectExerciseForLogging\(exercise\)\}/);
   assert.match(controller, /completeLocalWorkoutSession\(sessionId\)/);
   assert.match(controller, /syncPendingWorkoutSessions\(\)/);
@@ -393,7 +396,7 @@ test('tailwind theme tokens keep dark readable fallbacks when CSS variables are 
 
 test('exercise library and live picker use theme-aware tokens instead of pasted-in light cards', () => {
   const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(library, /border-primary\/40 bg-primary\/15/);
   assert.match(library, /border-base-300 bg-base-100 active:bg-base-300/);
@@ -416,7 +419,7 @@ test('exercise library and live picker use theme-aware tokens instead of pasted-
 
 test('live workout screen uses readable dark-theme colors for the main session surfaces', () => {
   const route = readProjectFile('app/workout/session/[id].tsx');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(route, /import \{ colors \} from '@\/src\/lib\/theme';/);
   assert.match(view, /backgroundColor: colors\.base100/);

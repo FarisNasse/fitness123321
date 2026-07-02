@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fileExists, readProjectFile, readProjectJson } from './helpers/project.mjs';
+import { fileExists, readProjectFile, readProjectJson, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 function assertInOrder(source, snippets, message = 'expected snippets to appear in order') {
   let cursor = -1;
@@ -89,7 +89,7 @@ test('repeat-last action is gated by history but the no-history guard remains', 
 test('exercise browser keeps filtering optional, detail modal intact, and picker selection wired', () => {
   const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(library, /const \[isFilterSheetOpen, setIsFilterSheetOpen\] = useState\(false\)/);
   assert.match(library, /const activeFilterCount = FILTERS\.filter\(\(filter\) => filters\[filter\.key\]\)\.length/);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { normalizeWhitespace, readProjectFile } from './helpers/project.mjs';
+import { normalizeWhitespace, readProjectFile, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 function assertIncludes(source, text, message = `expected source to include ${text}`) {
   assert.ok(source.includes(text), message);
@@ -55,16 +55,16 @@ test('controller builds the current set model from the active per-exercise draft
 });
 
 test('primary live workout view is organized as a compact logger with recent-first set review and a docked primary action', () => {
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assertInOrder(view, [
     '<LiveWorkoutHeader controller={controller} />',
     '<ExerciseSwitcher controller={controller} />',
     '<ActiveSetLogger controller={controller} />',
     '<RecentSetList',
-    '<DockedWorkoutActions controller={controller} />',
+    '<DockedLogSetAction controller={controller} />',
   ], 'view should prioritize header, switcher, logger, recent sets, docked action');
-  assertIncludes(view, 'LAST SET');
+  assertIncludes(view, 'Last');
   assertIncludes(view, 'Set {draft.setNumber}');
   assertIncludes(view, '{controller.currentSetDraft.logButtonTitle}');
   assertIncludes(view, '{controller.currentSetDraft.logButtonDetail}');
@@ -75,7 +75,7 @@ test('primary live workout view is organized as a compact logger with recent-fir
 
 test('quick adjustment controls mutate the same active draft that the logger persists', () => {
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(controller, /function adjustReps\(delta: number\)[\s\S]*updateSelectedDraft\(\{ reps: String\(nextValue\) \}\);/);
   assert.match(controller, /function adjustWeight\(delta: number\)[\s\S]*updateSelectedDraft\(\{ weight: formatWeightInput\(nextValue\) \}\);/);
@@ -86,14 +86,14 @@ test('quick adjustment controls mutate the same active draft that the logger per
 });
 
 test('secondary tasks are pushed into sheets instead of competing with Log set in the main flow', () => {
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(view, /function TargetSettingsSheet/);
   assert.match(view, /function ExerciseInstructionsSheet/);
   assert.match(view, /function EditSetSheet/);
   assert.match(view, /function FinishWorkoutSheet/);
   assertIncludes(view, 'How did this workout feel?');
-  assertIncludes(view, 'Delete is inside this sheet so it is not a tiny inline row target.');
+  assertIncludes(view, 'Delete set');
   assert.doesNotMatch(view, /hitSlop=\{10\}/);
   assert.doesNotMatch(view, /✕/);
 });

@@ -62,6 +62,9 @@ export type LiveWorkoutController = {
   effortFeedback: ProgressionEffortFeedback | null;
   editingSet: LocalWorkoutSet | null;
   editInputs: EditSetInputs;
+  targetValidationMessage: string | null;
+  editValidationMessage: string | null;
+  completionSummary: string;
   hasDirtyActiveDraft: boolean;
   exerciseProgressLabel: (exercise: Exercise) => string;
   chooseExercise: (exercise: Exercise) => Promise<void>;

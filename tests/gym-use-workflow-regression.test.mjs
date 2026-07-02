@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 
-import { normalizeWhitespace, readProjectFile, readProjectJson } from './helpers/project.mjs';
+import { normalizeWhitespace, readProjectFile, readProjectJson, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 function normalizeSql(sql) {
   return sql.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -584,7 +584,7 @@ test('suggested defaults come from the most recent completed history for that ex
 
 test('one-tap Log set saves the active exercise draft currently displayed in the docked logger', () => {
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
   const compact = normalizeWhitespace(controller);
 
   assert.match(controller, /const activeDraft = selectedExercise\s*\? getDraftForExercise\(selectedExercise\.id\)\s*: DEFAULT_SET_DRAFT/s);
@@ -602,7 +602,7 @@ test('one-tap Log set saves the active exercise draft currently displayed in the
 
 test('quick adjustments mutate the active exercise draft that the next saved set uses', () => {
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
   const compact = normalizeWhitespace(controller);
 
   assert.match(controller, /function adjustReps\(delta: number\)[\s\S]*updateSelectedDraft\(\{ reps: String\(nextValue\) \}\);/);

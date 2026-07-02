@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { normalizeWhitespace, readProjectFile } from './helpers/project.mjs';
+import { normalizeWhitespace, readProjectFile, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 function assertIncludes(source, text, message = `expected source to include ${text}`) {
   assert.ok(source.includes(text), message);
@@ -74,11 +74,12 @@ test('live workout screen applies smart defaults when exercises are selected and
 
 test('live workout screen keeps target configuration optional and uses dynamic increment buttons', () => {
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
-  assert.match(view, /SecondaryAction label="Targets"/);
+  assert.match(view, /<LoggerLink label="Targets"/);
   assert.match(view, /function TargetSettingsSheet/);
-  assert.match(view, /Secondary settings stay out of the logging path/);
+  assert.doesNotMatch(view, /Secondary settings stay out of the logging path/);
+  assert.match(view, /targetValidationMessage/);
   assert.match(view, /visible=\{controller\.activeSheet === 'targets'\}/);
   assert.match(view, /<TargetInput[\s\S]*label="Sets"[\s\S]*value=\{controller\.targetInputs\.targetSets\}/);
   assert.match(view, /<TargetInput[\s\S]*label="Rep min"[\s\S]*value=\{controller\.targetInputs\.repMin\}/);
@@ -125,7 +126,7 @@ test('workout service builds completion recommendations from local workout histo
 
 test('live workout screen collects optional effort feedback in the finish sheet and shows completion reasons', () => {
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(controller, /const \[effortFeedback, setEffortFeedbackState\] = useState/);
   assert.match(view, /function FinishWorkoutSheet/);
@@ -133,7 +134,8 @@ test('live workout screen collects optional effort feedback in the finish sheet 
   assert.match(view, /\(\['easy', 'good', 'max'\] as const\)\.map/);
   assert.match(controller, /getWorkoutCompletionProgressionReasonText/);
   assert.match(controller, /const progressionReasonText = getWorkoutCompletionProgressionReasonText/);
-  assert.match(controller, /const completionMessage = \[/);
-  assert.match(controller, /Alert\.alert\('Workout complete', completionMessage\)/);
+  assert.match(controller, /const completionSummary = useMemo/);
+  assert.match(view, /\{controller\.completionSummary\}/);
+  assert.doesNotMatch(controller, /Alert\.alert\('Workout complete'/);
   assert.doesNotMatch(view, /Workout feedback \(optional\)/);
 });

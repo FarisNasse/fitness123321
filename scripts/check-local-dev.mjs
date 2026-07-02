@@ -95,7 +95,10 @@ if (workoutService) {
 
 const sessionScreen = readRequiredText('app/workout/session/[id].tsx');
 const liveController = readRequiredText('src/features/workouts/live/useLiveWorkoutController.ts');
-const liveView = readRequiredText('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+const liveView = [
+  readRequiredText('src/features/workouts/live/components/LiveWorkoutScreenView.tsx'),
+  readRequiredText('src/features/workouts/live/components/sheets/ExercisePickerSheet.tsx'),
+].filter(Boolean).join('\n');
 
 if (sessionScreen && !sessionScreen.includes('useLiveWorkoutController')) {
   errors.push('Live workout route should delegate behavior to useLiveWorkoutController.');

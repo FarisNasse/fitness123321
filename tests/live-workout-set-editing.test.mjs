@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { normalizeWhitespace, readProjectFile } from './helpers/project.mjs';
+import { normalizeWhitespace, readProjectFile, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 function assertInOrder(source, snippets, message = 'expected snippets to appear in order') {
   let cursor = -1;
@@ -16,7 +16,7 @@ function assertInOrder(source, snippets, message = 'expected snippets to appear 
 
 test('logged set editing state lives in the controller and opens a dedicated edit sheet', () => {
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(controller, /const \[editingSet, setEditingSet\] = useState<LocalWorkoutSet \| null>\(null\)/);
   assert.match(controller, /const \[editInputs, setEditInputs\] = useState<EditSetInputs>\(DEFAULT_EDIT_INPUTS\)/);
@@ -27,7 +27,7 @@ test('logged set editing state lives in the controller and opens a dedicated edi
 });
 
 test('recent set rows are tappable edit affordances without inline destructive targets', () => {
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(view, /function RecentSetList\(/);
   assert.match(view, /sets\.map\(\(set\) => \(/);
@@ -45,8 +45,9 @@ test('saving an edited set validates input, updates local storage, closes the sh
   assert.match(controller, /function saveEditedSet\(\) \{/);
   assert.match(controller, /const parsedReps = Number\.parseInt\(editInputs\.reps, 10\)/);
   assert.match(controller, /const parsedWeight = Number\.parseFloat\(editInputs\.weight\)/);
-  assert.match(controller, /Alert\.alert\('Invalid reps', 'Enter a valid rep count\.'\)/);
-  assert.match(controller, /Alert\.alert\('Invalid weight', 'Enter a valid weight\.'\)/);
+  assert.match(controller, /setEditValidationMessage\('Enter a valid rep count\.'\)/);
+  assert.match(controller, /setEditValidationMessage\('Enter a valid weight\.'\)/);
+  assert.doesNotMatch(controller, /Alert\.alert/);
   assertInOrder(controller, [
     'updateLocalWorkoutSet(editingSet.local_id, parsedReps, parsedWeight);',
     'setEditingSet(null);',
@@ -57,7 +58,7 @@ test('saving an edited set validates input, updates local storage, closes the sh
 
 test('deleting a set is moved into the edit sheet rather than a tiny row-level control', () => {
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
 
   assert.match(controller, /function deleteEditingSet\(\) \{/);
   assert.match(controller, /const setLocalId = editingSet\.local_id;/);

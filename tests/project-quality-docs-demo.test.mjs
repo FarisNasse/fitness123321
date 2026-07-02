@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fileExists, normalizeWhitespace, readProjectFile, readProjectJson } from './helpers/project.mjs';
+import { fileExists, normalizeWhitespace, readProjectFile, readProjectJson, readLiveWorkoutUiSource } from './helpers/project.mjs';
 
 function assertIncludes(source, expected, message) {
   assert.ok(source.includes(expected), message ?? `Expected to find ${expected}`);
@@ -60,7 +60,7 @@ test('workout screens have explicit loading, empty, and error states for normal 
   const route = readProjectFile('app/workout/session/[id].tsx');
   const state = readProjectFile('src/features/workouts/live/liveWorkoutState.ts');
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
-  const view = readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx');
+  const view = readLiveWorkoutUiSource();
   const history = readProjectFile('app/workout/history/[id].tsx');
   const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
 
@@ -88,7 +88,7 @@ test('workout screens have explicit loading, empty, and error states for normal 
 
 test('key workout cards use mobile-safe wrapping and minimum widths', () => {
   const workouts = readProjectFile('app/(tabs)/workouts.tsx');
-  const view = normalizeWhitespace(readProjectFile('src/features/workouts/live/components/LiveWorkoutScreenView.tsx'));
+  const view = normalizeWhitespace(readLiveWorkoutUiSource());
   const history = normalizeWhitespace(readProjectFile('app/workout/history/[id].tsx'));
 
   assert.match(workouts, /className="flex-row flex-wrap gap-3"/);
