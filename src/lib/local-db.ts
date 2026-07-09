@@ -96,6 +96,23 @@ export type LocalWaterLog = {
   updated_at: string;
 };
 
+export type LocalWellnessCheckIn = {
+  local_id: string;
+  server_id: string | null;
+  user_id: string;
+  check_in_date: string;
+  logged_at: string;
+  sleep_start: string;
+  sleep_end: string;
+  mood_score: number;
+  stress_score: number;
+  energy_score: number;
+  steps: number;
+  notes: string | null;
+  sync_status: 'pending' | 'synced' | 'failed';
+  updated_at: string;
+};
+
 type WebStore = {
   workout_sessions_local: Record<string, unknown>[];
   workout_session_exercises_local: Record<string, unknown>[];
@@ -377,6 +394,42 @@ function createWebDbAdapter(): DbAdapter {
           user_id: userId,
           logged_at: loggedAt,
           amount_ml: amountMl,
+          sync_status: 'pending',
+          updated_at: updatedAt,
+        });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('insert into mood_logs_local')) {
+        const [
+          localId,
+          userId,
+          checkInDate,
+          loggedAt,
+          sleepStart,
+          sleepEnd,
+          moodScore,
+          stressScore,
+          energyScore,
+          steps,
+          updatedAt,
+        ] = params;
+
+        store.mood_logs_local.push({
+          local_id: localId,
+          server_id: null,
+          user_id: userId,
+          check_in_date: checkInDate,
+          logged_at: loggedAt,
+          sleep_start: sleepStart,
+          sleep_end: sleepEnd,
+          mood_score: moodScore,
+          stress_score: stressScore,
+          energy_score: energyScore,
+          steps,
+          notes: null,
           sync_status: 'pending',
           updated_at: updatedAt,
         });
@@ -745,6 +798,76 @@ function createWebDbAdapter(): DbAdapter {
         writeWebStore(store);
         return;
       }
+
+      if (
+        normalized.startsWith('update mood_logs_local') &&
+        normalized.includes('set logged_at = ?')
+      ) {
+        const [
+          loggedAt,
+          sleepStart,
+          sleepEnd,
+          moodScore,
+          stressScore,
+          energyScore,
+          steps,
+          updatedAt,
+          localId,
+        ] = params;
+        const checkIn = store.mood_logs_local.find(
+          (item) => item.local_id === localId
+        );
+
+        if (checkIn) {
+          checkIn.logged_at = loggedAt;
+          checkIn.sleep_start = sleepStart;
+          checkIn.sleep_end = sleepEnd;
+          checkIn.mood_score = moodScore;
+          checkIn.stress_score = stressScore;
+          checkIn.energy_score = energyScore;
+          checkIn.steps = steps;
+          checkIn.sync_status = 'pending';
+          checkIn.updated_at = updatedAt;
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update mood_logs_local') &&
+        normalized.includes("set sync_status = 'failed'")
+      ) {
+        const [localId] = params;
+        const checkIn = store.mood_logs_local.find(
+          (item) => item.local_id === localId
+        );
+
+        if (checkIn) {
+          checkIn.sync_status = 'failed';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update mood_logs_local') &&
+        normalized.includes('set server_id = ?')
+      ) {
+        const [serverId, localId] = params;
+        const checkIn = store.mood_logs_local.find(
+          (item) => item.local_id === localId
+        );
+
+        if (checkIn) {
+          checkIn.server_id = serverId;
+          checkIn.sync_status = 'synced';
+        }
+
+        writeWebStore(store);
+        return;
+      }
     },
 
     getAllSync<T = unknown>(sql: string, params: unknown[] = []) {
@@ -1054,6 +1177,68 @@ function createWebDbAdapter(): DbAdapter {
           ) as T[];
       }
 
+      if (
+        normalized.includes('from mood_logs_local') &&
+        normalized.includes('sync_status')
+      ) {
+        const excludedUserId = normalized.includes('user_id != ?')
+          ? String(params[0] ?? '')
+          : null;
+
+        return store.mood_logs_local.filter((checkIn) => {
+          const hasSyncStatus = ['pending', 'failed'].includes(
+            String(checkIn.sync_status)
+          );
+          const hasSyncableOwner =
+            !excludedUserId || String(checkIn.user_id) !== excludedUserId;
+
+          return hasSyncStatus && hasSyncableOwner;
+        }) as T[];
+      }
+
+      if (
+        normalized.includes('from mood_logs_local') &&
+        normalized.includes('user_id = ?') &&
+        normalized.includes('check_in_date = ?')
+      ) {
+        const [userId, checkInDate] = params;
+
+        return store.mood_logs_local
+          .filter(
+            (checkIn) =>
+              String(checkIn.user_id) === String(userId) &&
+              String(checkIn.check_in_date) === String(checkInDate)
+          )
+          .sort(
+            (a, b) =>
+              Date.parse(String(b.updated_at)) - Date.parse(String(a.updated_at))
+          )
+          .slice(0, 1) as T[];
+      }
+
+      if (
+        normalized.includes('from mood_logs_local') &&
+        normalized.includes('user_id = ?') &&
+        normalized.includes('order by check_in_date desc')
+      ) {
+        const [userId] = params;
+
+        return store.mood_logs_local
+          .filter((checkIn) => String(checkIn.user_id) === String(userId))
+          .sort((a, b) => {
+            const dateDifference = String(b.check_in_date).localeCompare(
+              String(a.check_in_date)
+            );
+
+            if (dateDifference !== 0) {
+              return dateDifference;
+            }
+
+            return Date.parse(String(b.updated_at)) - Date.parse(String(a.updated_at));
+          })
+          .slice(0, 1) as T[];
+      }
+
       return [] as T[];
     },
   };
@@ -1219,10 +1404,14 @@ export function initializeLocalDb() {
       local_id text primary key,
       server_id text,
       user_id text not null,
+      check_in_date text not null,
       logged_at text not null,
+      sleep_start text not null,
+      sleep_end text not null,
       mood_score integer,
       stress_score integer,
       energy_score integer,
+      steps integer not null default 0,
       notes text,
       sync_status text not null default 'pending',
       updated_at text not null
@@ -1251,12 +1440,22 @@ export function initializeLocalDb() {
 
     create index if not exists idx_water_logs_logged
     on water_logs_local(logged_at);
+
   `);
 
   addMissingLocalColumn('workout_sessions_local', 'is_deleted integer not null default 0');
   addMissingLocalColumn('workout_sessions_local', 'deleted_at text');
   addMissingLocalColumn('workout_sets_local', 'is_deleted integer not null default 0');
   addMissingLocalColumn('workout_sets_local', 'deleted_at text');
+  addMissingLocalColumn('mood_logs_local', 'check_in_date text');
+  addMissingLocalColumn('mood_logs_local', 'sleep_start text');
+  addMissingLocalColumn('mood_logs_local', 'sleep_end text');
+  addMissingLocalColumn('mood_logs_local', 'steps integer not null default 0');
+
+  db.execSync(`
+    create unique index if not exists idx_mood_logs_user_date
+    on mood_logs_local(user_id, check_in_date);
+  `);
 
   db.execSync(`
     update workout_sessions_local

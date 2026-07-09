@@ -89,7 +89,7 @@ test('daily targets stay local by default instead of warning about missing Supab
   assert.match(service, /export async function getDailyTargets\(\): Promise<DailyTargetsState> \{\s*if \(!USE_REMOTE_NUTRITION_SYNC\) \{\s*return \{ targets: DEFAULT_DAILY_TARGETS, hasRemoteTargets: false \};\s*\}/s);
 });
 
-test('dashboard reads live nutrition totals, loads daily targets, prompts for defaults, and marks shipped flows', () => {
+test('dashboard reads live nutrition totals and daily targets alongside persisted wellness steps', () => {
   const dashboard = readProjectFile('app/(tabs)/dashboard.tsx');
 
   assert.match(dashboard, /useFocusEffect/);
@@ -101,10 +101,13 @@ test('dashboard reads live nutrition totals, loads daily targets, prompts for de
   assert.match(dashboard, /<MetricCard\s+label="Calories"[\s\S]*summary\.totals\.calories[\s\S]*targets\.calories/);
   assert.match(dashboard, /<MetricCard\s+label="Protein"[\s\S]*summary\.totals\.proteinG[\s\S]*targets\.proteinG/);
   assert.match(dashboard, /<MetricCard label="Water" value=\{`\$\{waterLoggedLabel\}L \/ \$\{waterTargetLabel\}L`\}/);
-  assert.match(dashboard, /<MetricCard label="Steps" value=\{`0 \/ \$\{formatWholeNumber\(targets\.steps\)\}`\}/);
+  assert.match(dashboard, /getDailyWellnessCheckIn\(userId\)/);
+  assert.match(dashboard, /subscribeToWellnessChanges/);
+  assert.match(dashboard, /value=\{`\$\{formatWholeNumber\(steps\)\} \/ \$\{formatWholeNumber\(targets\.steps\)\}`\}/);
   assert.match(dashboard, /<ChecklistItem label="Workout logging" done \/>/);
   assert.match(dashboard, /<ChecklistItem label="Nutrition logging" done \/>/);
   assert.match(dashboard, /<ChecklistItem label="Dashboard live totals" done \/>/);
+  assert.match(dashboard, /<ChecklistItem label="Wellness logging" done \/>/);
 });
 
 test('nutrition service exposes daily target defaults, Supabase daily_targets fetch, and a log-change event emitter', () => {
