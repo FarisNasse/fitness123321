@@ -7,7 +7,7 @@ This patch starts the app as an Expo React Native + TypeScript project with:
 - Expo Router navigation
 - Supabase client setup
 - Supabase SQL migration for the first data model
-- Local SQLite setup for offline-first workout, nutrition, and wellness logging
+- Local SQLite setup for offline-first workout, nutrition, wellness, and body-measurement logging
 - Reusable UI primitives
 - Starter screens for dashboard, workouts, nutrition, wellness, progress, auth, and onboarding
 - Initial workout session service
@@ -73,6 +73,20 @@ The Wellness tab accepts bedtime and wake time in 24-hour `HH:MM` format. A
 wake time earlier than bedtime is treated as the following morning. Saving a
 check-in updates the dashboard step card immediately and the local record
 survives app reloads without requiring HealthKit, Health Connect, or a wearable.
+
+The Progress tab stores weight and optional body-fat, waist, hips, chest, arm,
+and thigh measurements locally. Weight is entered in pounds and circumference
+values in inches; records are converted to the existing Supabase
+`body_measurements` model (`weight_kg` and centimeter fields). Empty accounts
+show no fabricated progress data. To enable authenticated cloud mirroring, set:
+
+```bash
+EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE=supabase
+```
+
+When enabled, the app pushes pending local measurements and refreshes the signed-in
+user's remote history when the Progress tab opens. Supabase row-level security
+continues to restrict `body_measurements` to `auth.uid() = user_id`.
 
 Then run the migrations with the Supabase CLI or your preferred database
 workflow.

@@ -13,6 +13,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthSessionContext, type AuthProfile, type AuthStatus } from '@/src/features/auth/auth-session-context';
 import { LOCAL_DEV_PROFILE, LOCAL_DEV_SESSION } from '@/src/features/auth/dev-auth';
 import { syncPendingNutritionLogs } from '@/src/features/nutrition/nutrition-service';
+import { syncPendingBodyMeasurements } from '@/src/features/progress/body-measurements-service';
 import { syncPendingWellnessCheckIns } from '@/src/features/wellness/wellness-service';
 import { syncPendingWorkoutSessions } from '@/src/features/workouts/workout-service';
 import { initializeLocalDb } from '@/src/lib/local-db';
@@ -101,6 +102,10 @@ export default function RootLayout() {
       console.warn('Failed to sync pending wellness check-ins.', error);
     });
 
+    void syncPendingBodyMeasurements().catch((error) => {
+      console.warn('Failed to sync pending body measurements.', error);
+    });
+
     const subscription = AppState.addEventListener(
       'change',
       (state: AppStateStatus) => {
@@ -115,6 +120,10 @@ export default function RootLayout() {
 
           void syncPendingWellnessCheckIns().catch((error) => {
             console.warn('Failed to sync pending wellness check-ins.', error);
+          });
+
+          void syncPendingBodyMeasurements().catch((error) => {
+            console.warn('Failed to sync pending body measurements.', error);
           });
         }
       }

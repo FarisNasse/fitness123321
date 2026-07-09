@@ -96,6 +96,23 @@ export type LocalWaterLog = {
   updated_at: string;
 };
 
+export type LocalBodyMeasurement = {
+  local_id: string;
+  server_id: string | null;
+  user_id: string;
+  measured_at: string;
+  weight_kg: number;
+  body_fat_percent: number | null;
+  waist_cm: number | null;
+  hips_cm: number | null;
+  chest_cm: number | null;
+  arm_cm: number | null;
+  thigh_cm: number | null;
+  notes: string | null;
+  sync_status: 'pending' | 'synced' | 'failed';
+  updated_at: string;
+};
+
 export type LocalWellnessCheckIn = {
   local_id: string;
   server_id: string | null;
@@ -122,6 +139,7 @@ type WebStore = {
   meal_items_local: Record<string, unknown>[];
   water_logs_local: Record<string, unknown>[];
   mood_logs_local: Record<string, unknown>[];
+  body_measurements_local: Record<string, unknown>[];
 };
 
 const WEB_DB_STORAGE_KEY = 'fitness-app-web-db-v1';
@@ -154,6 +172,7 @@ function createEmptyWebStore(): WebStore {
     meal_items_local: [],
     water_logs_local: [],
     mood_logs_local: [],
+    body_measurements_local: [],
   };
 }
 
@@ -433,6 +452,124 @@ function createWebDbAdapter(): DbAdapter {
           sync_status: 'pending',
           updated_at: updatedAt,
         });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('insert into body_measurements_local')) {
+        const hasExplicitServerId = !normalized.includes('values (?, null');
+        const values = [...params];
+        const localId = values.shift();
+        const serverId = hasExplicitServerId ? values.shift() : null;
+        const [
+          userId,
+          measuredAt,
+          weightKg,
+          bodyFatPercent,
+          waistCm,
+          hipsCm,
+          chestCm,
+          armCm,
+          thighCm,
+          notes,
+          updatedAt,
+        ] = values;
+
+        store.body_measurements_local.push({
+          local_id: localId,
+          server_id: serverId,
+          user_id: userId,
+          measured_at: measuredAt,
+          weight_kg: weightKg,
+          body_fat_percent: bodyFatPercent,
+          waist_cm: waistCm,
+          hips_cm: hipsCm,
+          chest_cm: chestCm,
+          arm_cm: armCm,
+          thigh_cm: thighCm,
+          notes,
+          sync_status: hasExplicitServerId ? 'synced' : 'pending',
+          updated_at: updatedAt,
+        });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update body_measurements_local') &&
+        normalized.includes('set measured_at = ?')
+      ) {
+        const [
+          measuredAt,
+          weightKg,
+          bodyFatPercent,
+          waistCm,
+          hipsCm,
+          chestCm,
+          armCm,
+          thighCm,
+          notes,
+          serverId,
+          updatedAt,
+          localId,
+        ] = params;
+        const measurement = store.body_measurements_local.find(
+          (item) => item.local_id === localId
+        );
+
+        if (measurement) {
+          Object.assign(measurement, {
+            measured_at: measuredAt,
+            weight_kg: weightKg,
+            body_fat_percent: bodyFatPercent,
+            waist_cm: waistCm,
+            hips_cm: hipsCm,
+            chest_cm: chestCm,
+            arm_cm: armCm,
+            thigh_cm: thighCm,
+            notes,
+            server_id: serverId,
+            sync_status: 'synced',
+            updated_at: updatedAt,
+          });
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update body_measurements_local') &&
+        normalized.includes("set sync_status = 'failed'")
+      ) {
+        const [localId] = params;
+        const measurement = store.body_measurements_local.find(
+          (item) => item.local_id === localId
+        );
+
+        if (measurement) {
+          measurement.sync_status = 'failed';
+        }
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update body_measurements_local') &&
+        normalized.includes('set server_id = ?')
+      ) {
+        const [serverId, localId] = params;
+        const measurement = store.body_measurements_local.find(
+          (item) => item.local_id === localId
+        );
+
+        if (measurement) {
+          measurement.server_id = serverId;
+          measurement.sync_status = 'synced';
+        }
 
         writeWebStore(store);
         return;
@@ -1178,6 +1315,89 @@ function createWebDbAdapter(): DbAdapter {
       }
 
       if (
+        normalized.includes('from body_measurements_local') &&
+        normalized.includes('where local_id = ?')
+      ) {
+        const [localId] = params;
+
+        return store.body_measurements_local
+          .filter((measurement) => measurement.local_id === localId)
+          .slice(0, 1) as T[];
+      }
+
+      if (
+        normalized.includes('from body_measurements_local') &&
+        normalized.includes('sync_status')
+      ) {
+        const excludedUserId = normalized.includes('user_id != ?')
+          ? String(params[0] ?? '')
+          : null;
+        const includedUserId = normalized.includes('user_id = ?')
+          ? String(params[params.length - 1] ?? '')
+          : null;
+
+        return store.body_measurements_local
+          .filter((measurement) =>
+            ['pending', 'failed'].includes(String(measurement.sync_status))
+          )
+          .filter(
+            (measurement) =>
+              !excludedUserId || String(measurement.user_id) !== excludedUserId
+          )
+          .filter(
+            (measurement) =>
+              !includedUserId || String(measurement.user_id) === includedUserId
+          )
+          .sort(
+            (a, b) =>
+              Date.parse(String(a.updated_at)) - Date.parse(String(b.updated_at))
+          ) as T[];
+      }
+
+      if (
+        normalized.includes('from body_measurements_local') &&
+        normalized.includes('user_id = ?') &&
+        normalized.includes('order by measured_at desc')
+      ) {
+        const [userId] = params;
+
+        return store.body_measurements_local
+          .filter((measurement) => String(measurement.user_id) === String(userId))
+          .sort((a, b) => {
+            const measuredDifference =
+              Date.parse(String(b.measured_at)) - Date.parse(String(a.measured_at));
+
+            if (measuredDifference !== 0) {
+              return measuredDifference;
+            }
+
+            return Date.parse(String(b.updated_at)) - Date.parse(String(a.updated_at));
+          })
+          .slice(0, 1) as T[];
+      }
+
+      if (
+        normalized.includes('from body_measurements_local') &&
+        normalized.includes('user_id = ?') &&
+        normalized.includes('order by measured_at asc')
+      ) {
+        const [userId] = params;
+
+        return store.body_measurements_local
+          .filter((measurement) => String(measurement.user_id) === String(userId))
+          .sort((a, b) => {
+            const measuredDifference =
+              Date.parse(String(a.measured_at)) - Date.parse(String(b.measured_at));
+
+            if (measuredDifference !== 0) {
+              return measuredDifference;
+            }
+
+            return Date.parse(String(a.updated_at)) - Date.parse(String(b.updated_at));
+          }) as T[];
+      }
+
+      if (
         normalized.includes('from mood_logs_local') &&
         normalized.includes('sync_status')
       ) {
@@ -1400,6 +1620,23 @@ export function initializeLocalDb() {
       updated_at text not null
     );
 
+    create table if not exists body_measurements_local (
+      local_id text primary key,
+      server_id text,
+      user_id text not null,
+      measured_at text not null,
+      weight_kg real not null,
+      body_fat_percent real,
+      waist_cm real,
+      hips_cm real,
+      chest_cm real,
+      arm_cm real,
+      thigh_cm real,
+      notes text,
+      sync_status text not null default 'pending',
+      updated_at text not null
+    );
+
     create table if not exists mood_logs_local (
       local_id text primary key,
       server_id text,
@@ -1440,6 +1677,9 @@ export function initializeLocalDb() {
 
     create index if not exists idx_water_logs_logged
     on water_logs_local(logged_at);
+
+    create index if not exists idx_body_measurements_user_measured
+    on body_measurements_local(user_id, measured_at);
 
   `);
 
