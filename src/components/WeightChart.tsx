@@ -3,15 +3,15 @@ import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 
 import { colors } from '@/src/lib/theme';
 
-const data = [
-  { value: 175, label: 'M' },
-  { value: 174, label: 'T' },
-  { value: 173.5, label: 'W' },
-  { value: 172.5, label: 'T' },
-  { value: 171.5, label: 'F' },
-  { value: 171, label: 'S' },
-  { value: 170, label: 'S' },
-];
+export type WeightChartPoint = {
+  value: number;
+  label: string;
+  id?: string;
+};
+
+type WeightChartProps = {
+  data: WeightChartPoint[];
+};
 
 const chartWidth = 340;
 const chartHeight = 210;
@@ -20,7 +20,19 @@ const paddingTop = 20;
 const paddingBottom = 34;
 const pointRadius = 4;
 
-function buildWeightChartGeometry() {
+type WeightChartGeometry = {
+  areaPath: string;
+  linePath: string;
+  points: Array<WeightChartPoint & { x: number; y: number }>;
+};
+
+function buildWeightChartGeometry(): WeightChartGeometry;
+function buildWeightChartGeometry(data: WeightChartPoint[]): WeightChartGeometry;
+function buildWeightChartGeometry(data: WeightChartPoint[] = []): WeightChartGeometry {
+  if (data.length === 0) {
+    return { areaPath: '', linePath: '', points: [] };
+  }
+
   const values = data.map((point) => point.value);
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
@@ -30,7 +42,10 @@ function buildWeightChartGeometry() {
 
   const points = data.map((point, index) => {
     const x = paddingX + (plotWidth / Math.max(1, data.length - 1)) * index;
-    const y = paddingTop + ((maxValue - point.value) / range) * plotHeight;
+    const y =
+      minValue === maxValue
+        ? paddingTop + plotHeight / 2
+        : paddingTop + ((maxValue - point.value) / range) * plotHeight;
 
     return { ...point, x, y };
   });
@@ -38,13 +53,19 @@ function buildWeightChartGeometry() {
   const linePath = points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
     .join(' ');
-  const areaPath = `${linePath} L ${points[points.length - 1].x} ${chartHeight - paddingBottom} L ${points[0].x} ${chartHeight - paddingBottom} Z`;
+  const areaPath = `${linePath} L ${points[points.length - 1].x} ${
+    chartHeight - paddingBottom
+  } L ${points[0].x} ${chartHeight - paddingBottom} Z`;
 
   return { areaPath, linePath, points };
 }
 
-export function WeightChart() {
-  const { areaPath, linePath, points } = buildWeightChartGeometry();
+export function WeightChart({ data }: WeightChartProps) {
+  const { areaPath, linePath, points } = buildWeightChartGeometry(data);
+
+  if (points.length === 0) {
+    return null;
+  }
 
   return (
     <View className="overflow-hidden rounded-card bg-base-200">
@@ -58,22 +79,22 @@ export function WeightChart() {
           strokeLinejoin="round"
           strokeWidth={4}
         />
-        {points.map((point) => (
+        {points.map((point, index) => (
           <Circle
-            key={`${point.label}-${point.value}`}
+            key={point.id ?? `${point.label}-${point.value}-${index}`}
             cx={point.x}
             cy={point.y}
             r={pointRadius}
             fill={colors.primary}
           />
         ))}
-        {points.map((point) => (
+        {points.map((point, index) => (
           <SvgText
-            key={`${point.label}-${point.value}-label`}
+            key={`${point.id ?? `${point.label}-${index}`}-label`}
             x={point.x}
             y={chartHeight - 12}
             fill={colors.baseMuted}
-            fontSize={12}
+            fontSize={11}
             fontWeight="700"
             textAnchor="middle"
           >

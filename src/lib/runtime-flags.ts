@@ -13,6 +13,9 @@ export const USE_REMOTE_NUTRITION_SYNC =
 export const USE_REMOTE_WELLNESS_SYNC =
   process.env.EXPO_PUBLIC_WELLNESS_SYNC_SOURCE === 'supabase';
 
+export const USE_REMOTE_BODY_MEASUREMENT_SYNC =
+  process.env.EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE === 'supabase';
+
 export const USE_SUPABASE_EXERCISES =
   process.env.EXPO_PUBLIC_EXERCISE_SOURCE === 'supabase';
 
