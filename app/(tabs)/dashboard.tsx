@@ -17,6 +17,12 @@ import {
   type DailyNutritionSummary,
   type DailyTargets,
 } from '@/src/features/nutrition/nutrition-service';
+import {
+  getDailyWellnessCheckIn,
+  getLocalDateKey,
+  getWellnessOwnerUserId,
+  subscribeToWellnessChanges,
+} from '@/src/features/wellness/wellness-service';
 
 const emptySummary: DailyNutritionSummary = {
   entries: [],
@@ -58,6 +64,7 @@ function getGreeting() {
 export default function DashboardScreen() {
   const [summary, setSummary] = useState<DailyNutritionSummary>(emptySummary);
   const [targets, setTargets] = useState<DailyTargets>(DEFAULT_DAILY_TARGETS);
+  const [steps, setSteps] = useState(0);
   const [hasRemoteTargets, setHasRemoteTargets] = useState(true);
   const [isLoadingTargets, setIsLoadingTargets] = useState(true);
 
@@ -77,10 +84,22 @@ export default function DashboardScreen() {
     }
   }, []);
 
+  const refreshWellness = useCallback(async () => {
+    try {
+      const userId = await getWellnessOwnerUserId();
+      const checkIn = getDailyWellnessCheckIn(userId);
+      setSteps(Number(checkIn?.steps ?? 0));
+    } catch (error) {
+      console.warn('Failed to load daily wellness for the dashboard.', error);
+      setSteps(0);
+    }
+  }, []);
+
   const refreshDashboard = useCallback(() => {
     refreshSummary();
     void refreshTargets();
-  }, [refreshSummary, refreshTargets]);
+    void refreshWellness();
+  }, [refreshSummary, refreshTargets, refreshWellness]);
 
   useFocusEffect(
     useCallback(() => {
@@ -91,6 +110,14 @@ export default function DashboardScreen() {
   useEffect(() => {
     return subscribeToNutritionLogChanges(refreshSummary);
   }, [refreshSummary]);
+
+  useEffect(() => {
+    return subscribeToWellnessChanges((checkIn) => {
+      if (checkIn.check_in_date === getLocalDateKey()) {
+        setSteps(Number(checkIn.steps ?? 0));
+      }
+    });
+  }, []);
 
   const waterLoggedLabel = formatWaterMl(summary.totals.waterMl);
   const waterTargetLabel = formatWaterMl(targets.waterMl);
@@ -162,7 +189,11 @@ export default function DashboardScreen() {
 
         <View className="flex-row gap-3">
           <MetricCard label="Water" value={`${waterLoggedLabel}L / ${waterTargetLabel}L`} progress={waterProgress} />
-          <MetricCard label="Steps" value={`0 / ${formatWholeNumber(targets.steps)}`} />
+          <MetricCard
+            label="Steps"
+            value={`${formatWholeNumber(steps)} / ${formatWholeNumber(targets.steps)}`}
+            progress={progress(steps, targets.steps)}
+          />
         </View>
 
         {!hasRemoteTargets ? (
@@ -200,7 +231,7 @@ export default function DashboardScreen() {
             <ChecklistItem label="Workout logging" done />
             <ChecklistItem label="Nutrition logging" done />
             <ChecklistItem label="Dashboard live totals" done />
-            <ChecklistItem label="Wellness logging" />
+            <ChecklistItem label="Wellness logging" done />
             <ChecklistItem label="Progress charts" />
             <ChecklistItem label="Offline sync" done />
           </View>

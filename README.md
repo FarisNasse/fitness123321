@@ -7,7 +7,7 @@ This patch starts the app as an Expo React Native + TypeScript project with:
 - Expo Router navigation
 - Supabase client setup
 - Supabase SQL migration for the first data model
-- Local SQLite setup for offline-first workout logging
+- Local SQLite setup for offline-first workout, nutrition, and wellness logging
 - Reusable UI primitives
 - Starter screens for dashboard, workouts, nutrition, wellness, progress, auth, and onboarding
 - Initial workout session service
@@ -60,6 +60,19 @@ EXPO_PUBLIC_SUPABASE_URL=
 EXPO_PUBLIC_SUPABASE_ANON_KEY=
 EXPO_PUBLIC_EXERCISE_SOURCE=supabase
 ```
+
+Wellness check-ins are local by default. To mirror dated sleep, mood, energy,
+stress, and manual steps to the existing `sleep_logs` and `mood_logs` tables,
+apply all Supabase migrations and set:
+
+```bash
+EXPO_PUBLIC_WELLNESS_SYNC_SOURCE=supabase
+```
+
+The Wellness tab accepts bedtime and wake time in 24-hour `HH:MM` format. A
+wake time earlier than bedtime is treated as the following morning. Saving a
+check-in updates the dashboard step card immediately and the local record
+survives app reloads without requiring HealthKit, Health Connect, or a wearable.
 
 Then run the migrations with the Supabase CLI or your preferred database
 workflow.
