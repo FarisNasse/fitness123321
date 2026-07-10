@@ -2,16 +2,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.cwd();
-const requiredFiles = [
-  'src/features/workouts/seed-exercises.json',
-  'src/features/workouts/exercise-service.ts',
-  'src/features/workouts/workout-service.ts',
-  'src/features/auth/dev-auth.ts',
-  'src/lib/runtime-flags.ts',
-  'app/(tabs)/workouts.tsx',
-  'app/workout/session/[id].tsx',
-];
-
 const errors = [];
 
 function resolveProjectPath(file) {

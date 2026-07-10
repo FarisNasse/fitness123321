@@ -18,7 +18,7 @@ function stripProgressionServiceTypescript(source) {
     .replace(/^(?:export\s+)?type\s+\w+\s*=\s*\{[\s\S]*?^\};\r?\n/gm, '')
     .replace(/^export\s+type\s+\w+\s*=[^;]+;\r?\n/gm, '')
     .replace(/\((\w+)\)\s*:\s*[^=]+=>/g, '($1) =>')
-    .replace(/function(\s+[A-Za-z_$][\w$]*\s*)\(([\s\S]*?)\)\s*(?::\s*[A-Za-z_$][\w$<>\[\]\s|&,.]*)?/g, stripFunctionParameters);
+    .replace(/function(\s+[A-Za-z_$][\w$]*\s*)\(([\s\S]*?)\)\s*(?::\s*[A-Za-z_$][\w$<>[\]\s|&,.]*)?/g, stripFunctionParameters);
 }
 
 async function loadProgressionService() {

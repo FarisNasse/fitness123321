@@ -49,10 +49,6 @@ export function MacroRing({ calories, protein, water }: MacroRingProps) {
       <View className="items-center justify-center">
         <Svg width={size} height={size}>
           {rings.map((ring) => {
-            const metric = metrics[ring.key];
-            const circumference = 2 * Math.PI * ring.radius;
-            const progress = Math.max(0, Math.min(1, metric.value));
-
             return (
               <Circle
                 key={`${ring.key}-track`}

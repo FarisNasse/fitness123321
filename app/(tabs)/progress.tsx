@@ -77,15 +77,6 @@ function parseRequiredNumber(value: string, label: string) {
   return parsed;
 }
 
-function parseOptionalNumber(value: string, label: string) {
-  if (!value.trim()) {
-    return null;
-  }
-
-  return parseRequiredNumber(value, label);
-}
-
-
 function parseOptionalPercentage(value: string) {
   if (!value.trim()) {
     return null;

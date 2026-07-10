@@ -57,7 +57,8 @@ test('pending local sync is restricted to the restored authenticated user', () =
 
   assert.match(layout, /supabase\.auth\.getSession\(\)/);
   assert.match(layout, /supabase\.auth\.onAuthStateChange/);
-  assert.match(layout, /if \(!session\?\.user\) return/);
+  assert.match(layout, /const sessionUserId = session\?\.user\.id/);
+  assert.match(layout, /if \(!sessionUserId\) return/);
   assert.match(layout, /syncPendingRecords\(\)/);
 
   for (const file of [
