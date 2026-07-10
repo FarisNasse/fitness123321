@@ -29,7 +29,9 @@ If the recovery email template was customized, ensure its link uses `{{ .Redirec
 
 ## 2. Apply every migration to the clean project
 
-Use Node 20 and npm 10 from the repository root. Log in, link this checkout, preview the pending migration list, push it, and confirm that migrations `0001` through `0005` are remote:
+Use the repository-pinned Node 22.23.1 and npm 10.9.8 toolchain from the
+repository root. Log in, link this checkout, preview the pending migration list,
+push it, and confirm that migrations `0001` through `0005` are remote:
 
 ```bash
 npx supabase@latest login

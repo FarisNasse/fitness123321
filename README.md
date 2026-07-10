@@ -41,7 +41,8 @@ Supabase project just to run and test the workout screen from the terminal.
 
 ## Clean-checkout verification
 
-Use the pinned Node and npm versions from `.nvmrc` and `package.json`, then run:
+Use Node 22.23.1 and its bundled npm 10.9.8, pinned by `.nvmrc` and
+`package.json`, then run:
 
 ```bash
 npm ci
@@ -51,8 +52,11 @@ npm run test:all
 `test:all` runs the Node test suite, exercise-data and local-development
 checks, TypeScript, and ESLint. The flat ESLint configuration covers the
 project's JavaScript, TypeScript, React hooks, and React Native imports and
-platform colors. CI runs this same command after an immutable `npm ci`
-installation.
+platform colors. CI uses the exact Node release from `.nvmrc`, verifies its
+bundled npm version, and then runs this same command after an immutable
+`npm ci` installation. Do not globally replace npm in CI; keeping Node and its
+bundled npm together avoids
+package-manager/runtime combinations that Expo does not validate.
 
 Direct dependencies are kept only when they are imported by application or
 configuration code or are required by a configured platform. The few runtime
@@ -73,6 +77,10 @@ as placeholders.
 `app.config.ts` is the only Expo app-configuration source. The Router entry point
 remains in `package.json`; do not reintroduce an `app.json` unless every value is
 intentionally merged into the dynamic config.
+
+Expo SDK 56 requires Node 22.13 or newer. This repository pins Node 22.23.1
+and the npm 10.9.8 release bundled with it so local installs and CI use the same
+supported package-manager/runtime pair.
 
 Before creating a development client, preview, or production build, run the
 complete release baseline:
@@ -127,8 +135,8 @@ URL/ID, and result in the pull request. Repeat the same smoke test with the
 The committed `preview` EAS profile creates an internally distributed Android
 APK that installs on a physical device or emulator. It uses local auth and
 local data sources by default, so a contributor can build and exercise the app
-without Supabase credentials. Run these commands from the repository root with
-Node 20 and npm 10:
+without Supabase credentials. Run these commands from the repository root
+with the pinned Node 22.23.1 and npm 10.9.8 toolchain:
 
 ```bash
 npm ci

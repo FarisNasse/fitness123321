@@ -32,8 +32,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Use pinned npm
-        run: npm install -g npm@10.9.2 --no-audit --no-fund
+      - name: Verify pinned Node and npm
+        run: |
+          test "$(node --version)" = "v$(cat .nvmrc)"
+          test "$(npm --version)" = "10.9.8"
 
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
