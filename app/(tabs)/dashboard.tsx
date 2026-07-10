@@ -1,7 +1,8 @@
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 
+import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { MacroRing } from '@/src/components/MacroRing';
 import { MetricCard } from '@/src/components/MetricCard';
@@ -23,6 +24,8 @@ import {
   getWellnessOwnerUserId,
   subscribeToWellnessChanges,
 } from '@/src/features/wellness/wellness-service';
+import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
+import { supabase } from '@/src/lib/supabase';
 
 const emptySummary: DailyNutritionSummary = {
   entries: [],
@@ -124,6 +127,17 @@ export default function DashboardScreen() {
   const calorieProgress = progress(summary.totals.calories, targets.calories);
   const proteinProgress = progress(summary.totals.proteinG, targets.proteinG);
   const waterProgress = progress(summary.totals.waterMl, targets.waterMl);
+
+  async function handleSignOut() {
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      Alert.alert('Unable to sign out', error.message);
+      return;
+    }
+
+    router.replace('/login');
+  }
 
   return (
     <Screen>
@@ -236,6 +250,17 @@ export default function DashboardScreen() {
             <ChecklistItem label="Offline sync" done />
           </View>
         </Card>
+
+        {!USE_DEV_AUTH ? (
+          <Card className="gap-3">
+            <Text className="text-xl font-bold text-base-content">Account</Text>
+            <Text className="text-sm font-body leading-6 text-base-muted">
+              You can sign back in at any time. Supabase row-level security keeps cloud
+              records scoped to the account that created them.
+            </Text>
+            <Button title="Sign out" variant="outline" onPress={handleSignOut} />
+          </Card>
+        ) : null}
       </View>
     </Screen>
   );

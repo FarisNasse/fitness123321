@@ -21,3 +21,6 @@ export const USE_SUPABASE_EXERCISES =
 
 export const USE_SUPABASE_FOODS =
   USE_REMOTE_NUTRITION_SYNC || process.env.EXPO_PUBLIC_FOOD_SOURCE === 'supabase';
+
+export const AUTH_REDIRECT_URL =
+  process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL?.trim() || null;

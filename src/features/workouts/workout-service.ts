@@ -1038,6 +1038,15 @@ async function syncPendingWorkoutSessionsImpl() {
   }
 
   const { supabase } = await import('@/src/lib/supabase');
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !authData.user?.id) {
+    throw new Error('Sign in before syncing workout sessions.');
+  }
+
+  const userId = authData.user.id;
+  const pendingOwnerParameters = [LOCAL_DEV_USER_ID];
+  pendingOwnerParameters.push(userId);
 
   const pendingSessions = db.getAllSync<LocalWorkoutSessionRow>(
     `
@@ -1052,8 +1061,9 @@ async function syncPendingWorkoutSessionsImpl() {
         )
       )
       and user_id != ?
+      and user_id = ?
     `,
-    [LOCAL_DEV_USER_ID]
+    pendingOwnerParameters
   );
 
   for (const session of pendingSessions) {

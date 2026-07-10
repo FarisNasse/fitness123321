@@ -163,6 +163,27 @@ continues to restrict `body_measurements` to `auth.uid() = user_id`.
 Then run the migrations with the Supabase CLI or your preferred database
 workflow.
 
+## Supabase production validation
+
+Real authentication builds use the `auth-preview` EAS profile. It enables
+Supabase auth plus workout, nutrition, wellness, and progress sync while
+loading the public project URL and key from the EAS `preview` environment.
+Production builds now enable the same remote sources instead of silently
+falling back to local auth.
+
+The app includes `/forgot-password` and a deep-linked `/reset-password` route.
+Add `fitnessapp://reset-password` to **Supabase Authentication > URL
+Configuration > Redirect URLs** before testing recovery. Used, expired,
+incomplete, and provider-rejected links show a restart path instead of leaving
+the user on a broken form.
+
+Follow [`docs/supabase-production-validation.md`](docs/supabase-production-validation.md)
+for the exact clean-project migration commands, dashboard settings, local and
+EAS variables, `npm run check:supabase` live RLS/auth verifier, and the required
+physical-device or emulator checklist. The server-only
+`SUPABASE_SERVICE_ROLE_KEY` is used only by that local validation script and
+must never be added to an Expo or EAS client environment.
+
 ## App structure
 
 ```txt
@@ -184,6 +205,8 @@ supabase/
 - `/` redirects to the main dashboard
 - `/login`
 - `/register`
+- `/forgot-password`
+- `/reset-password` (Supabase recovery deep link)
 - `/onboarding`
 - `/dashboard`
 - `/workouts`

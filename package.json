@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "check:exercises": "node scripts/check-exercise-library-data.mjs",
     "check:preview": "node --test tests/eas-build-config.test.mjs && expo config --type public",
+    "check:supabase": "node scripts/verify-supabase-auth.mjs",
     "import:exercises": "node scripts/import-exercise-dataset.mjs",
     "check:local": "node scripts/check-local-dev.mjs",
     "test": "node --test",
