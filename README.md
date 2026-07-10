@@ -59,12 +59,68 @@ configuration code or are required by a configured platform. The few runtime
 packages without a source import have concrete platform roles:
 
 - `expo-dev-client` supports the `developmentClient` EAS build profile.
+- `expo-font` is required by the installed Google fonts and vector icons.
+- `expo-constants` and `react-native-screens` support Expo Router at runtime.
+- `react-native-worklets` provides the worklet runtime required by Reanimated.
 - `react-dom` and `react-native-web` provide the configured web target.
-- `react-native-screens` provides Expo Router's native stack implementation.
 
 Packages from abandoned implementations—including the old chart, form,
 bottom-sheet, gradient, notification, and state-store choices—are not retained
 as placeholders.
+
+## Expo SDK 56 release baseline
+
+`app.config.ts` is the only Expo app-configuration source. The Router entry point
+remains in `package.json`; do not reintroduce an `app.json` unless every value is
+intentionally merged into the dynamic config.
+
+Before creating a development client, preview, or production build, run the
+complete release baseline:
+
+```bash
+npm ci
+npm run check:release
+```
+
+The release command runs the normal tests, type checking, and linting; verifies
+`expo install --check` and `expo-doctor`; validates the public Expo config; and
+exports both Android and iOS JavaScript bundles. Run the Expo checks directly
+while diagnosing native dependency changes:
+
+```bash
+npm run check:expo
+# Equivalent underlying commands:
+npx expo install --check
+npx expo-doctor
+```
+
+Expo SDK 56 requires native peer dependencies to be installed directly rather
+than relying on transitive copies. In this project, `expo-font` supports the
+Google and vector-icon fonts, `expo-constants` supports Expo Router, and
+`react-native-worklets` supports Reanimated. NativeWind v4 supplies the required Worklets Babel transform. The Expo preset's
+automatic Reanimated/Worklets injection is deliberately disabled in
+`babel.config.js` so the transform runs exactly once; do not add the legacy
+`react-native-reanimated/plugin` entry or a second Worklets plugin.
+
+After the automated checks pass, compile both development clients:
+
+```bash
+npx eas-cli@latest build --platform android --profile development
+npx eas-cli@latest build --platform ios --profile development
+```
+
+Install each build, then start Metro with the development-client target:
+
+```bash
+npx expo start --dev-client --clear
+```
+
+On both supported platforms, verify that the app reaches the dashboard without
+a native-module error, Router navigation and native screens work, fonts render,
+gestures and Reanimated transitions respond, and a SQLite-backed record survives
+a force-close and relaunch. Record the device or simulator, OS version, build
+URL/ID, and result in the pull request. Repeat the same smoke test with the
+`preview` profile before release.
 
 ## Installable preview build
 

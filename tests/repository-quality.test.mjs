@@ -23,7 +23,6 @@ test('known repository cleanup items stay removed', () => {
   const lock = readProjectJson('package-lock.json');
   const unusedDependencies = [
     '@gorhom/bottom-sheet',
-    'expo-constants',
     'expo-linear-gradient',
     'expo-notifications',
     'expo-secure-store',
@@ -40,7 +39,7 @@ test('known repository cleanup items stay removed', () => {
     assert.equal(pkg.dependencies[dependency], undefined, `${dependency} should not be direct`);
   }
 
-  assert.equal(pkg.dependencies['react-native-svg'], '15.15.5');
+  assert.equal(pkg.dependencies['react-native-svg'], '15.15.4');
   assert.equal(lock.packages[''].dependencies['expo-notifications'], undefined);
   assert.equal(lock.packages['node_modules/expo-notifications'], undefined);
 });
