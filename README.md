@@ -39,6 +39,33 @@ npx expo start -c
 The exercise library uses local seeded data by default, so you do not need a
 Supabase project just to run and test the workout screen from the terminal.
 
+## Clean-checkout verification
+
+Use the pinned Node and npm versions from `.nvmrc` and `package.json`, then run:
+
+```bash
+npm ci
+npm run test:all
+```
+
+`test:all` runs the Node test suite, exercise-data and local-development
+checks, TypeScript, and ESLint. The flat ESLint configuration covers the
+project's JavaScript, TypeScript, React hooks, and React Native imports and
+platform colors. CI runs this same command after an immutable `npm ci`
+installation.
+
+Direct dependencies are kept only when they are imported by application or
+configuration code or are required by a configured platform. The few runtime
+packages without a source import have concrete platform roles:
+
+- `expo-dev-client` supports the `developmentClient` EAS build profile.
+- `react-dom` and `react-native-web` provide the configured web target.
+- `react-native-screens` provides Expo Router's native stack implementation.
+
+Packages from abandoned implementations—including the old chart, form,
+bottom-sheet, gradient, notification, and state-store choices—are not retained
+as placeholders.
+
 ## Installable preview build
 
 The committed `preview` EAS profile creates an internally distributed Android

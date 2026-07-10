@@ -140,7 +140,7 @@ export default function NutritionScreen() {
     }
 
     return grouped;
-  }, [summary.entries]);
+  }, [summary]);
 
   const hasFoodEntries = summary.entries.length > 0;
   const calorieProgress = progress(summary.totals.calories, DEFAULT_DAILY_TARGETS.calories);

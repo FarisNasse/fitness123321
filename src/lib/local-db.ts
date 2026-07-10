@@ -1,10 +1,11 @@
 import * as SQLite from 'expo-sqlite';
+import type { SQLiteBindValue } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
 export type DbAdapter = {
   execSync: (sql: string) => void;
-  runSync: (sql: string, params?: unknown[]) => void;
-  getAllSync: <T = unknown>(sql: string, params?: unknown[]) => T[];
+  runSync: (sql: string, params?: SQLiteBindValue[]) => void;
+  getAllSync: <T = unknown>(sql: string, params?: SQLiteBindValue[]) => T[];
 };
 
 export type LocalWorkoutSession = {
@@ -153,11 +154,11 @@ function createNativeDbAdapter(): DbAdapter {
     },
 
     runSync(sql, params = []) {
-      (sqliteDb as any).runSync(sql, params);
+      sqliteDb.runSync(sql, params);
     },
 
-    getAllSync<T = unknown>(sql: string, params: unknown[] = []) {
-      return (sqliteDb as any).getAllSync(sql, params) as T[];
+    getAllSync<T = unknown>(sql: string, params: SQLiteBindValue[] = []) {
+      return sqliteDb.getAllSync<T>(sql, params);
     },
   };
 }
@@ -1007,7 +1008,7 @@ function createWebDbAdapter(): DbAdapter {
       }
     },
 
-    getAllSync<T = unknown>(sql: string, params: unknown[] = []) {
+    getAllSync<T = unknown>(sql: string, params: SQLiteBindValue[] = []) {
       const normalized = normalizeSql(sql);
       const store = readWebStore();
 

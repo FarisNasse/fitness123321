@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import {
   getExerciseById,
@@ -47,7 +47,6 @@ import {
   DEFAULT_TARGET_INPUTS,
   FALLBACK_WEIGHT_INCREMENT,
   INITIAL_LIVE_WORKOUT_UI_STATE,
-  REP_STEP,
   REST_DURATION_SECONDS,
   type EditSetInputs,
   type LiveWorkoutController,
@@ -195,15 +194,15 @@ export function useLiveWorkoutController(
     status: 'loading',
   });
 
-  function resolveExercise(exerciseId: string) {
+  const resolveExercise = useCallback((exerciseId: string) => {
     return exerciseLookup[exerciseId] ?? getExerciseById(exerciseId) ?? null;
-  }
+  }, [exerciseLookup]);
 
   function getDraftForExercise(exerciseId: string) {
     return uiState.draftsByExerciseId[exerciseId] ?? DEFAULT_SET_DRAFT;
   }
 
-  function syncTargetInputs(defaults: SmartExerciseDefaults) {
+  const syncTargetInputs = useCallback((defaults: SmartExerciseDefaults) => {
     setTargetInputs({
       targetSets: String(defaults.targetSets),
       repMin: String(defaults.repMin),
@@ -211,9 +210,9 @@ export function useLiveWorkoutController(
       incrementSize: formatWeightInput(defaults.incrementSize),
       deloadPercentage: formatWeightInput(defaults.deloadPercentage),
     });
-  }
+  }, []);
 
-  function ensureDraftForExercise(
+  const ensureDraftForExercise = useCallback(function ensureDraftForExercise(
     exercise: Exercise,
     defaults?: SmartExerciseDefaults,
     options: { replaceDraft?: boolean } = {}
@@ -224,9 +223,9 @@ export function useLiveWorkoutController(
       draft: getInitialDraftForExercise(exercise, exerciseSetMap, defaults),
       replaceDraft: options.replaceDraft,
     });
-  }
+  }, [exerciseSetMap]);
 
-  async function applySmartDefaultsForExercise(
+  const applySmartDefaultsForExercise = useCallback(async function applySmartDefaultsForExercise(
     exercise: Exercise,
     currentSetCount: number,
     options: { replaceDraft?: boolean } = {}
@@ -248,7 +247,7 @@ export function useLiveWorkoutController(
       draft: buildDraftFromSuggestedSet(defaults, currentSetCount),
       replaceDraft: options.replaceDraft,
     });
-  }
+  }, [selectedExercise?.id, syncTargetInputs]);
 
   function rememberExerciseSelection(exercise: Exercise) {
     setSelectedExercises((current) => {
@@ -260,7 +259,7 @@ export function useLiveWorkoutController(
     });
   }
 
-  function refreshSets() {
+  const refreshSets = useCallback(() => {
     if (!sessionId || !session) return;
 
     const nextSets = getLocalWorkoutSets(sessionId);
@@ -291,7 +290,7 @@ export function useLiveWorkoutController(
       });
       setSelectedExercise((current) => current ?? nextExercises[0]);
     }
-  }
+  }, [resolveExercise, session, sessionId]);
 
   function queueWorkoutSync(reason: string) {
     void syncPendingWorkoutSessions().catch((error) => {
@@ -343,7 +342,7 @@ export function useLiveWorkoutController(
     if (sessionLoadState.status !== 'ready') return;
 
     refreshSets();
-  }, [sessionId, session?.local_id, sessionLoadState.status]);
+  }, [refreshSets, sessionLoadState.status]);
 
   useEffect(() => {
     if (!selectedExercise) return;
@@ -362,7 +361,14 @@ export function useLiveWorkoutController(
       selectedExercise,
       exerciseSetMap.get(selectedExercise.id)?.length ?? 0
     );
-  }, [selectedExercise?.id]);
+  }, [
+    applySmartDefaultsForExercise,
+    ensureDraftForExercise,
+    exerciseSetMap,
+    selectedExercise,
+    smartDefaultsByExerciseId,
+    syncTargetInputs,
+  ]);
 
   useEffect(() => {
     if (sessionLoadState.status !== 'ready') return undefined;
@@ -417,7 +423,7 @@ export function useLiveWorkoutController(
   const recentSets = getRecentSetsForExercise(selectedExerciseSets);
   const validationMessage = validateSetDraft(activeDraft);
   const completionSummary = useMemo(() => {
-    if (!sessionId) return 'Workout saved locally.';
+    if (!sessionId || sets.length === 0) return 'Workout saved locally.';
 
     const exerciseNamesById = Object.fromEntries(
       Array.from(exerciseSetMap.keys()).map((exerciseId) => [
@@ -431,7 +437,7 @@ export function useLiveWorkoutController(
     );
 
     return ['Workout saved locally.', progressionReasonText].filter(Boolean).join('\n\n');
-  }, [sessionId, effortFeedback, exerciseSetMap, exerciseLookup, sets.length]);
+  }, [sessionId, effortFeedback, exerciseSetMap, resolveExercise, sets.length]);
 
   const currentSetDraft = {
     exerciseName: selectedExercise?.name ?? 'Choose an exercise',

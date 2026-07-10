@@ -309,7 +309,7 @@ function stripWorkoutServiceTypescript(source) {
   return source
     .replace(/db\.getAllSync<[^>]+>/g, 'db.getAllSync')
     .replace(
-      /((?:export\s+)?(?:async\s+)?)function(\s+[A-Za-z_$][\w$]*\s*)\(([\s\S]*?)\)\s*(?::\s*[A-Za-z_$][\w$<>\[\]\s|&,.:'"@\/\?]*)?/g,
+      /((?:export\s+)?(?:async\s+)?)function(\s+[A-Za-z_$][\w$]*\s*)\(([\s\S]*?)\)\s*(?::\s*[A-Za-z_$][\w$<>[\]\s|&,.:'"@/?]*)?/g,
       stripFunctionParameters
     );
 }

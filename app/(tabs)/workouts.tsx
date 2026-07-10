@@ -32,7 +32,7 @@ export default function WorkoutsScreen() {
   );
   const [isSyncingAll, setIsSyncingAll] = useState(false);
 
-  function refreshRecentSessions() {
+  const refreshRecentSessions = useCallback(() => {
     setIsLoadingRecentSessions(true);
     setRecentSessionsError(null);
 
@@ -46,17 +46,7 @@ export default function WorkoutsScreen() {
     } finally {
       setIsLoadingRecentSessions(false);
     }
-  }
-
-  useFocusEffect(
-    useCallback(() => {
-      refreshRecentSessions();
-
-      if (USE_REMOTE_WORKOUT_SYNC) {
-        void retryWorkoutSync();
-      }
-    }, [])
-  );
+  }, []);
 
   const setsLoggedCount = recentSessions.reduce(
     (total, session) => total + getLocalWorkoutSets(session.local_id).length,
@@ -67,7 +57,7 @@ export default function WorkoutsScreen() {
     router.push('/workout/exercises');
   }
 
-  async function retryWorkoutSync(sessionLocalId?: string) {
+  const retryWorkoutSync = useCallback(async (sessionLocalId?: string) => {
     if (!USE_REMOTE_WORKOUT_SYNC) return;
 
     if (sessionLocalId) {
@@ -92,7 +82,17 @@ export default function WorkoutsScreen() {
       }
       refreshRecentSessions();
     }
-  }
+  }, [refreshRecentSessions]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshRecentSessions();
+
+      if (USE_REMOTE_WORKOUT_SYNC) {
+        void retryWorkoutSync();
+      }
+    }, [refreshRecentSessions, retryWorkoutSync])
+  );
 
   async function startWorkout() {
     try {

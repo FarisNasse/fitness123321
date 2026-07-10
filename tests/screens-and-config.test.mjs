@@ -30,7 +30,7 @@ test('package exposes fast test commands without adding heavy native test depend
   assert.equal(pkg.scripts.test, 'node --test');
   assert.equal(
     pkg.scripts['test:all'],
-    'npm run test && npm run check:exercises && npm run check:local && npm run typecheck'
+    'npm run test && npm run check:exercises && npm run check:local && npm run typecheck && npm run lint'
   );
 
   for (const dependency of ['jest', 'jest-expo', '@testing-library/react-native', 'react-test-renderer']) {
@@ -139,14 +139,14 @@ test('auth session guard resolves Supabase session, profile onboarding state, an
   assert.match(index, /routeForAuthStatus\(status\)/);
   assert.match(index, /<AuthLoadingState \/>/);
   assert.match(index, /<Redirect href=\{route\} \/>/);
-  assert.doesNotMatch(index, /href=\"\/dashboard\"/);
+  assert.doesNotMatch(index, /href="\/dashboard"/);
 
-  assert.match(authLayout, /status === 'needs-onboarding'[\s\S]*<Redirect href=\"\/onboarding\" \/>/);
-  assert.match(authLayout, /status === 'onboarded'[\s\S]*<Redirect href=\"\/dashboard\" \/>/);
-  assert.match(onboardingLayout, /status === 'signed-out'[\s\S]*<Redirect href=\"\/login\" \/>/);
-  assert.match(onboardingLayout, /status === 'onboarded'[\s\S]*<Redirect href=\"\/dashboard\" \/>/);
-  assert.match(tabsLayout, /status === 'signed-out'[\s\S]*<Redirect href=\"\/login\" \/>/);
-  assert.match(tabsLayout, /status === 'needs-onboarding'[\s\S]*<Redirect href=\"\/onboarding\" \/>/);
+  assert.match(authLayout, /status === 'needs-onboarding'[\s\S]*<Redirect href="\/onboarding" \/>/);
+  assert.match(authLayout, /status === 'onboarded'[\s\S]*<Redirect href="\/dashboard" \/>/);
+  assert.match(onboardingLayout, /status === 'signed-out'[\s\S]*<Redirect href="\/login" \/>/);
+  assert.match(onboardingLayout, /status === 'onboarded'[\s\S]*<Redirect href="\/dashboard" \/>/);
+  assert.match(tabsLayout, /status === 'signed-out'[\s\S]*<Redirect href="\/login" \/>/);
+  assert.match(tabsLayout, /status === 'needs-onboarding'[\s\S]*<Redirect href="\/onboarding" \/>/);
   assert.match(tabsLayout, /return \(\s*<Tabs/s);
 });
 

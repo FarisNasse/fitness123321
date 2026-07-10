@@ -123,11 +123,13 @@ export default function RootLayout() {
     };
   }, []);
 
+  const sessionUserId = session?.user.id;
+
   useEffect(() => {
-    if (!session?.user) return;
+    if (!sessionUserId) return;
 
     void syncPendingRecords();
-  }, [session?.user.id]);
+  }, [sessionUserId]);
 
   useEffect(() => {
     if (USE_DEV_AUTH) {
