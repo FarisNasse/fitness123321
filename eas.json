@@ -1,0 +1,45 @@
+{
+  "cli": {
+    "version": ">= 16.28.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "base": {
+      "node": "20.19.4",
+      "env": {
+        "EXPO_PUBLIC_AUTH_MODE": "local",
+        "EXPO_PUBLIC_WORKOUT_SYNC_SOURCE": "local",
+        "EXPO_PUBLIC_NUTRITION_SYNC_SOURCE": "local",
+        "EXPO_PUBLIC_WELLNESS_SYNC_SOURCE": "local",
+        "EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE": "local",
+        "EXPO_PUBLIC_EXERCISE_SOURCE": "local",
+        "EXPO_PUBLIC_FOOD_SOURCE": "local"
+      }
+    },
+    "development": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "development"
+      }
+    },
+    "preview": {
+      "extends": "base",
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "preview"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "node": "20.19.4",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production"
+      }
+    }
+  }
+}

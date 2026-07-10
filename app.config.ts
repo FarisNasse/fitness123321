@@ -7,18 +7,40 @@ const config: ExpoConfig = {
   version: '0.1.0',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
+  backgroundColor: '#0d1117',
+  icon: './assets/icon.png',
   assetBundlePatterns: ['**/*'],
   ios: {
     supportsTablet: true,
-    bundleIdentifier: 'com.example.allinonefitness',
+    bundleIdentifier: 'com.farisnasse.allinonefitness',
   },
   android: {
-    package: 'com.example.allinonefitness',
+    package: 'com.farisnasse.allinonefitness',
+    icon: './assets/icon.png',
+    adaptiveIcon: {
+      foregroundImage: './assets/adaptive-icon.png',
+      monochromeImage: './assets/adaptive-icon-monochrome.png',
+      backgroundColor: '#0d1117',
+    },
   },
   web: {
     bundler: 'metro',
+    favicon: './assets/favicon.png',
   },
-  plugins: ['expo-router', 'expo-secure-store', 'expo-sqlite'],
+  plugins: [
+    'expo-router',
+    'expo-secure-store',
+    'expo-sqlite',
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/splash-icon.png',
+        imageWidth: 200,
+        resizeMode: 'contain',
+        backgroundColor: '#0d1117',
+      },
+    ],
+  ],
 };
 
 export default config;

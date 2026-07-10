@@ -31,13 +31,85 @@ Do not start with AI, wearables, social features, or marketplace features. Those
 ## Setup
 
 ```bash
-npm install
+npm ci
 npm run check:exercises
 npx expo start -c
 ```
 
 The exercise library uses local seeded data by default, so you do not need a
 Supabase project just to run and test the workout screen from the terminal.
+
+## Installable preview build
+
+The committed `preview` EAS profile creates an internally distributed Android
+APK that installs on a physical device or emulator. It uses local auth and
+local data sources by default, so a contributor can build and exercise the app
+without Supabase credentials. Run these commands from the repository root with
+Node 20 and npm 10:
+
+```bash
+npm ci
+npx eas-cli@latest login
+npx eas-cli@latest whoami
+npx eas-cli@latest build:configure
+npm run check:preview
+npx eas-cli@latest build --platform android --profile preview
+```
+
+`build:configure` links the checkout to an EAS project. On the first run, choose
+the Expo account that will own the project, allow EAS to create or link the
+project, and commit the generated `extra.eas.projectId` change to
+`app.config.ts`. For a new Android signing key, allow EAS to generate and store
+the keystore when prompted.
+
+When the build completes, install the latest APK on a running Android emulator:
+
+```bash
+npx eas-cli@latest build:run --platform android --latest
+```
+
+For a physical Android device, open the APK link from the completed build on
+the device, or download the APK, rename it to
+`all-in-one-fitness-preview.apk`, connect a device with USB debugging enabled,
+and run:
+
+```bash
+adb devices
+adb install -r ./all-in-one-fitness-preview.apk
+```
+
+Open the installed app and verify that the lime performance icon appears in the
+launcher and on the dark splash screen. Then save one local record, force-close
+the app, reopen it, and confirm the record remains. Record the device or
+emulator model, OS version, EAS build URL/ID, and result in the pull request.
+
+### Preview environment variables
+
+These non-secret values are committed in the `base` EAS profile inherited by
+`development` and `preview`:
+
+| Variable | Preview value | Purpose |
+| --- | --- | --- |
+| `EXPO_PUBLIC_AUTH_MODE` | `local` | Uses the local reviewer session. |
+| `EXPO_PUBLIC_WORKOUT_SYNC_SOURCE` | `local` | Keeps workout writes on device. |
+| `EXPO_PUBLIC_NUTRITION_SYNC_SOURCE` | `local` | Keeps nutrition writes on device. |
+| `EXPO_PUBLIC_WELLNESS_SYNC_SOURCE` | `local` | Keeps wellness writes on device. |
+| `EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE` | `local` | Keeps measurements on device. |
+| `EXPO_PUBLIC_EXERCISE_SOURCE` | `local` | Uses the bundled exercise seed. |
+| `EXPO_PUBLIC_FOOD_SOURCE` | `local` | Uses local food data. |
+| `EXPO_PUBLIC_APP_ENV` | `preview` | Identifies the preview build. |
+
+To test Supabase-backed auth or sync, configure
+`EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` in the EAS
+`preview` environment and change only the required source flags to `supabase`.
+All `EXPO_PUBLIC_*` values are embedded in the client bundle; never use a
+Supabase service-role key or another secret. `.env.example` is the complete
+local reference for the supported variables.
+
+The same build flow is available for iOS with `--platform ios`, but installing
+an internal iOS preview on a physical device also requires Apple signing and
+device provisioning. Android is the reproducible no-store preview path for
+this project.
 
 
 ## Workout reviewer docs
