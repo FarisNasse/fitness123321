@@ -55,8 +55,17 @@ project's JavaScript, TypeScript, React hooks, and React Native imports and
 platform colors. CI uses the exact Node release from `.nvmrc`, verifies its
 bundled npm version, and then runs this same command after an immutable
 `npm ci` installation. Do not globally replace npm in CI; keeping Node and its
-bundled npm together avoids
-package-manager/runtime combinations that Expo does not validate.
+bundled npm together avoids package-manager/runtime combinations that Expo does
+not validate.
+
+GitHub Actions runs `scripts/ci-npm-install.sh` for the immutable install. The
+script retains `npm ci`, but retries up to three times only when npm reports a
+registry transport failure or its known `Exit handler never called!` crash. It
+uses the package cache populated by earlier attempts, limits concurrent registry
+connections, and uploads the npm console and debug logs as the
+`npm-ci-diagnostics` artifact if all attempts fail. Dependency, lockfile,
+engine, peer-dependency, and lifecycle-script failures are not converted into
+successes or retried as though they were network failures.
 
 Direct dependencies are kept only when they are imported by application or
 configuration code or are required by a configured platform. The few runtime

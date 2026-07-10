@@ -20,7 +20,7 @@ jobs:
   test:
     name: Run test suite
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -38,7 +38,16 @@ jobs:
           test "$(npm --version)" = "10.9.8"
 
       - name: Install locked dependencies
-        run: npm ci --no-audit --no-fund
+        run: bash scripts/ci-npm-install.sh
+
+      - name: Upload npm install diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-ci-diagnostics
+          path: ${{ runner.temp }}/npm-ci-logs/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Run all checks and tests
         run: npm run test:all
