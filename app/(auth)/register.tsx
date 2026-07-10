@@ -45,11 +45,25 @@ export default function RegisterScreen() {
         return;
       }
 
-      if (data.user) {
-        await supabase.from('profiles').upsert({
+      if (data.user && data.session) {
+        const { error: profileError } = await supabase.from('profiles').upsert({
           id: data.user.id,
           display_name: displayName.trim() || null,
         });
+
+        if (profileError) {
+          Alert.alert('Account created, but profile setup failed', profileError.message);
+          return;
+        }
+      }
+
+      if (!data.session) {
+        Alert.alert(
+          'Confirm your email',
+          'Open the confirmation email, then return here and sign in to finish onboarding.'
+        );
+        router.replace('/login');
+        return;
       }
 
       router.replace('/onboarding');

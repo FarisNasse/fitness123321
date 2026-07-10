@@ -302,22 +302,28 @@ async function syncPendingWellnessCheckInsImpl() {
     return;
   }
 
+  const { supabase } = await import('@/src/lib/supabase');
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error || !data.user?.id) {
+    throw new Error('Sign in before syncing wellness check-ins.');
+  }
+
   const pendingCheckIns = db.getAllSync<WellnessCheckIn>(
     `
     select *
     from mood_logs_local
     where sync_status in ('pending', 'failed')
       and user_id != ?
+      and user_id = ?
     order by updated_at asc
     `,
-    [LOCAL_DEV_USER_ID]
+    [LOCAL_DEV_USER_ID, data.user.id]
   );
 
   if (pendingCheckIns.length === 0) {
     return;
   }
-
-  const { supabase } = await import('@/src/lib/supabase');
 
   for (const checkIn of pendingCheckIns) {
     const { data: moodData, error: moodError } = await supabase

@@ -34,11 +34,35 @@
         "buildType": "apk"
       }
     },
+    "auth-preview": {
+      "extends": "preview",
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "auth-preview",
+        "EXPO_PUBLIC_AUTH_MODE": "supabase",
+        "EXPO_PUBLIC_AUTH_REDIRECT_URL": "fitnessapp://reset-password",
+        "EXPO_PUBLIC_WORKOUT_SYNC_SOURCE": "supabase",
+        "EXPO_PUBLIC_NUTRITION_SYNC_SOURCE": "supabase",
+        "EXPO_PUBLIC_WELLNESS_SYNC_SOURCE": "supabase",
+        "EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE": "supabase",
+        "EXPO_PUBLIC_EXERCISE_SOURCE": "supabase",
+        "EXPO_PUBLIC_FOOD_SOURCE": "supabase"
+      }
+    },
     "production": {
       "node": "20.19.4",
       "autoIncrement": true,
+      "environment": "production",
       "env": {
-        "EXPO_PUBLIC_APP_ENV": "production"
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_AUTH_MODE": "supabase",
+        "EXPO_PUBLIC_AUTH_REDIRECT_URL": "fitnessapp://reset-password",
+        "EXPO_PUBLIC_WORKOUT_SYNC_SOURCE": "supabase",
+        "EXPO_PUBLIC_NUTRITION_SYNC_SOURCE": "supabase",
+        "EXPO_PUBLIC_WELLNESS_SYNC_SOURCE": "supabase",
+        "EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE": "supabase",
+        "EXPO_PUBLIC_EXERCISE_SOURCE": "supabase",
+        "EXPO_PUBLIC_FOOD_SOURCE": "supabase"
       }
     }
   }

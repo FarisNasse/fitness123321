@@ -25,6 +25,23 @@ const queryClient = new QueryClient();
 
 void SplashScreen.preventAutoHideAsync();
 
+async function syncPendingRecords() {
+  await Promise.all([
+    syncPendingWorkoutSessions().catch((error) => {
+      console.warn('Failed to sync pending workout sessions.', error);
+    }),
+    syncPendingNutritionLogs().catch((error) => {
+      console.warn('Failed to sync pending nutrition logs.', error);
+    }),
+    syncPendingWellnessCheckIns().catch((error) => {
+      console.warn('Failed to sync pending wellness check-ins.', error);
+    }),
+    syncPendingBodyMeasurements().catch((error) => {
+      console.warn('Failed to sync pending body measurements.', error);
+    }),
+  ]);
+}
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_700Bold,
@@ -90,41 +107,13 @@ export default function RootLayout() {
   useEffect(() => {
     initializeLocalDb();
 
-    void syncPendingWorkoutSessions().catch((error) => {
-      console.warn('Failed to sync pending workout sessions.', error);
-    });
-
-    void syncPendingNutritionLogs().catch((error) => {
-      console.warn('Failed to sync pending nutrition logs.', error);
-    });
-
-    void syncPendingWellnessCheckIns().catch((error) => {
-      console.warn('Failed to sync pending wellness check-ins.', error);
-    });
-
-    void syncPendingBodyMeasurements().catch((error) => {
-      console.warn('Failed to sync pending body measurements.', error);
-    });
-
     const subscription = AppState.addEventListener(
       'change',
       (state: AppStateStatus) => {
         if (state === 'active') {
-          void syncPendingWorkoutSessions().catch((error) => {
-            console.warn('Failed to sync pending workout sessions.', error);
-          });
-
-          void syncPendingNutritionLogs().catch((error) => {
-            console.warn('Failed to sync pending nutrition logs.', error);
-          });
-
-          void syncPendingWellnessCheckIns().catch((error) => {
-            console.warn('Failed to sync pending wellness check-ins.', error);
-          });
-
-          void syncPendingBodyMeasurements().catch((error) => {
-            console.warn('Failed to sync pending body measurements.', error);
-          });
+          if (USE_DEV_AUTH || sessionRef.current?.user) {
+            void syncPendingRecords();
+          }
         }
       }
     );
@@ -133,6 +122,12 @@ export default function RootLayout() {
       subscription.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (!session?.user) return;
+
+    void syncPendingRecords();
+  }, [session?.user.id]);
 
   useEffect(() => {
     if (USE_DEV_AUTH) {
@@ -192,6 +187,7 @@ export default function RootLayout() {
             <Stack>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="reset-password" options={{ headerShown: false }} />
               <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen

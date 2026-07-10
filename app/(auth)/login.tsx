@@ -83,6 +83,12 @@ export default function LoginScreen() {
             onChangeText={setPassword}
           />
 
+          {!USE_DEV_AUTH ? (
+            <Link href="/forgot-password" className="self-end text-sm font-bold text-primary">
+              Forgot password?
+            </Link>
+          ) : null}
+
           <Button
             title={USE_DEV_AUTH ? 'Continue in local dev mode' : isSubmitting ? 'Signing in...' : 'Sign in'}
             onPress={handleLogin}

@@ -579,15 +579,19 @@ function markWaterLogFailed(waterLogLocalId: string) {
 let nutritionSyncInFlight: Promise<void> | null = null;
 let nutritionSyncRequestedWhileInFlight = false;
 
-async function syncPendingMealLogs(supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase']) {
+async function syncPendingMealLogs(
+  supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase'],
+  userId: string
+) {
   const pendingMealLogs = db.getAllSync<LocalMealLogRow>(
     `
     select *
     from meal_logs_local
     where sync_status in ('pending', 'failed')
       and user_id != ?
+      and user_id = ?
     `,
-    [LOCAL_DEV_USER_ID]
+    [LOCAL_DEV_USER_ID, userId]
   );
 
   for (const mealLog of pendingMealLogs) {
@@ -699,15 +703,19 @@ async function syncPendingMealLogs(supabase: Awaited<typeof import('@/src/lib/su
   }
 }
 
-async function syncPendingWaterLogs(supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase']) {
+async function syncPendingWaterLogs(
+  supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase'],
+  userId: string
+) {
   const pendingWaterLogs = db.getAllSync<LocalWaterLogRow>(
     `
     select *
     from water_logs_local
     where sync_status in ('pending', 'failed')
       and user_id != ?
+      and user_id = ?
     `,
-    [LOCAL_DEV_USER_ID]
+    [LOCAL_DEV_USER_ID, userId]
   );
 
   for (const waterLog of pendingWaterLogs) {
@@ -740,8 +748,14 @@ async function syncPendingNutritionLogsImpl() {
   }
 
   const { supabase } = await import('@/src/lib/supabase');
-  await syncPendingMealLogs(supabase);
-  await syncPendingWaterLogs(supabase);
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error || !data.user?.id) {
+    throw new Error('Sign in before syncing nutrition logs.');
+  }
+
+  await syncPendingMealLogs(supabase, data.user.id);
+  await syncPendingWaterLogs(supabase, data.user.id);
 }
 
 async function drainNutritionSyncQueue() {
