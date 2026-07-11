@@ -1,36 +1,52 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readProjectFile } from './helpers/project.mjs';
+import { fileExists, readProjectFile, readProjectJson } from './helpers/project.mjs';
 
-test('CI installs the committed dependency graph and runs the complete quality suite', () => {
+test('CI rejects private registry lockfiles before installing dependencies', () => {
   const workflow = readProjectFile('.github/workflows/tests.yml');
+  const pkg = readProjectJson('package.json');
 
-  assert.match(workflow, /timeout-minutes: 30/);
+  assert.match(workflow, /timeout-minutes: 20/);
   assert.match(workflow, /node-version-file: \.nvmrc/);
+  assert.match(workflow, /cache: npm/);
   assert.match(workflow, /test "\$\(node --version\)" = "v\$\(cat \.nvmrc\)"/);
   assert.match(workflow, /test "\$\(npm --version\)" = "10\.9\.8"/);
-  assert.match(workflow, /run: bash scripts\/ci-npm-install\.sh/);
+  assert.match(workflow, /run: node scripts\/check-lockfile-registry\.mjs/);
+  assert.match(workflow, /run: npm ci --no-audit --no-fund/);
   assert.match(workflow, /uses: actions\/upload-artifact@v4/);
   assert.match(workflow, /npm-ci-diagnostics/);
   assert.match(workflow, /run: npm run test:all/);
-  assert.doesNotMatch(workflow, /npm install -g npm/);
-  assert.doesNotMatch(workflow, /npm install --no-audit --no-fund/);
+  assert.equal(pkg.scripts['check:lockfile'], 'node scripts/check-lockfile-registry.mjs');
+  assert.match(pkg.scripts['test:all'], /^npm run check:lockfile &&/);
+
+  assert.doesNotMatch(workflow, /--prefer-offline/);
+  assert.doesNotMatch(workflow, /fetch-retries/);
+  assert.doesNotMatch(workflow, /scripts\/ci-npm-install\.sh/);
+  assert.equal(fileExists('scripts/ci-npm-install.sh'), false);
 });
 
-test('CI retries only npm and registry transport failures while preserving immutable installs', () => {
-  const installer = readProjectFile('scripts/ci-npm-install.sh');
+test('committed lockfile contains only portable public registry tarball URLs', () => {
+  const lock = readProjectJson('package-lock.json');
 
-  assert.match(installer, /npm ci/);
-  assert.match(installer, /--prefer-offline/);
-  assert.match(installer, /--fetch-retries=5/);
-  assert.match(installer, /--fetch-timeout=120000/);
-  assert.match(installer, /--maxsockets=5/);
-  assert.match(installer, /Exit handler never called/);
-  assert.match(installer, /ETIMEDOUT/);
-  assert.match(installer, /append_latest_npm_debug_log/);
-  assert.match(installer, /rm -rf node_modules/);
-  assert.match(installer, /NPM_CI_MAX_ATTEMPTS:-3/);
-  assert.doesNotMatch(installer, /^\s*npm install(?:\s|$)/m);
-  assert.doesNotMatch(installer, /npm cache clean/);
+  for (const [packagePath, entry] of Object.entries(lock.packages ?? {})) {
+    if (typeof entry.resolved !== 'string') {
+      continue;
+    }
+
+    let resolvedUrl;
+    try {
+      resolvedUrl = new URL(entry.resolved);
+    } catch {
+      continue;
+    }
+
+    if (resolvedUrl.protocol === 'https:' || resolvedUrl.protocol === 'http:') {
+      assert.equal(
+        resolvedUrl.hostname,
+        'registry.npmjs.org',
+        `${packagePath || '<root>'} must not pin a private registry`,
+      );
+    }
+  }
 });

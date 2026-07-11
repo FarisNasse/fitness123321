@@ -20,7 +20,7 @@ jobs:
   test:
     name: Run test suite
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -37,16 +37,25 @@ jobs:
           test "$(node --version)" = "v$(cat .nvmrc)"
           test "$(npm --version)" = "10.9.8"
 
+      - name: Validate lockfile registry portability
+        run: node scripts/check-lockfile-registry.mjs
+
       - name: Install locked dependencies
-        run: bash scripts/ci-npm-install.sh
+        run: npm ci --no-audit --no-fund
+
+      - name: Capture npm install diagnostics
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-ci-logs"
+          cp -R "$(npm config get cache)/_logs/." "$RUNNER_TEMP/npm-ci-logs/" || true
 
       - name: Upload npm install diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: npm-ci-diagnostics
-          path: ${{ runner.temp }}/npm-ci-logs/**/*.log
-          if-no-files-found: ignore
+          path: ${{ runner.temp }}/npm-ci-logs/*.log
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Run all checks and tests

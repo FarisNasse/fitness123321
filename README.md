@@ -58,14 +58,14 @@ bundled npm version, and then runs this same command after an immutable
 bundled npm together avoids package-manager/runtime combinations that Expo does
 not validate.
 
-GitHub Actions runs `scripts/ci-npm-install.sh` for the immutable install. The
-script retains `npm ci`, but retries up to three times only when npm reports a
-registry transport failure or its known `Exit handler never called!` crash. It
-uses the package cache populated by earlier attempts, limits concurrent registry
-connections, and uploads the npm console and debug logs as the
-`npm-ci-diagnostics` artifact if all attempts fail. Dependency, lockfile,
-engine, peer-dependency, and lifecycle-script failures are not converted into
-successes or retried as though they were network failures.
+Before installing dependencies, CI runs `npm run check:lockfile` to reject
+lockfiles that pin package tarballs to a private or machine-specific registry.
+Public npm packages must use `https://registry.npmjs.org/` in
+`package-lock.json`; npm treats that host as a portable reference to the active
+configured registry. CI then runs one ordinary immutable
+`npm ci --no-audit --no-fund` rather than masking failures with retries or
+extended timeouts. If npm fails, its complete debug log is uploaded as the
+`npm-ci-diagnostics` artifact.
 
 Direct dependencies are kept only when they are imported by application or
 configuration code or are required by a configured platform. The few runtime

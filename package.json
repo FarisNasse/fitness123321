@@ -25,8 +25,9 @@
     "import:exercises": "node scripts/import-exercise-dataset.mjs",
     "check:local": "node scripts/check-local-dev.mjs",
     "test": "node --test",
-    "test:all": "npm run test && npm run check:exercises && npm run check:local && npm run typecheck && npm run lint",
-    "issues:workout-roadmap": "node scripts/github/cleanup-workout-roadmap.mjs"
+    "test:all": "npm run check:lockfile && npm run test && npm run check:exercises && npm run check:local && npm run typecheck && npm run lint",
+    "issues:workout-roadmap": "node scripts/github/cleanup-workout-roadmap.mjs",
+    "check:lockfile": "node scripts/check-lockfile-registry.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "0.4.2",

@@ -30,7 +30,7 @@ test('package exposes fast test commands without adding heavy native test depend
   assert.equal(pkg.scripts.test, 'node --test');
   assert.equal(
     pkg.scripts['test:all'],
-    'npm run test && npm run check:exercises && npm run check:local && npm run typecheck && npm run lint'
+    'npm run check:lockfile && npm run test && npm run check:exercises && npm run check:local && npm run typecheck && npm run lint'
   );
 
   for (const dependency of ['jest', 'jest-expo', '@testing-library/react-native', 'react-test-renderer']) {
