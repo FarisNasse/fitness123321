@@ -41,7 +41,8 @@ Supabase project just to run and test the workout screen from the terminal.
 
 ## Clean-checkout verification
 
-Use the pinned Node and npm versions from `.nvmrc` and `package.json`, then run:
+Use Node 22.23.1 and its bundled npm 10.9.8, pinned by `.nvmrc` and
+`package.json`, then run:
 
 ```bash
 npm ci
@@ -51,28 +52,100 @@ npm run test:all
 `test:all` runs the Node test suite, exercise-data and local-development
 checks, TypeScript, and ESLint. The flat ESLint configuration covers the
 project's JavaScript, TypeScript, React hooks, and React Native imports and
-platform colors. CI runs this same command after an immutable `npm ci`
-installation.
+platform colors. CI uses the exact Node release from `.nvmrc`, verifies its
+bundled npm version, and then runs this same command after an immutable
+`npm ci` installation. Do not globally replace npm in CI; keeping Node and its
+bundled npm together avoids package-manager/runtime combinations that Expo does
+not validate.
+
+Before installing dependencies, CI runs `npm run check:lockfile` to reject
+lockfiles that pin package tarballs to a private or machine-specific registry.
+Public npm packages must use `https://registry.npmjs.org/` in
+`package-lock.json`; npm treats that host as a portable reference to the active
+configured registry. CI then runs one ordinary immutable
+`npm ci --no-audit --no-fund` rather than masking failures with retries or
+extended timeouts. If npm fails, its complete debug log is uploaded as the
+`npm-ci-diagnostics` artifact.
 
 Direct dependencies are kept only when they are imported by application or
 configuration code or are required by a configured platform. The few runtime
 packages without a source import have concrete platform roles:
 
 - `expo-dev-client` supports the `developmentClient` EAS build profile.
+- `expo-font` is required by the installed Google fonts and vector icons.
+- `expo-constants` and `react-native-screens` support Expo Router at runtime.
+- `react-native-worklets` provides the worklet runtime required by Reanimated.
 - `react-dom` and `react-native-web` provide the configured web target.
-- `react-native-screens` provides Expo Router's native stack implementation.
 
 Packages from abandoned implementations—including the old chart, form,
 bottom-sheet, gradient, notification, and state-store choices—are not retained
 as placeholders.
+
+## Expo SDK 56 release baseline
+
+`app.config.ts` is the only Expo app-configuration source. The Router entry point
+remains in `package.json`; do not reintroduce an `app.json` unless every value is
+intentionally merged into the dynamic config.
+
+Expo SDK 56 requires Node 22.13 or newer. This repository pins Node 22.23.1
+and the npm 10.9.8 release bundled with it so local installs and CI use the same
+supported package-manager/runtime pair.
+
+Before creating a development client, preview, or production build, run the
+complete release baseline:
+
+```bash
+npm ci
+npm run check:release
+```
+
+The release command runs the normal tests, type checking, and linting; verifies
+`expo install --check` and `expo-doctor`; validates the public Expo config; and
+exports both Android and iOS JavaScript bundles. Run the Expo checks directly
+while diagnosing native dependency changes:
+
+```bash
+npm run check:expo
+# Equivalent underlying commands:
+npx expo install --check
+npx expo-doctor
+```
+
+Expo SDK 56 requires native peer dependencies to be installed directly rather
+than relying on transitive copies. In this project, `expo-font` supports the
+Google and vector-icon fonts, `expo-constants` supports Expo Router, and
+`react-native-worklets` supports Reanimated. NativeWind v4 supplies the required Worklets Babel transform. The Expo preset's
+automatic Reanimated/Worklets injection is deliberately disabled in
+`babel.config.js` so the transform runs exactly once; do not add the legacy
+`react-native-reanimated/plugin` entry or a second Worklets plugin.
+
+After the automated checks pass, compile both development clients:
+
+```bash
+npx eas-cli@latest build --platform android --profile development
+npx eas-cli@latest build --platform ios --profile development
+```
+
+Install each build, then start Metro with the development-client target:
+
+```bash
+npx expo start --dev-client --clear
+```
+
+On both supported platforms, verify that the app reaches the dashboard without
+a native-module error, Router navigation and native screens work, fonts render,
+gestures and Reanimated transitions respond, and a SQLite-backed record survives
+a force-close and relaunch. Record the device or simulator, OS version, build
+URL/ID, and result in the pull request. Repeat the same smoke test with the
+`preview` profile before release.
 
 ## Installable preview build
 
 The committed `preview` EAS profile creates an internally distributed Android
 APK that installs on a physical device or emulator. It uses local auth and
 local data sources by default, so a contributor can build and exercise the app
-without Supabase credentials. Run these commands from the repository root with
-Node 20 and npm 10:
+without Supabase credentials. Run these commands from the repository root
+with the pinned Node 22.23.1 and npm 10.9.8 toolchain:
 
 ```bash
 npm ci

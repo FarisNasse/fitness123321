@@ -22,15 +22,15 @@ const appScreens = [
 test('package exposes fast test commands without adding heavy native test dependencies', () => {
   const pkg = readProjectJson('package.json');
 
-  assert.equal(pkg.packageManager, 'npm@10.9.2');
-  assert.equal(pkg.engines?.node, '>=20 <23');
-  assert.equal(pkg.engines?.npm, '10.x');
-  assert.equal(readProjectFile('.nvmrc').trim(), '20');
+  assert.equal(pkg.packageManager, 'npm@10.9.8');
+  assert.equal(pkg.engines?.node, '>=22.13 <23');
+  assert.equal(pkg.engines?.npm, '>=10.9.8 <11');
+  assert.equal(readProjectFile('.nvmrc').trim(), '22.23.1');
   assert.match(readProjectFile('.npmrc'), /engine-strict=true/);
   assert.equal(pkg.scripts.test, 'node --test');
   assert.equal(
     pkg.scripts['test:all'],
-    'npm run test && npm run check:exercises && npm run check:local && npm run typecheck && npm run lint'
+    'npm run check:lockfile && npm run test && npm run check:exercises && npm run check:local && npm run typecheck && npm run lint'
   );
 
   for (const dependency of ['jest', 'jest-expo', '@testing-library/react-native', 'react-test-renderer']) {
@@ -40,15 +40,23 @@ test('package exposes fast test commands without adding heavy native test depend
 
 
 
-test('Expo SDK package ranges are pinned to the committed lockfile versions', () => {
+test('Expo SDK package ranges match the committed lockfile policy', () => {
   const pkg = readProjectJson('package.json');
   const lock = readProjectJson('package-lock.json');
 
-  assert.equal(pkg.dependencies.expo, '56.0.11');
+  assert.equal(pkg.dependencies.expo, '~56.0.15');
   assert.equal(pkg.dependencies['expo-crypto'], '56.0.4');
+
   assert.equal(lock.packages[''].dependencies.expo, pkg.dependencies.expo);
-  assert.equal(lock.packages[''].dependencies['expo-crypto'], pkg.dependencies['expo-crypto']);
-  assert.doesNotMatch(pkg.dependencies.expo, /^[~^]/);
+  assert.equal(
+    lock.packages[''].dependencies['expo-crypto'],
+    pkg.dependencies['expo-crypto']
+  );
+
+  // Expo-managed packages use a tilde range for compatible patch updates.
+  assert.match(pkg.dependencies.expo, /^~56\.0\.15$/);
+
+  // expo-crypto is intentionally pinned to an exact version.
   assert.doesNotMatch(pkg.dependencies['expo-crypto'], /^[~^]/);
 });
 

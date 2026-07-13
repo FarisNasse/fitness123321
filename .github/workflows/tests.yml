@@ -32,11 +32,34 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Use pinned npm
-        run: npm install -g npm@10.9.2 --no-audit --no-fund
+      - name: Verify pinned Node and npm
+        run: |
+          test "$(node --version)" = "v$(cat .nvmrc)"
+          test "$(npm --version)" = "10.9.8"
+
+      - name: Validate lockfile registry portability
+        run: node scripts/check-lockfile-registry.mjs
 
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Capture npm install diagnostics
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-ci-logs"
+          cp -R "$(npm config get cache)/_logs/." "$RUNNER_TEMP/npm-ci-logs/" || true
+
+      - name: Upload npm install diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-ci-diagnostics
+          path: ${{ runner.temp }}/npm-ci-logs/*.log
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Run all checks and tests
         run: npm run test:all
+
+      - name: Validate Expo SDK and native dependencies
+        run: npm run check:expo
