@@ -40,15 +40,23 @@ test('package exposes fast test commands without adding heavy native test depend
 
 
 
-test('Expo SDK package ranges are pinned to the committed lockfile versions', () => {
+test('Expo SDK package ranges match the committed lockfile policy', () => {
   const pkg = readProjectJson('package.json');
   const lock = readProjectJson('package-lock.json');
 
-  assert.equal(pkg.dependencies.expo, '56.0.11');
+  assert.equal(pkg.dependencies.expo, '~56.0.15');
   assert.equal(pkg.dependencies['expo-crypto'], '56.0.4');
+
   assert.equal(lock.packages[''].dependencies.expo, pkg.dependencies.expo);
-  assert.equal(lock.packages[''].dependencies['expo-crypto'], pkg.dependencies['expo-crypto']);
-  assert.doesNotMatch(pkg.dependencies.expo, /^[~^]/);
+  assert.equal(
+    lock.packages[''].dependencies['expo-crypto'],
+    pkg.dependencies['expo-crypto']
+  );
+
+  // Expo-managed packages use a tilde range for compatible patch updates.
+  assert.match(pkg.dependencies.expo, /^~56\.0\.15$/);
+
+  // expo-crypto is intentionally pinned to an exact version.
   assert.doesNotMatch(pkg.dependencies['expo-crypto'], /^[~^]/);
 });
 
