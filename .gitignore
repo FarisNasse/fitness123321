@@ -37,3 +37,6 @@ supabase/.temp/
 *.db
 *.sqlite
 *.sqlite3
+
+# EAS build metadata captured before generating committed evidence
+.eas-preview-build*.json

@@ -1,11 +1,11 @@
 {
   "cli": {
-    "version": ">= 16.28.0",
+    "version": ">= 20.5.1",
     "appVersionSource": "remote"
   },
   "build": {
     "base": {
-      "node": "20.19.4",
+      "node": "22.23.1",
       "env": {
         "EXPO_PUBLIC_AUTH_MODE": "local",
         "EXPO_PUBLIC_WORKOUT_SYNC_SOURCE": "local",
@@ -31,7 +31,11 @@
         "EXPO_PUBLIC_APP_ENV": "preview"
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "credentialsSource": "remote"
+      },
+      "ios": {
+        "credentialsSource": "remote"
       }
     },
     "auth-preview": {
@@ -50,7 +54,7 @@
       }
     },
     "production": {
-      "node": "20.19.4",
+      "node": "22.23.1",
       "autoIncrement": true,
       "environment": "production",
       "env": {
