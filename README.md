@@ -144,44 +144,127 @@ URL/ID, and result in the pull request. Repeat the same smoke test with the
 The committed `preview` EAS profile creates an internally distributed Android
 APK that installs on a physical device or emulator. It uses local auth and
 local data sources by default, so a contributor can build and exercise the app
-without Supabase credentials. Run these commands from the repository root
-with the pinned Node 22.23.1 and npm 10.9.8 toolchain:
+without Supabase credentials. The EAS workers use the same Node 22.23.1 runtime
+pinned by `.nvmrc`, and preview signing is stored remotely by EAS.
+
+The final native identity is intentionally fixed on both platforms:
+
+```text
+Android package: com.farisnasse.allinonefitness
+iOS bundle identifier: com.farisnasse.allinonefitness
+URL scheme: fitnessapp
+```
+
+### 1. Validate a clean checkout
+
+Run from the repository root with Node 22.23.1 and npm 10.9.8:
 
 ```bash
 npm ci
+npm run check:release
 npx eas-cli@latest login
 npx eas-cli@latest whoami
-npx eas-cli@latest build:configure
-npm run check:preview
-npx eas-cli@latest build --platform android --profile preview
 ```
 
-`build:configure` links the checkout to an EAS project. On the first run, choose
-the Expo account that will own the project, allow EAS to create or link the
-project, and commit the generated `extra.eas.projectId` change to
-`app.config.ts`. For a new Android signing key, allow EAS to generate and store
-the keystore when prompted.
+### 2. Select and commit the final EAS project
 
-When the build completes, install the latest APK on a running Android emulator:
+Create or link the project while authenticated as the final Expo account:
+
+```bash
+npx eas-cli@latest project:init
+npx eas-cli@latest project:info
+npx eas-cli@latest build:configure
+```
+
+The committed configuration is not release-ready until `app.config.ts` contains
+both the real Expo `owner` and the real `extra.eas.projectId`. Never invent the
+UUID. If EAS cannot update the dynamic TypeScript config automatically, copy the
+owner and project ID shown by `project:info` and run:
+
+```bash
+npm run configure:eas -- --owner EXPO_ACCOUNT --project-id EAS_PROJECT_UUID
+npm run check:eas-link
+npm run check:preview
+```
+
+Commit the resulting `app.config.ts` change. `check:eas-link` rejects missing or
+placeholder linkage, Node drift, local signing credentials, changed native
+identifiers, and a missing release-evidence workflow.
+
+### 3. Select or generate signing credentials
+
+The preview profile explicitly uses remote EAS credentials. Configure Android
+credentials before the first non-interactive build:
+
+```bash
+npx eas-cli@latest credentials:configure-build --platform android --profile preview
+```
+
+Select an existing release keystore only when it is the intended final signing
+identity. Otherwise allow EAS to generate and store a new keystore. For an iOS
+internal build, first register the test device and configure Apple signing:
+
+```bash
+npx eas-cli@latest device:create
+npx eas-cli@latest credentials:configure-build --platform ios --profile preview
+```
+
+### 4. Produce the preview binary
+
+Generate a completed Android build and retain its machine-readable metadata:
+
+```bash
+npx eas-cli@latest build --platform android --profile preview --wait --json > .eas-preview-build.json
+```
+
+When Apple signing and a registered test device are available, use the same
+profile for iOS:
+
+```bash
+npx eas-cli@latest build --platform ios --profile preview --wait --json > .eas-preview-build-ios.json
+```
+
+### 5. Install and verify the binary
+
+Install the latest APK on a running Android emulator:
 
 ```bash
 npx eas-cli@latest build:run --platform android --latest
 ```
 
-For a physical Android device, open the APK link from the completed build on
-the device, or download the APK, rename it to
-`all-in-one-fitness-preview.apk`, connect a device with USB debugging enabled,
-and run:
+For a physical Android device, open the install URL from the completed build or
+download the APK, rename it to `all-in-one-fitness-preview.apk`, enable USB
+debugging, and run:
 
 ```bash
 adb devices
 adb install -r ./all-in-one-fitness-preview.apk
 ```
 
-Open the installed app and verify that the lime performance icon appears in the
-launcher and on the dark splash screen. Then save one local record, force-close
-the app, reopen it, and confirm the record remains. Record the device or
-emulator model, OS version, EAS build URL/ID, and result in the pull request.
+Cold-launch the installed binary without Metro or Expo Go. Verify the app icon,
+splash, bundled fonts, every tab, representative modals/sheets, and SQLite by
+creating a record, force-closing the app, reopening it, and confirming the
+record remains.
+
+### 6. Commit reproducible release evidence
+
+If the build command output was not retained, fetch it by ID:
+
+```bash
+npx eas-cli@latest build:view BUILD_ID_FROM_EAS --json > .eas-preview-build.json
+```
+
+After manual installation and verification, generate a committed evidence file:
+
+```bash
+npm run record:preview -- --build-json .eas-preview-build.json --device "DEVICE_OR_EMULATOR" --os "OS_AND_VERSION" --tester "TESTER_NAME" --result pass
+```
+
+Review and commit the new file under `docs/releases/`. It records the build ID,
+build and artifact URLs, commit SHA, owner/project, identifier, device, OS,
+tester, result, and the required binary smoke checks. Use
+[`docs/release-evidence-template.md`](docs/release-evidence-template.md) only
+when build JSON is unavailable.
 
 ### Preview environment variables
 
@@ -193,7 +276,7 @@ These non-secret values are committed in the `base` EAS profile inherited by
 | `EXPO_PUBLIC_AUTH_MODE` | `local` | Uses the local reviewer session. |
 | `EXPO_PUBLIC_WORKOUT_SYNC_SOURCE` | `local` | Keeps workout writes on device. |
 | `EXPO_PUBLIC_NUTRITION_SYNC_SOURCE` | `local` | Keeps nutrition writes on device. |
-| `EXPO_PUBLIC_WELLNESS_SYNC_SOURCE` | `local` | Keeps wellness writes on device. |
+| `EXPO_PUBLIC_WELLNESS_SYNC_SOURCE` | `local` | Keeps wellness on device. |
 | `EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE` | `local` | Keeps measurements on device. |
 | `EXPO_PUBLIC_EXERCISE_SOURCE` | `local` | Uses the bundled exercise seed. |
 | `EXPO_PUBLIC_FOOD_SOURCE` | `local` | Uses local food data. |
@@ -205,12 +288,6 @@ To test Supabase-backed auth or sync, configure
 All `EXPO_PUBLIC_*` values are embedded in the client bundle; never use a
 Supabase service-role key or another secret. `.env.example` is the complete
 local reference for the supported variables.
-
-The same build flow is available for iOS with `--platform ios`, but installing
-an internal iOS preview on a physical device also requires Apple signing and
-device provisioning. Android is the reproducible no-store preview path for
-this project.
-
 
 ## Workout reviewer docs
 
