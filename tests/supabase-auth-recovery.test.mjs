@@ -54,12 +54,15 @@ test('new auth users receive an RLS-owned profile even with email confirmation e
 
 test('pending local sync is restricted to the restored authenticated user', () => {
   const layout = readProjectFile('app/_layout.tsx');
+  const syncState = readProjectFile('src/lib/sync-state.tsx');
 
   assert.match(layout, /supabase\.auth\.getSession\(\)/);
   assert.match(layout, /supabase\.auth\.onAuthStateChange/);
-  assert.match(layout, /const sessionUserId = session\?\.user\.id/);
-  assert.match(layout, /if \(!sessionUserId\) return/);
-  assert.match(layout, /syncPendingRecords\(\)/);
+  assert.match(layout, /SyncStateProvider canSync=\{USE_DEV_AUTH \|\| Boolean\(session\?\.user\)\}/);
+  assert.match(syncState, /syncPendingWorkoutSessions/);
+  assert.match(syncState, /syncPendingNutritionLogs/);
+  assert.match(syncState, /syncPendingWellnessCheckIns/);
+  assert.match(syncState, /syncPendingBodyMeasurements/);
 
   for (const file of [
     'src/features/workouts/workout-service.ts',

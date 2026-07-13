@@ -8,6 +8,8 @@ import { Card } from '@/src/components/Card';
 import { ProgressBar } from '@/src/components/ProgressBar';
 import { Screen } from '@/src/components/Screen';
 import { useAuthSession } from '@/src/features/auth/auth-session-context';
+import { reportProviderError } from '@/src/lib/error-reporting';
+import { useNetworkState } from '@/src/lib/network-state';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
 
@@ -26,6 +28,7 @@ export default function OnboardingScreen() {
   const [level, setLevel] = useState<(typeof levels)[number]>('beginner');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { refreshProfile } = useAuthSession();
+  const { status: networkStatus } = useNetworkState();
 
   async function saveOnboarding() {
     setIsSubmitting(true);
@@ -43,6 +46,13 @@ export default function OnboardingScreen() {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
+      if (userError) {
+        reportProviderError(
+          userError,
+          { source: 'onboarding-screen', operation: 'resolve-user', domain: 'auth' },
+          { fallback: 'Your session needs to be refreshed.' }
+        );
+      }
       setIsSubmitting(false);
       Alert.alert('Session expired', 'Please sign in again.');
       router.replace('/login');
@@ -58,7 +68,15 @@ export default function OnboardingScreen() {
     setIsSubmitting(false);
 
     if (error) {
-      Alert.alert('Unable to save onboarding', error.message);
+      const message = reportProviderError(
+        error,
+        { source: 'onboarding-screen', operation: 'save-profile', domain: 'auth' },
+        {
+          offline: networkStatus === 'offline',
+          fallback: 'We couldn’t save your setup. Please try again.',
+        }
+      );
+      Alert.alert('Unable to save onboarding', message);
       return;
     }
 

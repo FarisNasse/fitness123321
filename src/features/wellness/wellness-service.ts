@@ -1,6 +1,8 @@
 import * as Crypto from 'expo-crypto';
 
+import { reportError } from '@/src/lib/error-reporting';
 import { db, type LocalWellnessCheckIn } from '@/src/lib/local-db';
+import { markSyncPending } from '@/src/lib/sync-events';
 import {
   LOCAL_DEV_USER_ID,
   USE_REMOTE_WELLNESS_SYNC,
@@ -32,6 +34,8 @@ export function subscribeToWellnessChanges(
 }
 
 function notifyWellnessChanged(checkIn: WellnessCheckIn) {
+  markSyncPending('wellness');
+
   for (const listener of wellnessListeners) {
     listener(checkIn);
   }
@@ -146,6 +150,13 @@ export async function getWellnessOwnerUserId() {
   const { data, error } = await supabase.auth.getUser();
 
   if (error || !data.user?.id) {
+    if (error) {
+      reportError(error, {
+        source: 'wellness-service',
+        operation: 'resolve-owner',
+        domain: 'wellness',
+      });
+    }
     throw new Error('Sign in before logging cloud-synced wellness data.');
   }
 
@@ -306,6 +317,13 @@ async function syncPendingWellnessCheckInsImpl() {
   const { data, error } = await supabase.auth.getUser();
 
   if (error || !data.user?.id) {
+    if (error) {
+      reportError(error, {
+        source: 'wellness-service',
+        operation: 'resolve-sync-owner',
+        domain: 'wellness',
+      });
+    }
     throw new Error('Sign in before syncing wellness check-ins.');
   }
 
@@ -346,6 +364,11 @@ async function syncPendingWellnessCheckInsImpl() {
       .maybeSingle();
 
     if (moodError || !moodData?.id) {
+      reportError(moodError ?? new Error('Mood provider returned no row.'), {
+        source: 'wellness-service',
+        operation: 'sync-mood-check-in',
+        domain: 'wellness',
+      });
       markWellnessCheckInFailed(checkIn.local_id);
       continue;
     }
@@ -367,6 +390,11 @@ async function syncPendingWellnessCheckInsImpl() {
       .maybeSingle();
 
     if (sleepError || !sleepData?.id) {
+      reportError(sleepError ?? new Error('Sleep provider returned no row.'), {
+        source: 'wellness-service',
+        operation: 'sync-sleep-check-in',
+        domain: 'wellness',
+      });
       markWellnessCheckInFailed(checkIn.local_id);
       continue;
     }

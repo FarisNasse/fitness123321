@@ -402,3 +402,9 @@ This is intentionally a buildable foundation rather than a complete app. The nex
 - Complete workout
 - Workout history
 - Local-to-cloud sync
+
+## Runtime protection and diagnostics
+
+The app includes a root recovery screen, optional Sentry crash reporting, shared network state, and coordinated local-first sync status across workouts, nutrition, wellness, and progress. Provider failures are logged with diagnostic context while user-facing screens show stable product copy. Offline mode remains fully usable for on-device logging.
+
+See [`docs/runtime-protection.md`](docs/runtime-protection.md) for environment configuration, release metadata, source-map setup, and manual verification steps.

@@ -14,6 +14,7 @@ import {
   getLocalWorkoutSession,
   getLocalWorkoutSets,
 } from '@/src/features/workouts/workout-service';
+import { reportError } from '@/src/lib/error-reporting';
 import type { Exercise } from '@/src/types/models';
 
 export default function WorkoutHistoryDetailScreen() {
@@ -48,9 +49,14 @@ export default function WorkoutHistoryDetailScreen() {
         error: session ? null : 'This local workout session is not available on this device.',
       };
     } catch (error) {
+      reportError(error, {
+        source: 'workout-history-screen',
+        operation: 'load-session',
+        domain: 'workouts',
+      });
       return {
         session: null,
-        error: error instanceof Error ? error.message : 'Workout history could not be read.',
+        error: 'Workout history could not be read.',
       };
     }
   }, [sessionId]);
@@ -64,9 +70,14 @@ export default function WorkoutHistoryDetailScreen() {
     try {
       return { sets: getLocalWorkoutSets(sessionId), error: null };
     } catch (error) {
+      reportError(error, {
+        source: 'workout-history-screen',
+        operation: 'load-sets',
+        domain: 'workouts',
+      });
       return {
         sets: [],
-        error: error instanceof Error ? error.message : 'Workout sets could not be read.',
+        error: 'Workout sets could not be read.',
       };
     }
   }, [sessionId, session]);

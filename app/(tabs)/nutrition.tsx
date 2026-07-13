@@ -20,6 +20,7 @@ import {
   syncPendingNutritionLogs,
   type DailyNutritionSummary,
 } from '@/src/features/nutrition/nutrition-service';
+import { reportError } from '@/src/lib/error-reporting';
 import type { Food, MealType } from '@/src/types/models';
 
 const mealTypes: { label: string; value: MealType }[] = [
@@ -108,10 +109,12 @@ export default function NutritionScreen() {
         })
         .catch((error) => {
           if (!cancelled) {
-            Alert.alert(
-              'Unable to search foods',
-              error instanceof Error ? error.message : 'Try again.'
-            );
+            reportError(error, {
+              source: 'nutrition-screen',
+              operation: 'search-foods',
+              domain: 'nutrition',
+            });
+            Alert.alert('Unable to search foods', 'Food search is temporarily unavailable.');
           }
         })
         .finally(() => {
@@ -214,10 +217,12 @@ export default function NutritionScreen() {
       setQuantity(String(food.servingSize ?? 1));
       setUnit(food.servingUnit ?? 'serving');
     } catch (error) {
-      Alert.alert(
-        'Unable to create food',
-        error instanceof Error ? error.message : 'Try again.'
-      );
+      reportError(error, {
+        source: 'nutrition-screen',
+        operation: 'create-food',
+        domain: 'nutrition',
+      });
+      Alert.alert('Unable to create food', 'The food could not be created. Please try again.');
     }
   }
 
@@ -250,13 +255,19 @@ export default function NutritionScreen() {
       setIsAddFoodOpen(false);
 
       void syncPendingNutritionLogs().catch((error) => {
-        console.warn('Failed to sync pending nutrition logs.', error);
+        reportError(error, {
+          source: 'nutrition-screen',
+          operation: 'sync-after-food-log',
+          domain: 'nutrition',
+        });
       });
     } catch (error) {
-      Alert.alert(
-        'Unable to log food',
-        error instanceof Error ? error.message : 'Try again.'
-      );
+      reportError(error, {
+        source: 'nutrition-screen',
+        operation: 'log-food',
+        domain: 'nutrition',
+      });
+      Alert.alert('Unable to log food', 'The food entry could not be saved. Please try again.');
     }
   }
 
@@ -267,13 +278,19 @@ export default function NutritionScreen() {
       refreshSummary();
 
       void syncPendingNutritionLogs().catch((error) => {
-        console.warn('Failed to sync pending nutrition logs.', error);
+        reportError(error, {
+          source: 'nutrition-screen',
+          operation: 'sync-after-water-log',
+          domain: 'nutrition',
+        });
       });
     } catch (error) {
-      Alert.alert(
-        'Unable to add water',
-        error instanceof Error ? error.message : 'Try again.'
-      );
+      reportError(error, {
+        source: 'nutrition-screen',
+        operation: 'log-water',
+        domain: 'nutrition',
+      });
+      Alert.alert('Unable to add water', 'The water entry could not be saved. Please try again.');
     }
   }
 

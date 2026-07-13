@@ -2,48 +2,33 @@ import '../global.css';
 
 import { Inter_400Regular, Inter_700Bold, Inter_900Black } from '@expo-google-fonts/inter';
 import { SpaceGrotesk_700Bold, useFonts } from '@expo-google-fonts/space-grotesk';
+import * as Sentry from '@sentry/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Session } from '@supabase/supabase-js';
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { AppErrorBoundary } from '@/src/components/AppErrorBoundary';
+import { RuntimeStatusBanner } from '@/src/components/RuntimeStatusBanner';
 import { AuthSessionContext, type AuthProfile, type AuthStatus } from '@/src/features/auth/auth-session-context';
 import { LOCAL_DEV_PROFILE, LOCAL_DEV_SESSION } from '@/src/features/auth/dev-auth';
-import { syncPendingNutritionLogs } from '@/src/features/nutrition/nutrition-service';
-import { syncPendingBodyMeasurements } from '@/src/features/progress/body-measurements-service';
-import { syncPendingWellnessCheckIns } from '@/src/features/wellness/wellness-service';
-import { syncPendingWorkoutSessions } from '@/src/features/workouts/workout-service';
+import { reportError } from '@/src/lib/error-reporting';
 import { initializeLocalDb } from '@/src/lib/local-db';
+import { NetworkStateProvider } from '@/src/lib/network-state';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
+import { SyncStateProvider } from '@/src/lib/sync-state';
 import { ThemeProvider } from '@/src/lib/theme-context';
 
 const queryClient = new QueryClient();
 
 void SplashScreen.preventAutoHideAsync();
 
-async function syncPendingRecords() {
-  await Promise.all([
-    syncPendingWorkoutSessions().catch((error) => {
-      console.warn('Failed to sync pending workout sessions.', error);
-    }),
-    syncPendingNutritionLogs().catch((error) => {
-      console.warn('Failed to sync pending nutrition logs.', error);
-    }),
-    syncPendingWellnessCheckIns().catch((error) => {
-      console.warn('Failed to sync pending wellness check-ins.', error);
-    }),
-    syncPendingBodyMeasurements().catch((error) => {
-      console.warn('Failed to sync pending body measurements.', error);
-    }),
-  ]);
-}
-
-export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+function RootRuntime() {
+  const [fontsLoaded, fontError] = useFonts({
     SpaceGrotesk_700Bold,
     Inter_400Regular,
     Inter_700Bold,
@@ -52,6 +37,7 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
+  const [runtimeError, setRuntimeError] = useState<Error | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const profileRequestRef = useRef(0);
 
@@ -87,7 +73,11 @@ export default function RootLayout() {
     }
 
     if (error) {
-      console.warn('Failed to load auth profile.', error);
+      reportError(error, {
+        source: 'root-runtime',
+        operation: 'load-auth-profile',
+        domain: 'auth',
+      });
     }
 
     const nextProfile = (data ?? null) as AuthProfile | null;
@@ -105,31 +95,18 @@ export default function RootLayout() {
   }, [loadLocalDevSession, loadProfile]);
 
   useEffect(() => {
-    initializeLocalDb();
-
-    const subscription = AppState.addEventListener(
-      'change',
-      (state: AppStateStatus) => {
-        if (state === 'active') {
-          if (USE_DEV_AUTH || sessionRef.current?.user) {
-            void syncPendingRecords();
-          }
-        }
-      }
-    );
-
-    return () => {
-      subscription.remove();
-    };
+    try {
+      initializeLocalDb();
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error('Local database initialization failed.');
+      reportError(normalized, {
+        source: 'root-runtime',
+        operation: 'initialize-local-database',
+        domain: 'storage',
+      });
+      setRuntimeError(normalized);
+    }
   }, []);
-
-  const sessionUserId = session?.user.id;
-
-  useEffect(() => {
-    if (!sessionUserId) return;
-
-    void syncPendingRecords();
-  }, [sessionUserId]);
 
   useEffect(() => {
     if (USE_DEV_AUTH) {
@@ -143,7 +120,11 @@ export default function RootLayout() {
       if (!isSubscribed) return;
 
       if (error) {
-        console.warn('Failed to resolve auth session.', error);
+        reportError(error, {
+          source: 'root-runtime',
+          operation: 'resolve-auth-session',
+          domain: 'auth',
+        });
       }
 
       void loadProfile(data.session ?? null);
@@ -172,12 +153,26 @@ export default function RootLayout() {
   );
 
   useEffect(() => {
-    if (fontsLoaded) {
+    if (fontError) {
+      reportError(fontError, {
+        source: 'root-runtime',
+        operation: 'load-brand-fonts',
+        domain: 'ui',
+      });
+    }
+  }, [fontError]);
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
       void SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontError, fontsLoaded]);
 
-  if (!fontsLoaded) {
+  if (runtimeError) {
+    throw runtimeError;
+  }
+
+  if (!fontsLoaded && !fontError) {
     return null;
   }
 
@@ -185,56 +180,73 @@ export default function RootLayout() {
     <GestureHandlerRootView className="flex-1">
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          <AuthSessionContext.Provider value={authContextValue}>
-            <Stack>
-              <Stack.Screen name="index" options={{ headerShown: false }} />
-              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-              <Stack.Screen name="reset-password" options={{ headerShown: false }} />
-              <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen
-                name="workout/exercises"
-                options={{
-                  title: 'Exercise Browser',
-                  headerStyle: { backgroundColor: '#0d1117' },
-                  headerTintColor: '#a3e635',
-                  headerTitleStyle: {
-                    color: '#e6edf3',
-                    fontFamily: 'SpaceGrotesk_700Bold',
-                  },
-                  headerShadowVisible: false,
-                }}
-              />
-              <Stack.Screen
-                name="workout/session/[id]"
-                options={{
-                  title: 'Live Workout',
-                  headerStyle: { backgroundColor: '#0d1117' },
-                  headerTintColor: '#a3e635',
-                  headerTitleStyle: {
-                    color: '#e6edf3',
-                    fontFamily: 'SpaceGrotesk_700Bold',
-                  },
-                  headerShadowVisible: false,
-                }}
-              />
-              <Stack.Screen
-                name="workout/history/[id]"
-                options={{
-                  title: 'Workout History',
-                  headerStyle: { backgroundColor: '#0d1117' },
-                  headerTintColor: '#a3e635',
-                  headerTitleStyle: {
-                    color: '#e6edf3',
-                    fontFamily: 'SpaceGrotesk_700Bold',
-                  },
-                  headerShadowVisible: false,
-                }}
-              />
-            </Stack>
-          </AuthSessionContext.Provider>
+          <NetworkStateProvider>
+            <AuthSessionContext.Provider value={authContextValue}>
+              <SyncStateProvider canSync={USE_DEV_AUTH || Boolean(session?.user)}>
+                <View className="flex-1 bg-base-100">
+                  <RuntimeStatusBanner />
+                  <Stack>
+                    <Stack.Screen name="index" options={{ headerShown: false }} />
+                    <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                    <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+                    <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen
+                      name="workout/exercises"
+                      options={{
+                        title: 'Exercise Browser',
+                        headerStyle: { backgroundColor: '#0d1117' },
+                        headerTintColor: '#a3e635',
+                        headerTitleStyle: {
+                          color: '#e6edf3',
+                          fontFamily: 'SpaceGrotesk_700Bold',
+                        },
+                        headerShadowVisible: false,
+                      }}
+                    />
+                    <Stack.Screen
+                      name="workout/session/[id]"
+                      options={{
+                        title: 'Live Workout',
+                        headerStyle: { backgroundColor: '#0d1117' },
+                        headerTintColor: '#a3e635',
+                        headerTitleStyle: {
+                          color: '#e6edf3',
+                          fontFamily: 'SpaceGrotesk_700Bold',
+                        },
+                        headerShadowVisible: false,
+                      }}
+                    />
+                    <Stack.Screen
+                      name="workout/history/[id]"
+                      options={{
+                        title: 'Workout History',
+                        headerStyle: { backgroundColor: '#0d1117' },
+                        headerTintColor: '#a3e635',
+                        headerTitleStyle: {
+                          color: '#e6edf3',
+                          fontFamily: 'SpaceGrotesk_700Bold',
+                        },
+                        headerShadowVisible: false,
+                      }}
+                    />
+                  </Stack>
+                </View>
+              </SyncStateProvider>
+            </AuthSessionContext.Provider>
+          </NetworkStateProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </GestureHandlerRootView>
   );
 }
+
+function RootLayout() {
+  return (
+    <AppErrorBoundary>
+      <RootRuntime />
+    </AppErrorBoundary>
+  );
+}
+
+export default Sentry.wrap(RootLayout);

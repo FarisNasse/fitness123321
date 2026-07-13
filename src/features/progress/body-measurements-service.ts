@@ -1,6 +1,8 @@
 import * as Crypto from "expo-crypto";
 
+import { reportError } from "@/src/lib/error-reporting";
 import { db, type LocalBodyMeasurement } from "@/src/lib/local-db";
+import { markSyncPending } from "@/src/lib/sync-events";
 import {
   LOCAL_DEV_USER_ID,
   USE_REMOTE_BODY_MEASUREMENT_SYNC,
@@ -132,6 +134,13 @@ export async function getBodyMeasurementOwnerUserId() {
   const { data, error } = await supabase.auth.getUser();
 
   if (error || !data.user?.id) {
+    if (error) {
+      reportError(error, {
+        source: "body-measurements-service",
+        operation: "resolve-owner",
+        domain: "progress",
+      });
+    }
     throw new Error("Sign in before logging cloud-synced measurements.");
   }
 
@@ -229,6 +238,7 @@ export function saveBodyMeasurement(
   }
 
   notifyBodyMeasurementsChanged();
+  markSyncPending('progress');
   return saved;
 }
 
@@ -344,6 +354,13 @@ export async function refreshBodyMeasurementsFromRemote(userId: string) {
   const { data: authData, error: authError } = await supabase.auth.getUser();
 
   if (authError || authData.user?.id !== userId) {
+    if (authError) {
+      reportError(authError, {
+        source: "body-measurements-service",
+        operation: "resolve-refresh-owner",
+        domain: "progress",
+      });
+    }
     throw new Error("Measurements can only be loaded for the signed-in user.");
   }
 
@@ -356,7 +373,12 @@ export async function refreshBodyMeasurementsFromRemote(userId: string) {
     .order("measured_at", { ascending: true });
 
   if (error) {
-    throw error;
+    reportError(error, {
+      source: "body-measurements-service",
+      operation: "refresh-measurements",
+      domain: "progress",
+    });
+    throw new Error("Measurements could not be refreshed right now.");
   }
 
   const localRows = getBodyMeasurementHistory(userId);
@@ -406,6 +428,13 @@ async function syncPendingBodyMeasurementsImpl() {
   const { data: authData, error: authError } = await supabase.auth.getUser();
 
   if (authError || !authData.user?.id) {
+    if (authError) {
+      reportError(authError, {
+        source: "body-measurements-service",
+        operation: "resolve-sync-owner",
+        domain: "progress",
+      });
+    }
     throw new Error("Sign in before syncing body measurements.");
   }
 
@@ -445,6 +474,11 @@ async function syncPendingBodyMeasurementsImpl() {
       .maybeSingle();
 
     if (error || !data?.id) {
+      reportError(error ?? new Error("Measurement provider returned no row."), {
+        source: "body-measurements-service",
+        operation: "sync-measurement",
+        domain: "progress",
+      });
       markBodyMeasurementFailed(measurement.local_id);
       continue;
     }

@@ -67,12 +67,14 @@ test('local-db web adapter supports the nutrition query and mutation patterns us
   assert.match(localDb, /from water_logs_local.*logged_at >= \?.*logged_at < \?/);
 });
 
-test('root layout syncs the nutrition queue when the app starts and returns active', () => {
-  const layout = readProjectFile('app/_layout.tsx');
+test('shared sync state coordinates the nutrition queue on connectivity and app activation', () => {
+  const syncState = readProjectFile('src/lib/sync-state.tsx');
 
-  assert.match(layout, /import \{ syncPendingNutritionLogs \} from '@\/src\/features\/nutrition\/nutrition-service';/);
-  assert.match(layout, /syncPendingNutritionLogs\(\)/);
-  assert.match(layout, /Failed to sync pending nutrition logs/);
+  assert.match(syncState, /import \{ syncPendingNutritionLogs \} from '@\/src\/features\/nutrition\/nutrition-service';/);
+  assert.match(syncState, /nutrition: syncPendingNutritionLogs/);
+  assert.match(syncState, /if \(canSync && networkStatus === 'online'\)/);
+  assert.match(syncState, /AppState\.addEventListener\(\s*'change'/s);
+  assert.match(syncState, /if \(state === 'active'\)/);
 });
 
 test('runtime flags keep nutrition local by default and enable Supabase explicitly', () => {

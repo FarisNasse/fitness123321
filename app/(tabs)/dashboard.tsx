@@ -24,6 +24,8 @@ import {
   getWellnessOwnerUserId,
   subscribeToWellnessChanges,
 } from '@/src/features/wellness/wellness-service';
+import { reportError, reportProviderError } from '@/src/lib/error-reporting';
+import { useNetworkState } from '@/src/lib/network-state';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
 
@@ -70,6 +72,7 @@ export default function DashboardScreen() {
   const [steps, setSteps] = useState(0);
   const [hasRemoteTargets, setHasRemoteTargets] = useState(true);
   const [isLoadingTargets, setIsLoadingTargets] = useState(true);
+  const { status: networkStatus } = useNetworkState();
 
   const refreshSummary = useCallback(() => {
     setSummary(getDailyNutritionSummary());
@@ -93,7 +96,11 @@ export default function DashboardScreen() {
       const checkIn = getDailyWellnessCheckIn(userId);
       setSteps(Number(checkIn?.steps ?? 0));
     } catch (error) {
-      console.warn('Failed to load daily wellness for the dashboard.', error);
+      reportError(error, {
+        source: 'dashboard-screen',
+        operation: 'load-wellness-summary',
+        domain: 'wellness',
+      });
       setSteps(0);
     }
   }, []);
@@ -132,7 +139,15 @@ export default function DashboardScreen() {
     const { error } = await supabase.auth.signOut();
 
     if (error) {
-      Alert.alert('Unable to sign out', error.message);
+      const message = reportProviderError(
+        error,
+        { source: 'dashboard-screen', operation: 'sign-out', domain: 'auth' },
+        {
+          offline: networkStatus === 'offline',
+          fallback: 'We couldn’t sign you out. Please try again.',
+        }
+      );
+      Alert.alert('Unable to sign out', message);
       return;
     }
 

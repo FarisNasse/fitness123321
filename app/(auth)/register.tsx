@@ -7,6 +7,8 @@ import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { Input } from '@/src/components/Input';
 import { Screen } from '@/src/components/Screen';
+import { reportProviderError } from '@/src/lib/error-reporting';
+import { useNetworkState } from '@/src/lib/network-state';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
 
@@ -15,6 +17,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { status: networkStatus } = useNetworkState();
 
   async function handleRegister() {
     if (USE_DEV_AUTH) {
@@ -41,7 +44,15 @@ export default function RegisterScreen() {
       });
 
       if (error) {
-        Alert.alert('Unable to create account', error.message);
+        const message = reportProviderError(
+          error,
+          { source: 'register-screen', operation: 'sign-up', domain: 'auth' },
+          {
+            offline: networkStatus === 'offline',
+            fallback: 'We couldn’t create the account. Review your details and try again.',
+          }
+        );
+        Alert.alert('Unable to create account', message);
         return;
       }
 
@@ -52,7 +63,15 @@ export default function RegisterScreen() {
         });
 
         if (profileError) {
-          Alert.alert('Account created, but profile setup failed', profileError.message);
+          const message = reportProviderError(
+            profileError,
+            { source: 'register-screen', operation: 'create-profile', domain: 'auth' },
+            {
+              offline: networkStatus === 'offline',
+              fallback: 'Your account was created, but setup could not finish. Sign in and try again.',
+            }
+          );
+          Alert.alert('Account setup incomplete', message);
           return;
         }
       }
@@ -68,8 +87,15 @@ export default function RegisterScreen() {
 
       router.replace('/onboarding');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Check your Supabase configuration.';
-      Alert.alert('Unable to reach Supabase', message);
+      const message = reportProviderError(
+        error,
+        { source: 'register-screen', operation: 'sign-up', domain: 'auth' },
+        {
+          offline: networkStatus === 'offline',
+          fallback: 'Account creation is temporarily unavailable. Please try again.',
+        }
+      );
+      Alert.alert('Unable to create account', message);
     } finally {
       setIsSubmitting(false);
     }

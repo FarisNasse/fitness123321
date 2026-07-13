@@ -11,7 +11,9 @@ import {
   type LocalWorkoutSessionExercise,
   type LocalWorkoutSet,
 } from '@/src/lib/local-db';
+import { reportError } from '@/src/lib/error-reporting';
 import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
+import { markSyncPending } from '@/src/lib/sync-events';
 import {
   buildProgressionRecommendation,
   buildProgressionSummaryLines,
@@ -356,6 +358,13 @@ export async function getWorkoutOwnerUserId() {
   const { data, error } = await supabase.auth.getUser();
 
   if (error || !data.user?.id) {
+    if (error) {
+      reportError(error, {
+        source: 'workout-service',
+        operation: 'resolve-owner',
+        domain: 'workouts',
+      });
+    }
     throw new Error('Sign in before starting a cloud-synced workout.');
   }
 
@@ -383,6 +392,7 @@ export function createLocalWorkoutSession(userId: string, name = 'Workout') {
     [localId, userId, name, now, now]
   );
 
+  markSyncPending('workouts');
   return localId;
 }
 
@@ -655,6 +665,7 @@ export function updateLocalWorkoutSet(
     [reps, weight, now, setLocalId]
   );
   markWorkoutSessionPending(existing.session_local_id);
+  markSyncPending('workouts');
 }
 
 export function deleteLocalWorkoutSet(setLocalId: string) {
@@ -713,6 +724,7 @@ export function deleteLocalWorkoutSet(setLocalId: string) {
   }
 
   markWorkoutSessionPending(deleted.session_local_id);
+  markSyncPending('workouts');
 }
 
 
@@ -772,6 +784,7 @@ export function restoreLocalWorkoutSet(setLocalId: string) {
   );
 
   markWorkoutSessionPending(deleted.session_local_id);
+  markSyncPending('workouts');
 }
 
 export function deleteLocalWorkoutSession(sessionLocalId: string) {
@@ -803,6 +816,8 @@ export function deleteLocalWorkoutSession(sessionLocalId: string) {
     `,
     [now, now, sessionLocalId]
   );
+
+  markSyncPending('workouts');
 }
 
 export function addLocalWorkoutSet(input: {
@@ -846,6 +861,7 @@ export function addLocalWorkoutSet(input: {
   );
 
   markWorkoutSessionPending(input.sessionLocalId);
+  markSyncPending('workouts');
   return localId;
 }
 
@@ -864,6 +880,8 @@ export function completeLocalWorkoutSession(sessionLocalId: string) {
     `,
     [now, now, now, sessionLocalId]
   );
+
+  markSyncPending('workouts');
 }
 
 function saveWorkoutSessionServerId(sessionLocalId: string, serverId: string) {
@@ -1041,6 +1059,13 @@ async function syncPendingWorkoutSessionsImpl() {
   const { data: authData, error: authError } = await supabase.auth.getUser();
 
   if (authError || !authData.user?.id) {
+    if (authError) {
+      reportError(authError, {
+        source: 'workout-service',
+        operation: 'resolve-sync-owner',
+        domain: 'workouts',
+      });
+    }
     throw new Error('Sign in before syncing workout sessions.');
   }
 
@@ -1210,7 +1235,11 @@ async function syncPendingWorkoutSessionsImpl() {
 
       markWorkoutSessionSynced(session.local_id, serverSessionId);
     } catch (error) {
-      console.warn('Unexpected workout sync error.', error);
+      reportError(error, {
+        source: 'workout-service',
+        operation: 'sync-workout-session',
+        domain: 'workouts',
+      });
       markWorkoutSessionFailed(session.local_id);
     }
   }

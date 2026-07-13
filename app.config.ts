@@ -29,6 +29,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-router',
+    '@sentry/react-native/expo',
     'expo-sqlite',
     [
       'expo-splash-screen',
