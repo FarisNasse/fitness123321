@@ -21,6 +21,7 @@ import {
   type LocalWorkoutSessionRow,
   type WorkoutSyncUiStatus,
 } from '@/src/features/workouts/workout-service';
+import { reportError } from '@/src/lib/error-reporting';
 import { USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
 
 export default function WorkoutsScreen() {
@@ -40,9 +41,12 @@ export default function WorkoutsScreen() {
       setRecentSessions(getCompletedWorkoutSessions(4));
     } catch (error) {
       setRecentSessions([]);
-      setRecentSessionsError(
-        error instanceof Error ? error.message : 'Workout history could not be read.'
-      );
+      reportError(error, {
+        source: 'workouts-screen',
+        operation: 'load-history',
+        domain: 'workouts',
+      });
+      setRecentSessionsError('Workout history could not be read. Try again.');
     } finally {
       setIsLoadingRecentSessions(false);
     }
@@ -69,7 +73,11 @@ export default function WorkoutsScreen() {
     try {
       await syncPendingWorkoutSessions();
     } catch (error) {
-      console.warn('Manual workout sync retry failed.', error);
+      reportError(error, {
+        source: 'workouts-screen',
+        operation: 'manual-sync-retry',
+        domain: 'workouts',
+      });
     } finally {
       if (sessionLocalId) {
         setSyncingSessionIds((current) => {
@@ -101,10 +109,12 @@ export default function WorkoutsScreen() {
       refreshRecentSessions();
       router.push(`/workout/session/${sessionId}`);
     } catch (error) {
-      Alert.alert(
-        'Could not start workout',
-        error instanceof Error ? error.message : 'Try signing in again.'
-      );
+      reportError(error, {
+        source: 'workouts-screen',
+        operation: 'start-workout',
+        domain: 'workouts',
+      });
+      Alert.alert('Could not start workout', 'Your workout could not be started. Please try again.');
     }
   }
 
@@ -124,10 +134,12 @@ export default function WorkoutsScreen() {
       refreshRecentSessions();
       router.push(`/workout/session/${repeatedWorkout.sessionLocalId}`);
     } catch (error) {
-      Alert.alert(
-        'Could not repeat workout',
-        error instanceof Error ? error.message : 'Try signing in again.'
-      );
+      reportError(error, {
+        source: 'workouts-screen',
+        operation: 'repeat-workout',
+        domain: 'workouts',
+      });
+      Alert.alert('Could not repeat workout', 'That workout could not be copied. Please try again.');
     }
   }
 

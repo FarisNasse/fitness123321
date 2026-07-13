@@ -23,6 +23,7 @@ import {
   upsertLocalExerciseTarget,
   type SmartExerciseDefaults,
 } from '@/src/features/workouts/workout-service';
+import { reportError } from '@/src/lib/error-reporting';
 import type { LocalWorkoutSet } from '@/src/lib/local-db';
 import type { Exercise } from '@/src/types/models';
 
@@ -294,7 +295,12 @@ export function useLiveWorkoutController(
 
   function queueWorkoutSync(reason: string) {
     void syncPendingWorkoutSessions().catch((error) => {
-      console.warn(`Failed to sync workout after ${reason}.`, error);
+      reportError(error, {
+        source: 'live-workout-controller',
+        operation: 'sync-workout',
+        domain: 'workouts',
+        tags: { reason },
+      });
     });
   }
 
@@ -326,14 +332,16 @@ export function useLiveWorkoutController(
       setSession(nextSession);
       setSessionLoadState({ status: 'ready' });
     } catch (error) {
+      reportError(error, {
+        source: 'live-workout-controller',
+        operation: 'load-session',
+        domain: 'workouts',
+      });
       setSession(null);
       setSessionLoadState({
         status: 'error',
         message: 'Could not load this workout',
-        detail:
-          error instanceof Error
-            ? error.message
-            : 'The local workout database could not be read.',
+        detail: 'The local workout could not be read. Return to Train and try again.',
       });
     }
   }, [sessionId]);
@@ -719,7 +727,11 @@ export function useLiveWorkoutController(
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     completeLocalWorkoutSession(sessionId);
     void syncPendingWorkoutSessions().catch((error) => {
-      console.warn('Failed to sync completed workout session.', error);
+      reportError(error, {
+        source: 'live-workout-controller',
+        operation: 'sync-completed-workout',
+        domain: 'workouts',
+      });
     });
 
     router.replace('/workouts');

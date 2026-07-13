@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 
 import { fetchExercises } from '@/src/features/workouts/exercise-service';
+import { reportError } from '@/src/lib/error-reporting';
 import { colors } from '@/src/lib/theme';
 import type { Exercise } from '@/src/types/models';
 
@@ -169,6 +170,16 @@ export function ExerciseLibrary({
     queryKey: ['exercises'],
     queryFn: fetchExercises,
   });
+
+  useEffect(() => {
+    if (error) {
+      reportError(error, {
+        source: 'exercise-library',
+        operation: 'load-exercises',
+        domain: 'workouts',
+      });
+    }
+  }, [error]);
 
   const filterOptions = useMemo(() => {
     return FILTERS.reduce(
@@ -351,7 +362,7 @@ export function ExerciseLibrary({
       return (
         <LibraryEmptyState
           title="Could not load exercises"
-          message={`The exercise list could not be loaded. Try again in a moment.${error?.message ? ` Detail: ${error.message}` : ''}`}
+          message="The exercise list could not be loaded. Try again in a moment."
           action={<LibraryButton title="Try again" onPress={() => void refetch()} />}
         />
       );

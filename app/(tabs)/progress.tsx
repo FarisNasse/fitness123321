@@ -31,6 +31,7 @@ import {
   getLocalWorkoutSets,
   type LocalWorkoutSessionRow,
 } from '@/src/features/workouts/workout-service';
+import { reportError } from '@/src/lib/error-reporting';
 
 type PersonalRecord = {
   exercise: string;
@@ -160,10 +161,12 @@ export default function ProgressScreen() {
       await refreshBodyMeasurementsFromRemote(userId);
       setMeasurements(getBodyMeasurementHistory(userId));
     } catch (error) {
-      Alert.alert(
-        'Unable to load measurements',
-        error instanceof Error ? error.message : 'Try again.'
-      );
+      reportError(error, {
+        source: 'progress-screen',
+        operation: 'load-measurements',
+        domain: 'progress',
+      });
+      Alert.alert('Unable to load measurements', 'Measurements could not be refreshed right now.');
     }
   }, []);
 
@@ -324,15 +327,21 @@ export default function ProgressScreen() {
       resetMeasurementForm();
 
       void syncPendingBodyMeasurements().catch((error) => {
-        console.warn('Failed to sync pending body measurements.', error);
+        reportError(error, {
+          source: 'progress-screen',
+          operation: 'sync-after-save',
+          domain: 'progress',
+        });
       });
 
       Alert.alert('Measurement saved', 'Your weight trend has been updated.');
     } catch (error) {
-      Alert.alert(
-        'Unable to save measurement',
-        error instanceof Error ? error.message : 'Try again.'
-      );
+      reportError(error, {
+        source: 'progress-screen',
+        operation: 'save-measurement',
+        domain: 'progress',
+      });
+      Alert.alert('Unable to save measurement', 'Check the measurement values and try again.');
     } finally {
       setIsSavingMeasurement(false);
     }

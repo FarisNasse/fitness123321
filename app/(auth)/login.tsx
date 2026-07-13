@@ -7,6 +7,8 @@ import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { Input } from '@/src/components/Input';
 import { Screen } from '@/src/components/Screen';
+import { reportProviderError } from '@/src/lib/error-reporting';
+import { useNetworkState } from '@/src/lib/network-state';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 import { supabase } from '@/src/lib/supabase';
 
@@ -14,6 +16,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { status: networkStatus } = useNetworkState();
 
   async function handleLogin() {
     if (USE_DEV_AUTH) {
@@ -35,14 +38,29 @@ export default function LoginScreen() {
       });
 
       if (error) {
-        Alert.alert('Unable to sign in', error.message);
+        const message = reportProviderError(
+          error,
+          { source: 'login-screen', operation: 'sign-in', domain: 'auth' },
+          {
+            offline: networkStatus === 'offline',
+            fallback: 'We couldn’t sign you in. Check your details and try again.',
+          }
+        );
+        Alert.alert('Unable to sign in', message);
         return;
       }
 
       router.replace('/');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Check your Supabase configuration.';
-      Alert.alert('Unable to reach Supabase', message);
+      const message = reportProviderError(
+        error,
+        { source: 'login-screen', operation: 'sign-in', domain: 'auth' },
+        {
+          offline: networkStatus === 'offline',
+          fallback: 'Sign-in is temporarily unavailable. Please try again.',
+        }
+      );
+      Alert.alert('Unable to sign in', message);
     } finally {
       setIsSubmitting(false);
     }

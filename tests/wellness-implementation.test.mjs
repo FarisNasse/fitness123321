@@ -72,15 +72,15 @@ test('local database and web adapter support persisted wellness records', () => 
 
 test('dashboard and app lifecycle refresh wellness steps without wearable integration', () => {
   const dashboard = readProjectFile('app/(tabs)/dashboard.tsx');
-  const layout = readProjectFile('app/_layout.tsx');
+  const syncState = readProjectFile('src/lib/sync-state.tsx');
 
   assert.match(dashboard, /const \[steps, setSteps\] = useState\(0\)/);
   assert.match(dashboard, /getDailyWellnessCheckIn\(userId\)/);
   assert.match(dashboard, /subscribeToWellnessChanges\(\(checkIn\) =>/);
   assert.match(dashboard, /setSteps\(Number\(checkIn\.steps \?\? 0\)\)/);
   assert.match(dashboard, /progress=\{progress\(steps, targets\.steps\)\}/);
-  assert.match(layout, /syncPendingWellnessCheckIns\(\)/);
-  assert.match(layout, /Failed to sync pending wellness check-ins/);
+  assert.match(syncState, /wellness: syncPendingWellnessCheckIns/);
+  assert.match(syncState, /source: 'sync-state-provider'/);
 });
 
 test('Supabase migration and documentation describe optional wellness sync', () => {

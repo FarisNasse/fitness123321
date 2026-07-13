@@ -1,7 +1,9 @@
-const { getDefaultConfig } = require('expo/metro-config');
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 const { withNativeWind } = require('nativewind/metro');
 
-const config = getDefaultConfig(__dirname);
+// Start from Sentry's Expo-aware Metro config. This lets Expo add bundle Debug IDs
+// before asset serialization instead of wrapping NativeWind's custom serializer.
+const config = getSentryExpoConfig(__dirname);
 
 config.resolver.assetExts = Array.from(
   new Set([...config.resolver.assetExts, 'wasm'])

@@ -57,7 +57,7 @@ test('progress screen logs measurements and derives the card and chart from save
 test('remote measurement sync is opt-in and constrained to the authenticated owner', () => {
   const service = readProjectFile('src/features/progress/body-measurements-service.ts');
   const flags = readProjectFile('src/lib/runtime-flags.ts');
-  const layout = readProjectFile('app/_layout.tsx');
+  const syncState = readProjectFile('src/lib/sync-state.tsx');
   const env = readProjectFile('.env.example');
   const readme = readProjectFile('README.md');
 
@@ -68,8 +68,9 @@ test('remote measurement sync is opt-in and constrained to the authenticated own
   assert.match(service, /\.eq\(["']user_id["'], userId\)/);
   assert.match(service, /where sync_status in \('pending', 'failed'\)[\s\S]*and user_id != \?[\s\S]*and user_id = \?/);
   assert.match(service, /\.upsert\([\s\S]*\{ onConflict: ["']id["'] \}/);
-  assert.match(layout, /syncPendingBodyMeasurements\(\)/);
-  assert.match(layout, /Failed to sync pending body measurements/);
+  assert.match(syncState, /import \{ syncPendingBodyMeasurements \}/);
+  assert.match(syncState, /progress: syncPendingBodyMeasurements/);
+  assert.match(syncState, /source: 'sync-state-provider'/);
   assert.match(env, /EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE=local/);
   assert.match(readme, /Empty accounts[\s\S]*no fabricated progress data/);
 });

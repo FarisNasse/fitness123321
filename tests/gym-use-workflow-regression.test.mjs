@@ -253,6 +253,7 @@ function createWorkoutHarness(store = createWorkoutStore()) {
       Crypto: { randomUUID: nextUuid },
       buildProgressionRecommendation: () => ({ decision: 'repeat' }),
       buildProgressionSummaryLines: () => [],
+      markSyncPending: () => {},
     },
   };
 }
@@ -356,6 +357,7 @@ const {
   Crypto,
   buildProgressionRecommendation,
   buildProgressionSummaryLines,
+  markSyncPending,
 } = globalThis.__workoutServiceHarness;
 `;
     const modulePath = join(tempDir, 'workout-service.mjs');

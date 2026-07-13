@@ -109,13 +109,15 @@ test('weight chart avoids gifted chart web runtime crashes by using SVG primitiv
   assert.match(chart, /<Path\s+d=\{linePath\}/s);
 });
 
-test('root layout initializes local persistence and syncs workout queue on app activation', () => {
+test('root layout initializes local persistence and shared sync retries workouts on app activation', () => {
   const layout = readProjectFile('app/_layout.tsx');
+  const syncState = readProjectFile('src/lib/sync-state.tsx');
 
   assert.match(layout, /initializeLocalDb\(\);/);
-  assert.match(layout, /syncPendingWorkoutSessions\(\)/);
-  assert.match(layout, /AppState\.addEventListener\(\s*'change'/s);
-  assert.match(layout, /if \(state === 'active'\)/);
+  assert.match(layout, /<SyncStateProvider canSync=/);
+  assert.match(syncState, /workouts: syncPendingWorkoutSessions/);
+  assert.match(syncState, /AppState\.addEventListener\(\s*'change'/s);
+  assert.match(syncState, /if \(state === 'active'\)/);
   assert.match(layout, /<QueryClientProvider client=\{queryClient\}>/);
   assert.match(layout, /<Stack\.Screen\s*name="workout\/exercises"/);
   assert.match(layout, /<Stack\.Screen\s*name="workout\/session\/\[id\]"/);
@@ -185,12 +187,15 @@ test('local dev auth bypasses Supabase sign in while keeping Supabase auth avail
   assert.match(layout, /supabase\.auth\.onAuthStateChange\(/);
 
   assert.match(login, /if \(USE_DEV_AUTH\) \{\s*router\.replace\('\/dashboard'\);\s*return;\s*\}/s);
-  assert.match(login, /Unable to reach Supabase/);
+  assert.match(login, /reportProviderError\(/);
+  assert.match(login, /We couldn’t sign you in/);
   assert.match(register, /if \(USE_DEV_AUTH\) \{\s*router\.replace\('\/dashboard'\);\s*return;\s*\}/s);
-  assert.match(register, /Unable to reach Supabase/);
+  assert.match(register, /reportProviderError\(/);
+  assert.match(register, /We couldn’t create the account/);
   assert.match(onboarding, /if \(USE_DEV_AUTH\) \{\s*await refreshProfile\(\);\s*setIsSubmitting\(false\);\s*router\.replace\('\/dashboard'\);\s*return;\s*\}/s);
 
-  assert.match(supabaseClient, /Set EXPO_PUBLIC_AUTH_MODE=local/);
+  assert.match(supabaseClient, /reportConfigurationIssue\(/);
+  assert.match(supabaseClient, /Supabase mode is enabled without EXPO_PUBLIC_SUPABASE_URL/);
   assert.match(supabaseClient, /fallbackSupabaseUrl/);
   assert.match(envExample, /EXPO_PUBLIC_AUTH_MODE=local/);
   assert.match(envExample, /EXPO_PUBLIC_AUTH_MODE=supabase/);
@@ -202,7 +207,8 @@ test('auth screens validate input, trim email, call Supabase, and route correctl
 
   assert.match(login, /Alert\.alert\('Missing info', 'Enter your email and password\.'\)/);
   assert.match(login, /signInWithPassword\(\{\s*email: email\.trim\(\),\s*password,/s);
-  assert.match(login, /Alert\.alert\('Unable to sign in', error\.message\)/);
+  assert.match(login, /Alert\.alert\('Unable to sign in', message\)/);
+  assert.doesNotMatch(login, /Alert\.alert\([^\n]+error\.message/);
   assert.match(login, /router\.replace\('\/'\)/);
 
   assert.match(register, /Alert\.alert\('Missing info', 'Enter your email and password\.'\)/);

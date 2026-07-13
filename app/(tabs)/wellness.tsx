@@ -21,6 +21,7 @@ import {
   saveDailyWellnessCheckIn,
   syncPendingWellnessCheckIns,
 } from '@/src/features/wellness/wellness-service';
+import { reportError } from '@/src/lib/error-reporting';
 
 function formatDuration(totalMinutes: number) {
   const hours = Math.floor(totalMinutes / 60);
@@ -58,10 +59,12 @@ export default function WellnessScreen() {
       setWakeTime(formatTimeInput(checkIn.sleep_end));
       setHasSavedToday(checkIn.check_in_date === getLocalDateKey());
     } catch (error) {
-      Alert.alert(
-        'Unable to load wellness',
-        error instanceof Error ? error.message : 'Try again.'
-      );
+      reportError(error, {
+        source: 'wellness-screen',
+        operation: 'load-check-in',
+        domain: 'wellness',
+      });
+      Alert.alert('Unable to load wellness', 'Your wellness check-in could not be loaded.');
     }
   }, []);
 
@@ -107,15 +110,21 @@ export default function WellnessScreen() {
       setHasSavedToday(true);
 
       void syncPendingWellnessCheckIns().catch((error) => {
-        console.warn('Failed to sync pending wellness check-ins.', error);
+        reportError(error, {
+          source: 'wellness-screen',
+          operation: 'sync-after-save',
+          domain: 'wellness',
+        });
       });
 
       Alert.alert('Check-in saved', 'Today’s wellness values are stored on this device.');
     } catch (error) {
-      Alert.alert(
-        'Unable to save wellness',
-        error instanceof Error ? error.message : 'Try again.'
-      );
+      reportError(error, {
+        source: 'wellness-screen',
+        operation: 'save-check-in',
+        domain: 'wellness',
+      });
+      Alert.alert('Unable to save wellness', 'Check your values and try saving again.');
     } finally {
       setIsSaving(false);
     }

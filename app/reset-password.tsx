@@ -8,6 +8,8 @@ import { Card } from '@/src/components/Card';
 import { Input } from '@/src/components/Input';
 import { Screen } from '@/src/components/Screen';
 import { createRecoverySessionFromUrl } from '@/src/features/auth/password-recovery';
+import { reportProviderError } from '@/src/lib/error-reporting';
+import { useNetworkState } from '@/src/lib/network-state';
 import { supabase } from '@/src/lib/supabase';
 
 type RecoveryState = 'checking' | 'ready' | 'saving' | 'success' | 'error';
@@ -19,6 +21,7 @@ export default function ResetPasswordScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const { status: networkStatus } = useNetworkState();
 
   useEffect(() => {
     if (recoveryUrl) return;
@@ -45,13 +48,9 @@ export default function ResetPasswordScreen() {
       () => {
         if (isActive) setState('ready');
       },
-      (error) => {
+      () => {
         if (!isActive) return;
-        setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : 'This recovery link is invalid or has expired.'
-        );
+        setErrorMessage('This recovery link is invalid or has expired.');
         setState('error');
       }
     );
@@ -78,7 +77,16 @@ export default function ResetPasswordScreen() {
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
-      setErrorMessage(error.message);
+      setErrorMessage(
+        reportProviderError(
+          error,
+          { source: 'reset-password-screen', operation: 'update-password', domain: 'auth' },
+          {
+            offline: networkStatus === 'offline',
+            fallback: 'We couldn’t update your password. Request a new link and try again.',
+          }
+        )
+      );
       setState('ready');
       return;
     }

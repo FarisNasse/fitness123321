@@ -2,6 +2,7 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
+import { reportConfigurationIssue } from '@/src/lib/error-reporting';
 import { USE_DEV_AUTH } from '@/src/lib/runtime-flags';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -11,7 +12,10 @@ const fallbackSupabaseUrl = 'https://local-dev.supabase.co';
 const fallbackSupabaseAnonKey = 'local-dev-anon-key';
 
 if ((!supabaseUrl || !supabaseAnonKey) && !USE_DEV_AUTH) {
-  console.warn('Missing Supabase environment variables. Set EXPO_PUBLIC_AUTH_MODE=local for local dev auth, or provide real Supabase credentials.');
+  reportConfigurationIssue(
+    'Supabase mode is enabled without EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.',
+    'supabase-client'
+  );
 }
 
 export const supabase = createClient(

@@ -1,3 +1,4 @@
+import { reportError } from '@/src/lib/error-reporting';
 import { USE_SUPABASE_EXERCISES } from '@/src/lib/runtime-flags';
 import type { Exercise } from '@/src/types/models';
 
@@ -90,7 +91,12 @@ export async function fetchExercises() {
     rememberExercises(exercises);
     return exercises;
   } catch (error) {
-    console.warn('Failed to fetch exercises from Supabase. Using local seed data.', error);
+    reportError(error, {
+      source: 'exercise-service',
+      operation: 'fetch-exercises',
+      domain: 'workouts',
+      tags: { fallback: 'local-seed-data' },
+    });
     const exercises = getSeededExercises();
     rememberExercises(exercises);
     return exercises;

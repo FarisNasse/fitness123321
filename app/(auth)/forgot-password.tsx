@@ -7,11 +7,14 @@ import { Card } from '@/src/components/Card';
 import { Input } from '@/src/components/Input';
 import { Screen } from '@/src/components/Screen';
 import { requestPasswordRecovery } from '@/src/features/auth/password-recovery';
+import { reportProviderError } from '@/src/lib/error-reporting';
+import { useNetworkState } from '@/src/lib/network-state';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestComplete, setRequestComplete] = useState(false);
+  const { status: networkStatus } = useNetworkState();
 
   async function handleRequest() {
     const normalizedEmail = email.trim();
@@ -27,7 +30,14 @@ export default function ForgotPasswordScreen() {
       await requestPasswordRecovery(normalizedEmail);
       setRequestComplete(true);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Try again in a moment.';
+      const message = reportProviderError(
+        error,
+        { source: 'forgot-password-screen', operation: 'request-recovery', domain: 'auth' },
+        {
+          offline: networkStatus === 'offline',
+          fallback: 'We couldn’t send a recovery link right now. Please try again.',
+        }
+      );
       Alert.alert('Unable to send reset link', message);
     } finally {
       setIsSubmitting(false);

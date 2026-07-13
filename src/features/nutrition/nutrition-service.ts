@@ -1,11 +1,13 @@
 import * as Crypto from 'expo-crypto';
 
+import { reportError } from '@/src/lib/error-reporting';
 import {
   db,
   type LocalMealItem,
   type LocalMealLog,
   type LocalWaterLog,
 } from '@/src/lib/local-db';
+import { markSyncPending } from '@/src/lib/sync-events';
 import {
   LOCAL_DEV_USER_ID,
   USE_REMOTE_NUTRITION_SYNC,
@@ -99,14 +101,6 @@ function mapFood(row: FoodRow): Food {
   };
 }
 
-function getErrorMessage(error: unknown) {
-  if (error && typeof error === 'object' && 'message' in error) {
-    return String((error as { message?: unknown }).message);
-  }
-
-  return 'Unknown Supabase error';
-}
-
 function roundMacro(value: number) {
   return Math.round(value * 10) / 10;
 }
@@ -150,6 +144,8 @@ export function subscribeToNutritionLogChanges(listener: () => void) {
 }
 
 function notifyNutritionLogChanged() {
+  markSyncPending('nutrition');
+
   for (const listener of nutritionLogListeners) {
     listener();
   }
@@ -193,6 +189,13 @@ export async function getNutritionOwnerUserId() {
   const { data, error } = await supabase.auth.getUser();
 
   if (error || !data.user?.id) {
+    if (error) {
+      reportError(error, {
+        source: 'nutrition-service',
+        operation: 'resolve-owner',
+        domain: 'nutrition',
+      });
+    }
     throw new Error('Sign in before logging cloud-synced nutrition.');
   }
 
@@ -209,7 +212,11 @@ export async function getDailyTargets(): Promise<DailyTargetsState> {
 
   if (authError || !authData.user?.id) {
     if (authError) {
-      console.warn('Failed to load current user for daily targets.', authError);
+      reportError(authError, {
+        source: 'nutrition-service',
+        operation: 'load-daily-target-owner',
+        domain: 'nutrition',
+      });
     }
 
     return { targets: DEFAULT_DAILY_TARGETS, hasRemoteTargets: false };
@@ -222,7 +229,12 @@ export async function getDailyTargets(): Promise<DailyTargetsState> {
     .maybeSingle();
 
   if (error) {
-    console.warn('Failed to load daily targets.', error);
+    reportError(error, {
+      source: 'nutrition-service',
+      operation: 'load-daily-targets',
+      domain: 'nutrition',
+      tags: { fallback: 'local-default-targets' },
+    });
     return { targets: DEFAULT_DAILY_TARGETS, hasRemoteTargets: false };
   }
 
@@ -245,7 +257,12 @@ export async function searchFoodsByName(query: string) {
     .limit(12);
 
   if (error) {
-    throw new Error(getErrorMessage(error));
+    reportError(error, {
+      source: 'nutrition-service',
+      operation: 'search-foods',
+      domain: 'nutrition',
+    });
+    throw new Error('Food search is temporarily unavailable.');
   }
 
   return ((data ?? []) as FoodRow[]).map(mapFood);
@@ -287,7 +304,12 @@ export async function createFood(input: {
     .maybeSingle();
 
   if (error || !data) {
-    throw new Error(error ? getErrorMessage(error) : 'Food was not created.');
+    reportError(error ?? new Error('Food provider returned no created row.'), {
+      source: 'nutrition-service',
+      operation: 'create-food',
+      domain: 'nutrition',
+    });
+    throw new Error('Food could not be created right now.');
   }
 
   return mapFood(data as FoodRow);
@@ -734,6 +756,11 @@ async function syncPendingWaterLogs(
       .maybeSingle();
 
     if (error || !data?.id) {
+      reportError(error ?? new Error('Water log provider returned no row.'), {
+        source: 'nutrition-service',
+        operation: 'sync-water-log',
+        domain: 'nutrition',
+      });
       markWaterLogFailed(waterLog.local_id);
       continue;
     }
@@ -751,6 +778,13 @@ async function syncPendingNutritionLogsImpl() {
   const { data, error } = await supabase.auth.getUser();
 
   if (error || !data.user?.id) {
+    if (error) {
+      reportError(error, {
+        source: 'nutrition-service',
+        operation: 'resolve-sync-owner',
+        domain: 'nutrition',
+      });
+    }
     throw new Error('Sign in before syncing nutrition logs.');
   }
 
