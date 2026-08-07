@@ -178,8 +178,7 @@ export function SyncStateProvider({ children, canSync, ownerId }: SyncStateProvi
       const isCurrentOwner = () =>
         ownerGenerationRef.current === syncGeneration && ownerIdRef.current === syncOwnerId;
 
-      let syncPromise: Promise<void>;
-      syncPromise = (async () => {
+      const syncPromise = (async () => {
         setDomainPhase(domain, 'syncing');
 
         try {
@@ -205,14 +204,15 @@ export function SyncStateProvider({ children, canSync, ownerId }: SyncStateProvi
             operation: 'sync-pending-records',
             domain,
           });
-        } finally {
-          if (activeSyncsRef.current[domain] === syncPromise) {
-            delete activeSyncsRef.current[domain];
-          }
         }
       })();
 
       activeSyncsRef.current[domain] = syncPromise;
+      void syncPromise.finally(() => {
+        if (activeSyncsRef.current[domain] === syncPromise) {
+          delete activeSyncsRef.current[domain];
+        }
+      });
       return syncPromise;
     },
     [setDomainPhase]
