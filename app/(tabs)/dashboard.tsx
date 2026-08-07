@@ -10,6 +10,7 @@ import { ProgressBar } from '@/src/components/ProgressBar';
 import { Screen } from '@/src/components/Screen';
 import { SectionHeader } from '@/src/components/SectionHeader';
 import { WeekStrip } from '@/src/components/WeekStrip';
+import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import {
   DEFAULT_DAILY_TARGETS,
   getDailyNutritionSummary,
@@ -21,7 +22,6 @@ import {
 import {
   getDailyWellnessCheckIn,
   getLocalDateKey,
-  getWellnessOwnerUserId,
   subscribeToWellnessChanges,
 } from '@/src/features/wellness/wellness-service';
 import { reportError, reportProviderError } from '@/src/lib/error-reporting';
@@ -67,6 +67,8 @@ function getGreeting() {
 }
 
 export default function DashboardScreen() {
+  const { session } = useAuthSession();
+  const ownerId = session?.user.id ?? null;
   const [summary, setSummary] = useState<DailyNutritionSummary>(emptySummary);
   const [targets, setTargets] = useState<DailyTargets>(DEFAULT_DAILY_TARGETS);
   const [steps, setSteps] = useState(0);
@@ -75,8 +77,8 @@ export default function DashboardScreen() {
   const { status: networkStatus } = useNetworkState();
 
   const refreshSummary = useCallback(() => {
-    setSummary(getDailyNutritionSummary());
-  }, []);
+    setSummary(ownerId ? getDailyNutritionSummary(ownerId) : emptySummary);
+  }, [ownerId]);
 
   const refreshTargets = useCallback(async () => {
     setIsLoadingTargets(true);
@@ -92,8 +94,11 @@ export default function DashboardScreen() {
 
   const refreshWellness = useCallback(async () => {
     try {
-      const userId = await getWellnessOwnerUserId();
-      const checkIn = getDailyWellnessCheckIn(userId);
+      if (!ownerId) {
+        setSteps(0);
+        return;
+      }
+      const checkIn = getDailyWellnessCheckIn(ownerId);
       setSteps(Number(checkIn?.steps ?? 0));
     } catch (error) {
       reportError(error, {
@@ -103,7 +108,7 @@ export default function DashboardScreen() {
       });
       setSteps(0);
     }
-  }, []);
+  }, [ownerId]);
 
   const refreshDashboard = useCallback(() => {
     refreshSummary();
@@ -118,16 +123,18 @@ export default function DashboardScreen() {
   );
 
   useEffect(() => {
-    return subscribeToNutritionLogChanges(refreshSummary);
-  }, [refreshSummary]);
+    if (!ownerId) return undefined;
+    return subscribeToNutritionLogChanges(ownerId, refreshSummary);
+  }, [ownerId, refreshSummary]);
 
   useEffect(() => {
-    return subscribeToWellnessChanges((checkIn) => {
+    if (!ownerId) return undefined;
+    return subscribeToWellnessChanges(ownerId, (checkIn) => {
       if (checkIn.check_in_date === getLocalDateKey()) {
         setSteps(Number(checkIn.steps ?? 0));
       }
     });
-  }, []);
+  }, [ownerId]);
 
   const waterLoggedLabel = formatWaterMl(summary.totals.waterMl);
   const waterTargetLabel = formatWaterMl(targets.waterMl);
@@ -227,10 +234,10 @@ export default function DashboardScreen() {
 
         {!hasRemoteTargets ? (
           <Card className="gap-2">
-            <Text className="text-xl font-bold text-base-content">Set your targets</Text>
+            <Text className="text-xl font-bold text-base-content">Today's baseline</Text>
             <Text className="text-sm font-body leading-6 text-base-muted">
-              Using default goals for now: 2,000 calories, 135g protein, 2.0L water,
-              and 8,000 steps. Add a daily_targets row to personalize these denominators.
+              Daily progress is currently measured against 2,000 calories, 135g protein,
+              2.0L water, and 8,000 steps.
             </Text>
           </Card>
         ) : null}
@@ -248,21 +255,16 @@ export default function DashboardScreen() {
         </Card>
 
         <Card className="gap-3">
-          <Text className="text-xl font-bold text-base-content">Readiness</Text>
+          <Text className="text-xl font-bold text-base-content">Today's momentum</Text>
           <Text className="text-sm font-body leading-6 text-base-muted">
             {isLoadingTargets
-              ? 'Loading personalized targets...'
-              : 'Logging flows update this checklist as they ship.'}
+              ? 'Loading your daily progress...'
+              : 'Complete a few small actions to build a consistent day.'}
           </Text>
           <View className="gap-2">
-            <ChecklistItem label="Auth scaffold" done />
-            <ChecklistItem label="Onboarding scaffold" done />
-            <ChecklistItem label="Workout logging" done />
-            <ChecklistItem label="Nutrition logging" done />
-            <ChecklistItem label="Dashboard live totals" done />
-            <ChecklistItem label="Wellness logging" done />
-            <ChecklistItem label="Progress charts" />
-            <ChecklistItem label="Offline sync" done />
+            <ChecklistItem label="Log a meal" done={summary.entries.length > 0} />
+            <ChecklistItem label="Drink water" done={summary.totals.waterMl > 0} />
+            <ChecklistItem label="Record activity" done={steps > 0} />
           </View>
         </Card>
 
@@ -270,8 +272,8 @@ export default function DashboardScreen() {
           <Card className="gap-3">
             <Text className="text-xl font-bold text-base-content">Account</Text>
             <Text className="text-sm font-body leading-6 text-base-muted">
-              You can sign back in at any time. Supabase row-level security keeps cloud
-              records scoped to the account that created them.
+              Your on-device and cloud-backed records stay associated with this account.
+              You can sign back in at any time.
             </Text>
             <Button title="Sign out" variant="outline" onPress={handleSignOut} />
           </Card>

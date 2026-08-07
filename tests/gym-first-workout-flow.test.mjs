@@ -50,7 +50,7 @@ test('controller builds the current set model from the active per-exercise draft
   assert.match(controller, /logButtonDetail: buildLogSetDetail\(activeDraft\)/);
   assert.match(controller, /function addSet\(\) \{/);
   assert.match(compact, /const parsed = parseSetInputs\(activeDraft\);/);
-  assert.match(compact, /addLocalWorkoutSet\(\{ sessionLocalId: sessionId, exerciseId: selectedExercise\.id, setNumber, reps: parsed\.parsedReps, weight: parsed\.parsedWeight, \}\);/);
+  assert.match(compact, /addLocalWorkoutSet\(\{ userId: ownerId, sessionLocalId: sessionId, exerciseId: selectedExercise\.id, setNumber, reps: parsed\.parsedReps, weight: parsed\.parsedWeight, \}\);/);
   assert.match(compact, /dispatch\(\{ type: 'rest\.started', seconds: REST_DURATION_SECONDS \}\);/);
 });
 

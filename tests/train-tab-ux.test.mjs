@@ -80,7 +80,7 @@ test('repeat-last action is gated by history but the no-history guard remains', 
   const workouts = readProjectFile('app/(tabs)/workouts.tsx');
 
   assert.match(workouts, /async function repeatLastWorkout\(\)/);
-  assert.match(workouts, /const repeatedWorkout = repeatLastCompletedWorkout\(userId\)/);
+  assert.match(workouts, /const repeatedWorkout = repeatLastCompletedWorkout\(ownerId\)/);
   assert.match(workouts, /if \(!repeatedWorkout\) \{[\s\S]*Alert\.alert\([\s\S]*'No completed workout yet',[\s\S]*'Finish a workout once, then Repeat Last Workout can preload those exercises\.'[\s\S]*\);[\s\S]*return;[\s\S]*\}/);
   assert.match(workouts, /\{recentSessions\.length > 0 \? \([\s\S]*title="Repeat Last Workout"[\s\S]*\) : null\}/);
   assert.doesNotMatch(workouts, /Nothing to repeat yet/);
@@ -96,7 +96,8 @@ test('exercise browser keeps filtering optional, detail modal intact, and picker
   assert.match(library, /onPress=\{\(\) => setIsFilterSheetOpen\(true\)\}/);
   assert.match(library, /<Modal[\s\S]*visible=\{isFilterSheetOpen\}[\s\S]*<Text className="text-2xl font-black text-base-content" style=\{styles\.sheetTitle\}>Filters<\/Text>/);
   assert.match(library, /activeFilterCount > 0 \? `Filter \(\$\{activeFilterCount\}\)` : 'Filter'/);
-  assert.match(library, /<Modal[\s\S]*visible=\{Boolean\(selectedExercise\)\}[\s\S]*Muscle diagram placeholder/);
+  assert.match(library, /<Modal[\s\S]*visible=\{Boolean\(selectedExercise\)\}[\s\S]*Exercise details[\s\S]*Instructions/);
+  assert.doesNotMatch(library, /Muscle diagram placeholder/);
   assert.match(library, /function selectExercise\(exercise: Exercise\) \{[\s\S]*onSelect\?\.\(exercise\);[\s\S]*setSelectedExercise\(null\);[\s\S]*\}/);
   assert.match(library, /\{onSelect \? \([\s\S]*<LibraryButton[\s\S]*title=\{selectButtonTitle\}[\s\S]*onPress=\{\(\) => selectExercise\(selectedExercise\)\}/);
   assert.match(view, /<ExerciseLibrary\s+onSelect=\{controller\.chooseExercise\}[\s\S]*selectButtonTitle="Use this exercise"/);

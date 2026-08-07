@@ -153,6 +153,10 @@ function RootRuntime() {
   );
 
   useEffect(() => {
+    queryClient.clear();
+  }, [session?.user.id]);
+
+  useEffect(() => {
     if (fontError) {
       reportError(fontError, {
         source: 'root-runtime',
@@ -182,7 +186,10 @@ function RootRuntime() {
         <QueryClientProvider client={queryClient}>
           <NetworkStateProvider>
             <AuthSessionContext.Provider value={authContextValue}>
-              <SyncStateProvider canSync={USE_DEV_AUTH || Boolean(session?.user)}>
+              <SyncStateProvider
+                canSync={USE_DEV_AUTH || Boolean(session?.user)}
+                ownerId={session?.user.id ?? null}
+              >
                 <View className="flex-1 bg-base-100">
                   <RuntimeStatusBanner />
                   <Stack>

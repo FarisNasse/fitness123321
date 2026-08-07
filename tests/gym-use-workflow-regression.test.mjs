@@ -28,13 +28,23 @@ function createWorkoutHarness(store = createWorkoutStore()) {
   let uuidCounter = 0;
   const nextUuid = () => `test-uuid-${String(++uuidCounter).padStart(4, '0')}`;
 
-  function getExercisesBySession(sessionLocalId) {
+  function getExercisesBySession(userId, sessionLocalId) {
+    const session = store.workout_sessions_local.find(
+      (item) => item.local_id === sessionLocalId && item.user_id === userId && !isDeletedRecord(item)
+    );
+    if (!session) return [];
+
     return store.workout_session_exercises_local
       .filter((item) => item.session_local_id === sessionLocalId)
       .sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
   }
 
-  function getExerciseIdsBySessionFromSets(sessionLocalId) {
+  function getExerciseIdsBySessionFromSets(userId, sessionLocalId) {
+    const session = store.workout_sessions_local.find(
+      (item) => item.local_id === sessionLocalId && item.user_id === userId && !isDeletedRecord(item)
+    );
+    if (!session) return [];
+
     const seenExerciseIds = new Set();
     const rows = [];
 
@@ -49,13 +59,22 @@ function createWorkoutHarness(store = createWorkoutStore()) {
     return rows;
   }
 
-  function getSetsBySession(sessionLocalId) {
+  function getSetsBySession(userId, sessionLocalId) {
+    const session = store.workout_sessions_local.find(
+      (item) => item.local_id === sessionLocalId && item.user_id === userId && !isDeletedRecord(item)
+    );
+    if (!session) return [];
+
     return store.workout_sets_local
       .filter((set) => set.session_local_id === sessionLocalId && !isDeletedRecord(set))
       .sort((a, b) => Number(a.set_number) - Number(b.set_number));
   }
 
-  function getSetsBySessionForSync(sessionLocalId) {
+  function getSetsBySessionForSync(userId, sessionLocalId) {
+    const session = store.workout_sessions_local.find(
+      (item) => item.local_id === sessionLocalId && item.user_id === userId
+    );
+    if (!session) return [];
     return store.workout_sets_local.filter((set) => set.session_local_id === sessionLocalId);
   }
 
@@ -121,10 +140,13 @@ function createWorkoutHarness(store = createWorkoutStore()) {
       }
 
       if (normalized.startsWith('insert into exercise_targets_local')) {
-        const [localId, exerciseId, targetSets, repMin, repMax, incrementSize, deloadPercentage, updatedAt] = params;
-        const existing = store.exercise_targets_local.find((target) => target.exercise_id === exerciseId);
+        const [localId, userId, exerciseId, targetSets, repMin, repMax, incrementSize, deloadPercentage, updatedAt] = params;
+        const existing = store.exercise_targets_local.find(
+          (target) => target.user_id === userId && target.exercise_id === exerciseId
+        );
         const next = {
           local_id: existing?.local_id ?? localId,
+          user_id: userId,
           exercise_id: exerciseId,
           target_sets: targetSets,
           rep_min: repMin,
@@ -144,8 +166,10 @@ function createWorkoutHarness(store = createWorkoutStore()) {
       }
 
       if (normalized.startsWith('update workout_sessions_local') && normalized.includes('set completed_at')) {
-        const [completedAt, durationNow, updatedAt, sessionLocalId] = params;
-        const session = store.workout_sessions_local.find((item) => item.local_id === sessionLocalId);
+        const [completedAt, durationNow, updatedAt, userId, sessionLocalId] = params;
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId && item.user_id === userId
+        );
 
         if (session) {
           session.completed_at = completedAt;
@@ -160,8 +184,10 @@ function createWorkoutHarness(store = createWorkoutStore()) {
       }
 
       if (normalized.startsWith('update workout_sessions_local') && normalized.includes("set sync_status = 'pending'")) {
-        const [updatedAt, sessionLocalId] = params;
-        const session = store.workout_sessions_local.find((item) => item.local_id === sessionLocalId);
+        const [updatedAt, userId, sessionLocalId] = params;
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId && item.user_id === userId
+        );
 
         if (session) {
           session.sync_status = 'pending';
@@ -177,8 +203,10 @@ function createWorkoutHarness(store = createWorkoutStore()) {
       const normalized = normalizeSql(sql);
 
       if (normalized.includes('from exercise_targets_local') && normalized.includes('exercise_id = ?')) {
-        const [exerciseId] = params;
-        return store.exercise_targets_local.filter((target) => target.exercise_id === exerciseId);
+        const [userId, exerciseId] = params;
+        return store.exercise_targets_local.filter(
+          (target) => target.user_id === userId && target.exercise_id === exerciseId
+        );
       }
 
       if (
@@ -186,9 +214,12 @@ function createWorkoutHarness(store = createWorkoutStore()) {
         normalized.includes('join workout_sessions_local s') &&
         normalized.includes('ws.exercise_id = ?')
       ) {
-        const [exerciseId] = params;
+        const [userId, exerciseId] = params;
         const latestSession = store.workout_sessions_local
-          .filter((session) => session.completed_at && !isDeletedRecord(session))
+          .filter(
+            (session) =>
+              session.user_id === userId && session.completed_at && !isDeletedRecord(session)
+          )
           .filter((session) =>
             store.workout_sets_local.some(
               (set) => set.session_local_id === session.local_id && set.exercise_id === exerciseId && !isDeletedRecord(set)
@@ -207,6 +238,20 @@ function createWorkoutHarness(store = createWorkoutStore()) {
           .sort((a, b) => Number(a.set_number) - Number(b.set_number));
       }
 
+      if (
+        normalized.includes('from workout_sessions_local') &&
+        normalized.includes('where user_id = ?') &&
+        normalized.includes('local_id = ?')
+      ) {
+        const [userId, sessionLocalId] = params;
+        return store.workout_sessions_local.filter(
+          (session) =>
+            session.user_id === userId &&
+            session.local_id === sessionLocalId &&
+            !isDeletedRecord(session)
+        );
+      }
+
       if (normalized.includes('from workout_sessions_local') && normalized.includes('order by started_at desc')) {
         const hasUserFilter = normalized.includes('user_id = ?');
         const userId = hasUserFilter ? params[0] : null;
@@ -222,18 +267,18 @@ function createWorkoutHarness(store = createWorkoutStore()) {
       }
 
       if (normalized.includes('from workout_session_exercises_local') && normalized.includes('session_local_id = ?')) {
-        const [sessionLocalId] = params;
-        return getExercisesBySession(sessionLocalId);
+        const [userId, sessionLocalId] = params;
+        return getExercisesBySession(userId, sessionLocalId);
       }
 
       if (normalized.includes('from workout_sets_local') && normalized.includes('group by exercise_id')) {
-        const [sessionLocalId] = params;
-        return getExerciseIdsBySessionFromSets(sessionLocalId);
+        const [userId, sessionLocalId] = params;
+        return getExerciseIdsBySessionFromSets(userId, sessionLocalId);
       }
 
       if (normalized.includes('from workout_sets_local') && normalized.includes('session_local_id = ?')) {
-        const [sessionLocalId] = params;
-        return getSetsBySession(sessionLocalId);
+        const [userId, sessionLocalId] = params;
+        return getSetsBySession(userId, sessionLocalId);
       }
 
       throw new Error(`Unsupported getAllSync SQL in workout harness: ${normalized}`);
@@ -328,6 +373,7 @@ function buildExecutableWorkoutServiceSource(source) {
     extractFunctionDeclaration(source, 'getSmartExerciseDefaults'),
     extractFunctionDeclaration(source, 'createLocalWorkoutSession'),
     extractFunctionDeclaration(source, 'getMostRecentCompletedWorkoutSession'),
+    extractFunctionDeclaration(source, 'getLocalWorkoutSession'),
     extractFunctionDeclaration(source, 'buildFallbackWorkoutSessionExercises'),
     extractFunctionDeclaration(source, 'insertLocalWorkoutSessionExercise'),
     extractFunctionDeclaration(source, 'getLocalWorkoutSessionExercises'),
@@ -480,6 +526,7 @@ test('suggested defaults come from the most recent completed history for that ex
 
   store.exercise_targets_local.push({
     local_id: 'target-bench',
+    user_id: 'user-1',
     exercise_id: 'bench-press',
     target_sets: 4,
     rep_min: 6,
@@ -568,7 +615,7 @@ test('suggested defaults come from the most recent completed history for that ex
     }
   );
 
-  const defaults = await service.getSmartExerciseDefaults('bench-press');
+  const defaults = await service.getSmartExerciseDefaults('user-1', 'bench-press');
 
   assert.equal(defaults.source, 'history');
   assert.equal(defaults.targetSets, 4, 'saved target set count should extend shorter recent history');
@@ -598,7 +645,7 @@ test('one-tap Log set saves the active exercise draft currently displayed in the
   assert.match(compact, /function addSet\(\) \{ if \(!selectedExercise \|\| !sessionId \|\| !session\) return; const parsed = parseSetInputs\(activeDraft\);/);
   assert.match(
     compact,
-    /addLocalWorkoutSet\(\{ sessionLocalId: sessionId, exerciseId: selectedExercise\.id, setNumber, reps: parsed\.parsedReps, weight: parsed\.parsedWeight, \}\);/,
+    /addLocalWorkoutSet\(\{ userId: ownerId, sessionLocalId: sessionId, exerciseId: selectedExercise\.id, setNumber, reps: parsed\.parsedReps, weight: parsed\.parsedWeight, \}\);/,
     'the docked logger should persist the parsed displayed values'
   );
 });

@@ -7,7 +7,7 @@ import { syncPendingBodyMeasurements } from '@/src/features/progress/body-measur
 import { syncPendingWellnessCheckIns } from '@/src/features/wellness/wellness-service';
 import { syncPendingWorkoutSessions } from '@/src/features/workouts/workout-service';
 import { reportError } from '@/src/lib/error-reporting';
-import { db } from '@/src/lib/local-db';
+import { getOwnerSyncBacklog } from '@/src/lib/local-db';
 import { useNetworkState } from '@/src/lib/network-state';
 import {
   USE_REMOTE_BODY_MEASUREMENT_SYNC,
@@ -46,6 +46,7 @@ export type SyncStateValue = {
 
 type SyncStateProviderProps = PropsWithChildren<{
   canSync: boolean;
+  ownerId: string | null;
 }>;
 
 type BacklogCounts = {
@@ -84,86 +85,12 @@ const initialDomains: Record<SyncDomain, DomainSyncState> = {
 
 const SyncStateContext = createContext<SyncStateValue | null>(null);
 
-function countRows(sql: string) {
-  const row = db.getAllSync<{ count: number }>(sql)[0];
-  return Number(row?.count ?? 0);
-}
-
-function getDomainBacklog(domain: SyncDomain): BacklogCounts {
-  switch (domain) {
-    case 'workouts':
-      return {
-        pending: countRows(`
-          select count(*) as count
-          from (
-            select sync_status from workout_sessions_local
-            union all
-            select sync_status from workout_sets_local
-          )
-          where sync_status = 'pending'
-        `),
-        failed: countRows(`
-          select count(*) as count
-          from (
-            select sync_status from workout_sessions_local
-            union all
-            select sync_status from workout_sets_local
-          )
-          where sync_status = 'failed'
-        `),
-      };
-    case 'nutrition':
-      return {
-        pending: countRows(`
-          select count(*) as count
-          from (
-            select sync_status from meal_logs_local
-            union all
-            select sync_status from meal_items_local
-            union all
-            select sync_status from water_logs_local
-          )
-          where sync_status = 'pending'
-        `),
-        failed: countRows(`
-          select count(*) as count
-          from (
-            select sync_status from meal_logs_local
-            union all
-            select sync_status from meal_items_local
-            union all
-            select sync_status from water_logs_local
-          )
-          where sync_status = 'failed'
-        `),
-      };
-    case 'wellness':
-      return {
-        pending: countRows(`
-          select count(*) as count
-          from mood_logs_local
-          where sync_status = 'pending'
-        `),
-        failed: countRows(`
-          select count(*) as count
-          from mood_logs_local
-          where sync_status = 'failed'
-        `),
-      };
-    case 'progress':
-      return {
-        pending: countRows(`
-          select count(*) as count
-          from body_measurements_local
-          where sync_status = 'pending'
-        `),
-        failed: countRows(`
-          select count(*) as count
-          from body_measurements_local
-          where sync_status = 'failed'
-        `),
-      };
+function getDomainBacklog(domain: SyncDomain, ownerId: string | null): BacklogCounts {
+  if (!ownerId) {
+    return { pending: 0, failed: 0 };
   }
+
+  return getOwnerSyncBacklog(ownerId)[domain];
 }
 
 function getOverallStatus(
@@ -183,12 +110,14 @@ function getOverallStatus(
   return 'idle';
 }
 
-export function SyncStateProvider({ children, canSync }: SyncStateProviderProps) {
+export function SyncStateProvider({ children, canSync, ownerId }: SyncStateProviderProps) {
   const { status: networkStatus } = useNetworkState();
   const [domains, setDomains] = useState(initialDomains);
   const activeSyncsRef = useRef<Partial<Record<SyncDomain, Promise<void>>>>({});
   const canSyncRef = useRef(canSync);
   const networkStatusRef = useRef(networkStatus);
+  const ownerIdRef = useRef(ownerId);
+  const ownerGenerationRef = useRef(0);
 
   useEffect(() => {
     canSyncRef.current = canSync;
@@ -197,6 +126,18 @@ export function SyncStateProvider({ children, canSync }: SyncStateProviderProps)
   useEffect(() => {
     networkStatusRef.current = networkStatus;
   }, [networkStatus]);
+
+  useEffect(() => {
+    ownerIdRef.current = ownerId;
+    ownerGenerationRef.current += 1;
+    activeSyncsRef.current = {};
+    setDomains({
+      workouts: makeInitialDomainState('workouts'),
+      nutrition: makeInitialDomainState('nutrition'),
+      wellness: makeInitialDomainState('wellness'),
+      progress: makeInitialDomainState('progress'),
+    });
+  }, [ownerId]);
 
   const setDomainPhase = useCallback(
     (domain: SyncDomain, phase: SyncPhase, options?: { succeeded?: boolean }) => {
@@ -222,7 +163,7 @@ export function SyncStateProvider({ children, canSync }: SyncStateProviderProps)
         return;
       }
 
-      if (!canSyncRef.current || networkStatusRef.current !== 'online') {
+      if (!ownerIdRef.current || !canSyncRef.current || networkStatusRef.current !== 'online') {
         setDomainPhase(domain, 'pending');
         return;
       }
@@ -232,12 +173,20 @@ export function SyncStateProvider({ children, canSync }: SyncStateProviderProps)
         return existing;
       }
 
+      const syncOwnerId = ownerIdRef.current;
+      const syncGeneration = ownerGenerationRef.current;
+      const isCurrentOwner = () =>
+        ownerGenerationRef.current === syncGeneration && ownerIdRef.current === syncOwnerId;
+
       const syncPromise = (async () => {
         setDomainPhase(domain, 'syncing');
 
         try {
           await syncHandlers[domain]();
-          const backlog = getDomainBacklog(domain);
+
+          if (!isCurrentOwner()) return;
+
+          const backlog = getDomainBacklog(domain, syncOwnerId);
 
           if (backlog.failed > 0) {
             setDomainPhase(domain, 'failed');
@@ -247,6 +196,8 @@ export function SyncStateProvider({ children, canSync }: SyncStateProviderProps)
             setDomainPhase(domain, 'synced', { succeeded: true });
           }
         } catch (error) {
+          if (!isCurrentOwner()) return;
+
           setDomainPhase(domain, 'failed');
           reportError(error, {
             source: 'sync-state-provider',
@@ -254,7 +205,9 @@ export function SyncStateProvider({ children, canSync }: SyncStateProviderProps)
             domain,
           });
         } finally {
-          delete activeSyncsRef.current[domain];
+          if (activeSyncsRef.current[domain] === syncPromise) {
+            delete activeSyncsRef.current[domain];
+          }
         }
       })();
 
@@ -288,10 +241,10 @@ export function SyncStateProvider({ children, canSync }: SyncStateProviderProps)
   }, [retryDomain, setDomainPhase]);
 
   useEffect(() => {
-    if (canSync && networkStatus === 'online') {
+    if (ownerId && canSync && networkStatus === 'online') {
       void retryAll();
     }
-  }, [canSync, networkStatus, retryAll]);
+  }, [canSync, networkStatus, ownerId, retryAll]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener(

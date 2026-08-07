@@ -2,6 +2,8 @@ import * as SQLite from 'expo-sqlite';
 import type { SQLiteBindValue } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
+import { LOCAL_DEV_USER_ID } from '@/src/lib/runtime-flags';
+
 export type DbAdapter = {
   execSync: (sql: string) => void;
   runSync: (sql: string, params?: SQLiteBindValue[]) => void;
@@ -34,6 +36,7 @@ export type LocalWorkoutSessionExercise = {
 
 export type ExerciseTargetLocal = {
   local_id: string;
+  user_id: string;
   exercise_id: string;
   target_sets: number;
   rep_min: number;
@@ -191,10 +194,17 @@ function readWebStore(): WebStore {
   }
 
   try {
-    return {
+    const parsed = {
       ...createEmptyWebStore(),
       ...JSON.parse(raw),
-    };
+    } as WebStore;
+
+    parsed.exercise_targets_local = parsed.exercise_targets_local.map((target) => ({
+      ...target,
+      user_id: target.user_id || LOCAL_DEV_USER_ID,
+    }));
+
+    return parsed;
   } catch {
     const empty = createEmptyWebStore();
     localStorage.setItem(WEB_DB_STORAGE_KEY, JSON.stringify(empty));
@@ -290,6 +300,7 @@ function createWebDbAdapter(): DbAdapter {
       if (normalized.startsWith('insert into exercise_targets_local')) {
         const [
           localId,
+          userId,
           exerciseId,
           targetSets,
           repMin,
@@ -299,10 +310,11 @@ function createWebDbAdapter(): DbAdapter {
           updatedAt,
         ] = params;
         const existingTarget = store.exercise_targets_local.find(
-          (item) => item.exercise_id === exerciseId
+          (item) => item.user_id === userId && item.exercise_id === exerciseId
         );
         const targetRow = {
           local_id: existingTarget?.local_id ?? localId,
+          user_id: userId,
           exercise_id: exerciseId,
           target_sets: targetSets,
           rep_min: repMin,
@@ -580,9 +592,14 @@ function createWebDbAdapter(): DbAdapter {
         normalized.startsWith('update workout_sessions_local') &&
         normalized.includes('set completed_at')
       ) {
-        const [completedAt, durationNow, updatedAt, sessionLocalId] = params;
+        const hasOwnerPredicate = normalized.includes('where user_id = ?');
+        const [completedAt, durationNow, updatedAt] = params;
+        const userId = hasOwnerPredicate ? params[3] : null;
+        const sessionLocalId = hasOwnerPredicate ? params[4] : params[3];
         const session = store.workout_sessions_local.find(
-          (item) => item.local_id === sessionLocalId
+          (item) =>
+            item.local_id === sessionLocalId &&
+            (!hasOwnerPredicate || item.user_id === userId)
         );
 
         if (session) {
@@ -624,9 +641,14 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes("set sync_status = 'pending'") &&
         normalized.includes('updated_at = ?')
       ) {
-        const [updatedAt, sessionLocalId] = params;
+        const hasOwnerPredicate = normalized.includes('where user_id = ?');
+        const [updatedAt] = params;
+        const userId = hasOwnerPredicate ? params[1] : null;
+        const sessionLocalId = hasOwnerPredicate ? params[2] : params[1];
         const session = store.workout_sessions_local.find(
-          (item) => item.local_id === sessionLocalId
+          (item) =>
+            item.local_id === sessionLocalId &&
+            (!hasOwnerPredicate || item.user_id === userId)
         );
 
         if (session) {
@@ -643,9 +665,14 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('is_deleted = 1') &&
         normalized.includes('deleted_at = ?')
       ) {
-        const [deletedAt, updatedAt, sessionLocalId] = params;
+        const hasOwnerPredicate = normalized.includes('where user_id = ?');
+        const [deletedAt, updatedAt] = params;
+        const userId = hasOwnerPredicate ? params[2] : null;
+        const sessionLocalId = hasOwnerPredicate ? params[3] : params[2];
         const session = store.workout_sessions_local.find(
-          (item) => item.local_id === sessionLocalId
+          (item) =>
+            item.local_id === sessionLocalId &&
+            (!hasOwnerPredicate || item.user_id === userId)
         );
 
         if (session) {
@@ -1016,7 +1043,19 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('from workout_session_exercises_local') &&
         normalized.includes('session_local_id = ?')
       ) {
-        const [sessionLocalId] = params;
+        const hasOwnerJoin = normalized.includes('join workout_sessions_local');
+        const userId = hasOwnerJoin ? params[0] : null;
+        const sessionLocalId = hasOwnerJoin ? params[1] : params[0];
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId
+        );
+
+        if (
+          hasOwnerJoin &&
+          (!session || String(session.user_id) !== String(userId) || isDeletedRecord(session))
+        ) {
+          return [] as T[];
+        }
 
         return store.workout_session_exercises_local
           .filter((item) => item.session_local_id === sessionLocalId)
@@ -1029,10 +1068,14 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('from exercise_targets_local') &&
         normalized.includes('exercise_id = ?')
       ) {
-        const [exerciseId] = params;
+        const hasOwnerFilter = normalized.includes('user_id = ?');
+        const userId = hasOwnerFilter ? params[0] : null;
+        const exerciseId = hasOwnerFilter ? params[1] : params[0];
 
         return store.exercise_targets_local.filter(
-          (target) => target.exercise_id === exerciseId
+          (target) =>
+            target.exercise_id === exerciseId &&
+            (!hasOwnerFilter || target.user_id === userId)
         ) as T[];
       }
 
@@ -1041,9 +1084,16 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('join workout_sessions_local s') &&
         normalized.includes('ws.exercise_id = ?')
       ) {
-        const [exerciseId] = params;
+        const hasOwnerFilter = normalized.includes('s.user_id = ?');
+        const userId = hasOwnerFilter ? params[0] : null;
+        const exerciseId = hasOwnerFilter ? params[1] : params[0];
         const latestSession = store.workout_sessions_local
-          .filter((session) => Boolean(session.completed_at) && !isDeletedRecord(session))
+          .filter(
+            (session) =>
+              Boolean(session.completed_at) &&
+              !isDeletedRecord(session) &&
+              (!hasOwnerFilter || String(session.user_id) === String(userId))
+          )
           .filter((session) =>
             store.workout_sets_local.some(
               (set) =>
@@ -1078,8 +1128,20 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('from workout_sets_local') &&
         normalized.includes('group by exercise_id')
       ) {
-        const [sessionLocalId] = params;
+        const hasOwnerJoin = normalized.includes('join workout_sessions_local');
+        const userId = hasOwnerJoin ? params[0] : null;
+        const sessionLocalId = hasOwnerJoin ? params[1] : params[0];
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId
+        );
         const seenExerciseIds = new Set<string>();
+
+        if (
+          hasOwnerJoin &&
+          (!session || String(session.user_id) !== String(userId) || isDeletedRecord(session))
+        ) {
+          return [] as T[];
+        }
         const rows: Record<string, unknown>[] = [];
 
         for (const set of store.workout_sets_local) {
@@ -1103,13 +1165,15 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('from workout_sessions_local') &&
         normalized.includes('where local_id = ?')
       ) {
-        const [sessionLocalId] = params;
-
+        const hasOwnerFilter = normalized.includes('user_id = ?');
+        const userId = hasOwnerFilter ? params[0] : null;
+        const sessionLocalId = hasOwnerFilter ? params[1] : params[0];
         const excludeDeleted = queryExcludesDeleted(normalized);
 
         return store.workout_sessions_local.filter(
           (session) =>
             session.local_id === sessionLocalId &&
+            (!hasOwnerFilter || String(session.user_id) === String(userId)) &&
             (!excludeDeleted || !isDeletedRecord(session))
         ) as T[];
       }
@@ -1120,6 +1184,9 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const excludedUserId = normalized.includes('user_id != ?')
           ? String(params[0] ?? '')
+          : null;
+        const includedUserId = normalized.includes('user_id = ?')
+          ? String(params[params.length - 1] ?? '')
           : null;
 
         return store.workout_sessions_local.filter((session) => {
@@ -1132,7 +1199,8 @@ function createWebDbAdapter(): DbAdapter {
               ['pending', 'failed'].includes(String(set.sync_status))
           );
           const hasSyncableOwner =
-            !excludedUserId || String(session.user_id) !== excludedUserId;
+            (!excludedUserId || String(session.user_id) !== excludedUserId) &&
+            (!includedUserId || String(session.user_id) === includedUserId);
 
           return (hasSyncStatus || hasPendingChildSet) && hasSyncableOwner;
         }) as T[];
@@ -1157,6 +1225,56 @@ function createWebDbAdapter(): DbAdapter {
               Date.parse(String(b.started_at)) - Date.parse(String(a.started_at))
           )
           .slice(0, Number(limit)) as T[];
+      }
+
+      if (
+        normalized.includes('from workout_sets_local ws') &&
+        normalized.includes('join workout_sessions_local s') &&
+        normalized.includes('ws.session_local_id = ?') &&
+        !normalized.includes('ws.exercise_id = ?')
+      ) {
+        const [userId, sessionLocalId] = params;
+        const session = store.workout_sessions_local.find(
+          (item) => item.local_id === sessionLocalId && String(item.user_id) === String(userId)
+        );
+
+        if (!session || (queryExcludesDeleted(normalized) && isDeletedRecord(session))) {
+          return [] as T[];
+        }
+
+        const excludeDeleted = queryExcludesDeleted(normalized);
+        const syncOnly = normalized.includes("sync_status in ('pending', 'failed')");
+
+        return store.workout_sets_local
+          .filter(
+            (set) =>
+              set.session_local_id === sessionLocalId &&
+              (!excludeDeleted || !isDeletedRecord(set)) &&
+              (!syncOnly || ['pending', 'failed'].includes(String(set.sync_status)))
+          )
+          .sort(
+            (a, b) => Number(a.set_number ?? 0) - Number(b.set_number ?? 0)
+          ) as T[];
+      }
+
+      if (
+        normalized.includes('from workout_sets_local ws') &&
+        normalized.includes('join workout_sessions_local s') &&
+        normalized.includes('ws.local_id = ?')
+      ) {
+        const [userId, setLocalId] = params;
+        const set = store.workout_sets_local.find(
+          (item) => item.local_id === setLocalId
+        );
+        const session = set
+          ? store.workout_sessions_local.find(
+              (item) =>
+                item.local_id === set.session_local_id &&
+                String(item.user_id) === String(userId)
+            )
+          : null;
+
+        return set && session ? ([set] as T[]) : ([] as T[]);
       }
 
       if (
@@ -1218,13 +1336,17 @@ function createWebDbAdapter(): DbAdapter {
         const excludedUserId = normalized.includes('user_id != ?')
           ? String(params[0] ?? '')
           : null;
+        const includedUserId = normalized.includes('user_id = ?')
+          ? String(params[params.length - 1] ?? '')
+          : null;
 
         return store.meal_logs_local.filter((mealLog) => {
           const hasSyncStatus = ['pending', 'failed'].includes(
             String(mealLog.sync_status)
           );
           const hasSyncableOwner =
-            !excludedUserId || String(mealLog.user_id) !== excludedUserId;
+            (!excludedUserId || String(mealLog.user_id) !== excludedUserId) &&
+            (!includedUserId || String(mealLog.user_id) === includedUserId);
 
           return hasSyncStatus && hasSyncableOwner;
         }) as T[];
@@ -1235,11 +1357,15 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('logged_at >= ?') &&
         normalized.includes('logged_at < ?')
       ) {
-        const [startIso, endIso] = params;
+        const hasOwnerFilter = normalized.includes('user_id = ?');
+        const userId = hasOwnerFilter ? params[0] : null;
+        const startIso = hasOwnerFilter ? params[1] : params[0];
+        const endIso = hasOwnerFilter ? params[2] : params[1];
 
         return store.meal_logs_local
           .filter(
             (mealLog) =>
+              (!hasOwnerFilter || String(mealLog.user_id) === String(userId)) &&
               String(mealLog.logged_at) >= String(startIso) &&
               String(mealLog.logged_at) < String(endIso)
           )
@@ -1267,7 +1393,16 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('from meal_items_local') &&
         normalized.includes('meal_log_local_id = ?')
       ) {
-        const [mealLogLocalId] = params;
+        const hasOwnerJoin = normalized.includes('join meal_logs_local');
+        const userId = hasOwnerJoin ? params[0] : null;
+        const mealLogLocalId = hasOwnerJoin ? params[1] : params[0];
+        const mealLog = store.meal_logs_local.find(
+          (item) => item.local_id === mealLogLocalId
+        );
+
+        if (hasOwnerJoin && (!mealLog || String(mealLog.user_id) !== String(userId))) {
+          return [] as T[];
+        }
 
         return store.meal_items_local
           .filter((item) => item.meal_log_local_id === mealLogLocalId)
@@ -1284,13 +1419,17 @@ function createWebDbAdapter(): DbAdapter {
         const excludedUserId = normalized.includes('user_id != ?')
           ? String(params[0] ?? '')
           : null;
+        const includedUserId = normalized.includes('user_id = ?')
+          ? String(params[params.length - 1] ?? '')
+          : null;
 
         return store.water_logs_local.filter((waterLog) => {
           const hasSyncStatus = ['pending', 'failed'].includes(
             String(waterLog.sync_status)
           );
           const hasSyncableOwner =
-            !excludedUserId || String(waterLog.user_id) !== excludedUserId;
+            (!excludedUserId || String(waterLog.user_id) !== excludedUserId) &&
+            (!includedUserId || String(waterLog.user_id) === includedUserId);
 
           return hasSyncStatus && hasSyncableOwner;
         }) as T[];
@@ -1301,11 +1440,15 @@ function createWebDbAdapter(): DbAdapter {
         normalized.includes('logged_at >= ?') &&
         normalized.includes('logged_at < ?')
       ) {
-        const [startIso, endIso] = params;
+        const hasOwnerFilter = normalized.includes('user_id = ?');
+        const userId = hasOwnerFilter ? params[0] : null;
+        const startIso = hasOwnerFilter ? params[1] : params[0];
+        const endIso = hasOwnerFilter ? params[2] : params[1];
 
         return store.water_logs_local
           .filter(
             (waterLog) =>
+              (!hasOwnerFilter || String(waterLog.user_id) === String(userId)) &&
               String(waterLog.logged_at) >= String(startIso) &&
               String(waterLog.logged_at) < String(endIso)
           )
@@ -1405,13 +1548,17 @@ function createWebDbAdapter(): DbAdapter {
         const excludedUserId = normalized.includes('user_id != ?')
           ? String(params[0] ?? '')
           : null;
+        const includedUserId = normalized.includes('user_id = ?')
+          ? String(params[params.length - 1] ?? '')
+          : null;
 
         return store.mood_logs_local.filter((checkIn) => {
           const hasSyncStatus = ['pending', 'failed'].includes(
             String(checkIn.sync_status)
           );
           const hasSyncableOwner =
-            !excludedUserId || String(checkIn.user_id) !== excludedUserId;
+            (!excludedUserId || String(checkIn.user_id) !== excludedUserId) &&
+            (!includedUserId || String(checkIn.user_id) === includedUserId);
 
           return hasSyncStatus && hasSyncableOwner;
         }) as T[];
@@ -1468,57 +1615,201 @@ function createWebDbAdapter(): DbAdapter {
 export const db: DbAdapter =
   Platform.OS === 'web' ? createWebDbAdapter() : createNativeDbAdapter();
 
-export function getSetsBySession(sessionLocalId: string) {
+export type OwnerSyncBacklog = Record<
+  'workouts' | 'nutrition' | 'wellness' | 'progress',
+  { pending: number; failed: number }
+>;
+
+export function getOwnerSyncBacklog(userId: string): OwnerSyncBacklog {
+  if (Platform.OS === 'web') {
+    const store = readWebStore();
+    const ownedSessionIds = new Set(
+      store.workout_sessions_local
+        .filter((session) => String(session.user_id) === String(userId))
+        .map((session) => String(session.local_id))
+    );
+    const ownedMealLogIds = new Set(
+      store.meal_logs_local
+        .filter((mealLog) => String(mealLog.user_id) === String(userId))
+        .map((mealLog) => String(mealLog.local_id))
+    );
+
+    const countStatuses = (rows: Array<{ sync_status?: unknown }>) => ({
+      pending: rows.filter((row) => row.sync_status === 'pending').length,
+      failed: rows.filter((row) => row.sync_status === 'failed').length,
+    });
+
+    return {
+      workouts: countStatuses([
+        ...store.workout_sessions_local.filter(
+          (session) => String(session.user_id) === String(userId)
+        ),
+        ...store.workout_sets_local.filter((set) =>
+          ownedSessionIds.has(String(set.session_local_id))
+        ),
+      ]),
+      nutrition: countStatuses([
+        ...store.meal_logs_local.filter(
+          (mealLog) => String(mealLog.user_id) === String(userId)
+        ),
+        ...store.meal_items_local.filter((item) =>
+          ownedMealLogIds.has(String(item.meal_log_local_id))
+        ),
+        ...store.water_logs_local.filter(
+          (waterLog) => String(waterLog.user_id) === String(userId)
+        ),
+      ]),
+      wellness: countStatuses(
+        store.mood_logs_local.filter(
+          (checkIn) => String(checkIn.user_id) === String(userId)
+        )
+      ),
+      progress: countStatuses(
+        store.body_measurements_local.filter(
+          (measurement) => String(measurement.user_id) === String(userId)
+        )
+      ),
+    };
+  }
+
+  const count = (sql: string, params: SQLiteBindValue[]) =>
+    Number(db.getAllSync<{ count: number }>(sql, params)[0]?.count ?? 0);
+  const countForStatus = (domainSql: string, status: 'pending' | 'failed') =>
+    count(domainSql, [userId, status]);
+
+  const workoutSql = `
+    select count(*) as count
+    from (
+      select ws.sync_status
+      from workout_sessions_local ws
+      where ws.user_id = ?
+      union all
+      select sets.sync_status
+      from workout_sets_local sets
+      join workout_sessions_local sessions
+        on sessions.local_id = sets.session_local_id
+      where sessions.user_id = ?
+    ) owned_rows
+    where sync_status = ?
+  `;
+  const nutritionSql = `
+    select count(*) as count
+    from (
+      select ml.sync_status
+      from meal_logs_local ml
+      where ml.user_id = ?
+      union all
+      select mi.sync_status
+      from meal_items_local mi
+      join meal_logs_local ml on ml.local_id = mi.meal_log_local_id
+      where ml.user_id = ?
+      union all
+      select wl.sync_status
+      from water_logs_local wl
+      where wl.user_id = ?
+    ) owned_rows
+    where sync_status = ?
+  `;
+  const simpleSql = (table: string) => `
+    select count(*) as count
+    from ${table}
+    where user_id = ? and sync_status = ?
+  `;
+
+  const countWorkout = (status: 'pending' | 'failed') =>
+    count(workoutSql, [userId, userId, status]);
+  const countNutrition = (status: 'pending' | 'failed') =>
+    count(nutritionSql, [userId, userId, userId, status]);
+
+  return {
+    workouts: {
+      pending: countWorkout('pending'),
+      failed: countWorkout('failed'),
+    },
+    nutrition: {
+      pending: countNutrition('pending'),
+      failed: countNutrition('failed'),
+    },
+    wellness: {
+      pending: countForStatus(simpleSql('mood_logs_local'), 'pending'),
+      failed: countForStatus(simpleSql('mood_logs_local'), 'failed'),
+    },
+    progress: {
+      pending: countForStatus(simpleSql('body_measurements_local'), 'pending'),
+      failed: countForStatus(simpleSql('body_measurements_local'), 'failed'),
+    },
+  };
+}
+
+export function getSetsBySession(userId: string, sessionLocalId: string) {
   return db.getAllSync<LocalWorkoutSet>(
     `
-    select *
-    from workout_sets_local
-    where session_local_id = ?
-      and coalesce(is_deleted, 0) = 0
-      and deleted_at is null
-    order by set_number asc
+    select ws.*
+    from workout_sets_local ws
+    join workout_sessions_local s
+      on s.local_id = ws.session_local_id
+    where s.user_id = ?
+      and ws.session_local_id = ?
+      and coalesce(s.is_deleted, 0) = 0
+      and s.deleted_at is null
+      and coalesce(ws.is_deleted, 0) = 0
+      and ws.deleted_at is null
+    order by ws.set_number asc
     `,
-    [sessionLocalId]
+    [userId, sessionLocalId]
   );
 }
 
-export function getSetsBySessionForSync(sessionLocalId: string) {
+export function getSetsBySessionForSync(userId: string, sessionLocalId: string) {
   return db.getAllSync<LocalWorkoutSet>(
     `
-    select *
-    from workout_sets_local
-    where session_local_id = ?
-      and sync_status in ('pending', 'failed')
-    order by set_number asc
+    select ws.*
+    from workout_sets_local ws
+    join workout_sessions_local s
+      on s.local_id = ws.session_local_id
+    where s.user_id = ?
+      and ws.session_local_id = ?
+      and ws.sync_status in ('pending', 'failed')
+    order by ws.set_number asc
     `,
-    [sessionLocalId]
+    [userId, sessionLocalId]
   );
 }
 
-export function getExercisesBySession(sessionLocalId: string) {
+export function getExercisesBySession(userId: string, sessionLocalId: string) {
   return db.getAllSync<LocalWorkoutSessionExercise>(
     `
-    select *
-    from workout_session_exercises_local
-    where session_local_id = ?
-    order by sort_order asc
+    select se.*
+    from workout_session_exercises_local se
+    join workout_sessions_local s
+      on s.local_id = se.session_local_id
+    where s.user_id = ?
+      and se.session_local_id = ?
+      and coalesce(s.is_deleted, 0) = 0
+      and s.deleted_at is null
+    order by se.sort_order asc
     `,
-    [sessionLocalId]
+    [userId, sessionLocalId]
   );
 }
 
-export function getExerciseIdsBySessionFromSets(sessionLocalId: string) {
+export function getExerciseIdsBySessionFromSets(userId: string, sessionLocalId: string) {
   return db.getAllSync<{ exercise_id: string }>(
     `
-    select exercise_id
-    from workout_sets_local
-    where session_local_id = ?
-      and coalesce(is_deleted, 0) = 0
-      and deleted_at is null
-    group by exercise_id
-    order by min(rowid) asc
+    select ws.exercise_id
+    from workout_sets_local ws
+    join workout_sessions_local s
+      on s.local_id = ws.session_local_id
+    where s.user_id = ?
+      and ws.session_local_id = ?
+      and coalesce(s.is_deleted, 0) = 0
+      and s.deleted_at is null
+      and coalesce(ws.is_deleted, 0) = 0
+      and ws.deleted_at is null
+    group by ws.exercise_id
+    order by min(ws.rowid) asc
     `,
-    [sessionLocalId]
+    [userId, sessionLocalId]
   );
 }
 
@@ -1529,6 +1820,71 @@ function addMissingLocalColumn(tableName: string, columnSql: string) {
     // SQLite does not support ADD COLUMN IF NOT EXISTS on all targets.
     // Existing installs can safely ignore duplicate-column errors.
   }
+}
+
+function migrateExerciseTargetsToOwnerScope() {
+  if (Platform.OS === 'web') {
+    const store = readWebStore();
+    store.exercise_targets_local = store.exercise_targets_local.map((target) => ({
+      ...target,
+      user_id: target.user_id || LOCAL_DEV_USER_ID,
+    }));
+    writeWebStore(store);
+    return;
+  }
+
+  const columns = db.getAllSync<{ name: string }>('pragma table_info(exercise_targets_local);');
+
+  if (columns.some((column) => column.name === 'user_id')) {
+    return;
+  }
+
+  const legacyOwner = LOCAL_DEV_USER_ID.replace(/'/g, "''");
+
+  db.execSync(`
+    alter table exercise_targets_local rename to exercise_targets_local_legacy;
+
+    create table exercise_targets_local (
+      local_id text primary key,
+      user_id text not null,
+      exercise_id text not null,
+      target_sets integer not null default 3,
+      rep_min integer not null default 8,
+      rep_max integer not null default 12,
+      increment_size real not null default 5,
+      deload_percentage real not null default 10,
+      sync_status text not null default 'pending',
+      updated_at text not null,
+      unique(user_id, exercise_id)
+    );
+
+    insert into exercise_targets_local (
+      local_id,
+      user_id,
+      exercise_id,
+      target_sets,
+      rep_min,
+      rep_max,
+      increment_size,
+      deload_percentage,
+      sync_status,
+      updated_at
+    )
+    select
+      local_id,
+      '${legacyOwner}',
+      exercise_id,
+      target_sets,
+      rep_min,
+      rep_max,
+      increment_size,
+      deload_percentage,
+      sync_status,
+      updated_at
+    from exercise_targets_local_legacy;
+
+    drop table exercise_targets_local_legacy;
+  `);
 }
 
 export function initializeLocalDb() {
@@ -1560,14 +1916,16 @@ export function initializeLocalDb() {
 
     create table if not exists exercise_targets_local (
       local_id text primary key,
-      exercise_id text not null unique,
+      user_id text not null,
+      exercise_id text not null,
       target_sets integer not null default 3,
       rep_min integer not null default 8,
       rep_max integer not null default 12,
       increment_size real not null default 5,
       deload_percentage real not null default 10,
       sync_status text not null default 'pending',
-      updated_at text not null
+      updated_at text not null,
+      unique(user_id, exercise_id)
     );
 
     create table if not exists workout_sets_local (
@@ -1658,9 +2016,6 @@ export function initializeLocalDb() {
     create index if not exists idx_workout_session_exercises_session
     on workout_session_exercises_local(session_local_id, sort_order);
 
-    create index if not exists idx_exercise_targets_exercise
-    on exercise_targets_local(exercise_id);
-
     create index if not exists idx_workout_sets_session
     on workout_sets_local(session_local_id);
 
@@ -1682,6 +2037,13 @@ export function initializeLocalDb() {
     create index if not exists idx_body_measurements_user_measured
     on body_measurements_local(user_id, measured_at);
 
+  `);
+
+  migrateExerciseTargetsToOwnerScope();
+
+  db.execSync(`
+    create index if not exists idx_exercise_targets_owner_exercise
+    on exercise_targets_local(user_id, exercise_id);
   `);
 
   addMissingLocalColumn('workout_sessions_local', 'is_deleted integer not null default 0');

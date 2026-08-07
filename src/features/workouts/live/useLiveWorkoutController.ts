@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
+import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import {
   getExerciseById,
   getSeededExercises,
@@ -159,6 +160,8 @@ export function useLiveWorkoutController(
   id: string | string[] | undefined
 ): LiveWorkoutControllerResult {
   const sessionId = useMemo(() => resolveSessionId(id), [id]);
+  const { session: authSession } = useAuthSession();
+  const ownerId = authSession?.user.id ?? null;
   const exercises = useMemo(() => getSeededExercises(), []);
   const [uiState, dispatch] = useReducer(
     liveWorkoutReducer,
@@ -231,7 +234,8 @@ export function useLiveWorkoutController(
     currentSetCount: number,
     options: { replaceDraft?: boolean } = {}
   ) {
-    const defaults = await getSmartExerciseDefaults(exercise.id);
+    if (!ownerId) return;
+    const defaults = await getSmartExerciseDefaults(ownerId, exercise.id);
 
     setSmartDefaultsByExerciseId((current) => ({
       ...current,
@@ -248,7 +252,7 @@ export function useLiveWorkoutController(
       draft: buildDraftFromSuggestedSet(defaults, currentSetCount),
       replaceDraft: options.replaceDraft,
     });
-  }, [selectedExercise?.id, syncTargetInputs]);
+  }, [ownerId, selectedExercise?.id, syncTargetInputs]);
 
   function rememberExerciseSelection(exercise: Exercise) {
     setSelectedExercises((current) => {
@@ -263,13 +267,15 @@ export function useLiveWorkoutController(
   const refreshSets = useCallback(() => {
     if (!sessionId || !session) return;
 
-    const nextSets = getLocalWorkoutSets(sessionId);
+    if (!ownerId) return;
+
+    const nextSets = getLocalWorkoutSets(ownerId, sessionId);
     const nextMap = buildExerciseSetMap(nextSets);
 
     setSets(nextSets);
     setExerciseSetMap(nextMap);
 
-    const savedExerciseRows = getLocalWorkoutSessionExercises(sessionId);
+    const savedExerciseRows = getLocalWorkoutSessionExercises(ownerId, sessionId);
     const orderedSessionExercises = savedExerciseRows
       .map((row) => resolveExercise(row.exercise_id))
       .filter((exercise): exercise is Exercise => Boolean(exercise));
@@ -291,7 +297,7 @@ export function useLiveWorkoutController(
       });
       setSelectedExercise((current) => current ?? nextExercises[0]);
     }
-  }, [resolveExercise, session, sessionId]);
+  }, [ownerId, resolveExercise, session, sessionId]);
 
   function queueWorkoutSync(reason: string) {
     void syncPendingWorkoutSessions().catch((error) => {
@@ -305,6 +311,16 @@ export function useLiveWorkoutController(
   }
 
   useEffect(() => {
+    if (!ownerId) {
+      setSession(null);
+      setSessionLoadState({
+        status: 'error',
+        message: 'Workout session unavailable',
+        detail: 'Sign in again to access this workout.',
+      });
+      return;
+    }
+
     if (!sessionId) {
       setSession(null);
       setSessionLoadState({
@@ -316,7 +332,7 @@ export function useLiveWorkoutController(
     }
 
     try {
-      const nextSession = getLocalWorkoutSession(sessionId);
+      const nextSession = getLocalWorkoutSession(ownerId, sessionId);
 
       if (!nextSession) {
         setSession(null);
@@ -344,7 +360,7 @@ export function useLiveWorkoutController(
         detail: 'The local workout could not be read. Return to Train and try again.',
       });
     }
-  }, [sessionId]);
+  }, [ownerId, sessionId]);
 
   useEffect(() => {
     if (sessionLoadState.status !== 'ready') return;
@@ -440,12 +456,13 @@ export function useLiveWorkoutController(
       ])
     );
     const progressionReasonText = getWorkoutCompletionProgressionReasonText(
+      ownerId ?? '',
       sessionId,
       { effortFeedback, exerciseNamesById }
     );
 
     return ['Workout saved locally.', progressionReasonText].filter(Boolean).join('\n\n');
-  }, [sessionId, effortFeedback, exerciseSetMap, resolveExercise, sets.length]);
+  }, [ownerId, sessionId, effortFeedback, exerciseSetMap, resolveExercise, sets.length]);
 
   const currentSetDraft = {
     exerciseName: selectedExercise?.name ?? 'Choose an exercise',
@@ -477,7 +494,8 @@ export function useLiveWorkoutController(
 
   async function chooseExercise(exercise: Exercise) {
     if (sessionId) {
-      addLocalWorkoutSessionExercise(sessionId, exercise.id);
+      if (!ownerId) return;
+      addLocalWorkoutSessionExercise(ownerId, sessionId, exercise.id);
     }
 
     rememberExercises([exercise]);
@@ -545,7 +563,10 @@ export function useLiveWorkoutController(
     const currentExerciseSets = exerciseSetMap.get(selectedExercise.id) ?? [];
     const setNumber = currentExerciseSets.length + 1;
 
+    if (!ownerId) return;
+
     addLocalWorkoutSet({
+      userId: ownerId,
       sessionLocalId: sessionId,
       exerciseId: selectedExercise.id,
       setNumber,
@@ -607,7 +628,10 @@ export function useLiveWorkoutController(
 
     setTargetValidationMessage(null);
 
+    if (!ownerId) return;
+
     upsertLocalExerciseTarget({
+      userId: ownerId,
       exerciseId: selectedExercise.id,
       targetSets,
       repMin,
@@ -649,7 +673,8 @@ export function useLiveWorkoutController(
 
     setEditValidationMessage(null);
 
-    updateLocalWorkoutSet(editingSet.local_id, parsedReps, parsedWeight);
+    if (!ownerId) return;
+    updateLocalWorkoutSet(ownerId, editingSet.local_id, parsedReps, parsedWeight);
     setEditingSet(null);
     setEditInputs(DEFAULT_EDIT_INPUTS);
     dispatch({ type: 'sheet.closed' });
@@ -680,7 +705,8 @@ export function useLiveWorkoutController(
     const setLocalId = editingSet.local_id;
     const notice = `Set ${editingSet.set_number} deleted`;
 
-    deleteLocalWorkoutSet(setLocalId);
+    if (!ownerId) return;
+    deleteLocalWorkoutSet(ownerId, setLocalId);
     setPendingDeletedSet({ setLocalId, label: notice });
     setEditingSet(null);
     setEditInputs(DEFAULT_EDIT_INPUTS);
@@ -701,7 +727,8 @@ export function useLiveWorkoutController(
     if (!pendingDeletedSet) return;
 
     clearPendingDeleteTimer();
-    restoreLocalWorkoutSet(pendingDeletedSet.setLocalId);
+    if (!ownerId) return;
+    restoreLocalWorkoutSet(ownerId, pendingDeletedSet.setLocalId);
     setPendingDeletedSet(null);
     dispatch({ type: 'notice.shown', notice: 'Set restored' });
     refreshSets();
@@ -725,7 +752,8 @@ export function useLiveWorkoutController(
     }
 
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    completeLocalWorkoutSession(sessionId);
+    if (!ownerId) return;
+    completeLocalWorkoutSession(ownerId, sessionId);
     void syncPendingWorkoutSessions().catch((error) => {
       reportError(error, {
         source: 'live-workout-controller',

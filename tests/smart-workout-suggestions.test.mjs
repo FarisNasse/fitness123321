@@ -12,8 +12,8 @@ test('local database stores optional exercise target defaults offline-first', ()
 
   assert.match(localDb, /export type ExerciseTargetLocal = \{/);
   assert.match(localDb, /exercise_targets_local: Record<string, unknown>\[\]/);
-  assert.match(localDb, /create table if not exists exercise_targets_local \([\s\S]*exercise_id text not null unique[\s\S]*target_sets integer not null default 3[\s\S]*rep_min integer not null default 8[\s\S]*rep_max integer not null default 12[\s\S]*increment_size real not null default 5[\s\S]*deload_percentage real not null default 10/);
-  assert.match(localDb, /create index if not exists idx_exercise_targets_exercise[\s\S]*on exercise_targets_local\(exercise_id\)/);
+  assert.match(localDb, /create table if not exists exercise_targets_local \([\s\S]*user_id text not null[\s\S]*exercise_id text not null[\s\S]*target_sets integer not null default 3[\s\S]*rep_min integer not null default 8[\s\S]*rep_max integer not null default 12[\s\S]*increment_size real not null default 5[\s\S]*deload_percentage real not null default 10/);
+  assert.match(localDb, /create index if not exists idx_exercise_targets_owner_exercise[\s\S]*on exercise_targets_local\(user_id, exercise_id\)/);
 });
 
 test('web local-db adapter can upsert exercise targets and answer recent-history default queries', () => {
@@ -52,9 +52,9 @@ test('workout service implements the smart defaults fallback cascade', () => {
   assert.match(service, /export type SmartExerciseDefaults = \{/);
   assert.match(service, /const STANDARD_EXERCISE_DEFAULTS = \{[\s\S]*targetSets: 3,[\s\S]*repMin: 8,[\s\S]*repMax: 12,[\s\S]*incrementSize: 5,[\s\S]*deloadPercentage: 10/);
   assert.match(service, /export function upsertLocalExerciseTarget/);
-  assert.match(service, /on conflict\(exercise_id\) do update set/);
-  assert.match(service, /function getRecentCompletedExerciseSets\(exerciseId: string\)/);
-  assert.match(compact, /join workout_sessions_local s on s\.local_id = ws\.session_local_id where ws\.exercise_id = \? .* s\.completed_at is not null/);
+  assert.match(service, /on conflict\(user_id, exercise_id\) do update set/);
+  assert.match(service, /function getRecentCompletedExerciseSets\(userId: string, exerciseId: string\)/);
+  assert.match(compact, /join workout_sessions_local s on s\.local_id = ws\.session_local_id where s\.user_id = \? .* ws\.exercise_id = \? .* s\.completed_at is not null/);
   assert.match(service, /export async function getSmartExerciseDefaults/);
   assert.match(service, /if \(recentSets\.length > 0\) \{[\s\S]*source: 'history'/);
   assert.match(service, /if \(target\) \{[\s\S]*source: 'target'/);
@@ -67,7 +67,7 @@ test('live workout screen applies smart defaults when exercises are selected and
   assert.match(controller, /getSmartExerciseDefaults/);
   assert.match(controller, /upsertLocalExerciseTarget/);
   assert.match(controller, /const \[smartDefaultsByExerciseId, setSmartDefaultsByExerciseId\] = useState/);
-  assert.match(controller, /async function applySmartDefaultsForExercise\([\s\S]*const defaults = await getSmartExerciseDefaults\(exercise\.id\)[\s\S]*draft: buildDraftFromSuggestedSet\(defaults, currentSetCount\)/);
+  assert.match(controller, /async function applySmartDefaultsForExercise\([\s\S]*const defaults = await getSmartExerciseDefaults\(ownerId, exercise\.id\)[\s\S]*draft: buildDraftFromSuggestedSet\(defaults, currentSetCount\)/);
   assert.match(controller, /async function chooseExercise\(exercise: Exercise\)[\s\S]*await applySmartDefaultsForExercise/);
   assert.match(controller, /void applySmartDefaultsForExercise\(selectedExercise, currentExerciseSets\.length \+ 1, \{[\s\S]*replaceDraft: true,/);
 });
@@ -116,8 +116,8 @@ test('workout service builds completion recommendations from local workout histo
 
   assert.match(service, /buildProgressionRecommendation/);
   assert.match(service, /export function getWorkoutCompletionProgressionRecommendations/);
-  assert.match(service, /const currentSetsByExercise = groupWorkoutSetsByExercise\(getLocalWorkoutSets\(sessionLocalId\)\)/);
-  assert.match(service, /const previousSets = getRecentCompletedExerciseSets\(exerciseId\)/);
+  assert.match(service, /const currentSetsByExercise = groupWorkoutSetsByExercise\([\s\S]*getLocalWorkoutSets\(userId, sessionLocalId\)[\s\S]*\)/);
+  assert.match(service, /const previousSets = getRecentCompletedExerciseSets\(userId, exerciseId\)/);
   assert.match(service, /targetSets: target\.targetSets/);
   assert.match(service, /effortFeedback: options\.effortFeedback/);
   assert.match(service, /export function getWorkoutCompletionProgressionReasonText/);

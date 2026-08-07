@@ -39,7 +39,12 @@ type RemoteBodyMeasurementRow = {
 
 const POUNDS_PER_KILOGRAM = 2.2046226218;
 const CENTIMETERS_PER_INCH = 2.54;
-const bodyMeasurementListeners = new Set<() => void>();
+type BodyMeasurementListener = {
+  userId: string;
+  listener: () => void;
+};
+
+const bodyMeasurementListeners = new Set<BodyMeasurementListener>();
 
 export function poundsToKilograms(pounds: number) {
   return pounds / POUNDS_PER_KILOGRAM;
@@ -57,17 +62,23 @@ export function centimetersToInches(centimeters: number) {
   return centimeters / CENTIMETERS_PER_INCH;
 }
 
-export function subscribeToBodyMeasurementChanges(listener: () => void) {
-  bodyMeasurementListeners.add(listener);
+export function subscribeToBodyMeasurementChanges(
+  userId: string,
+  listener: () => void,
+) {
+  const registration = { userId, listener };
+  bodyMeasurementListeners.add(registration);
 
   return () => {
-    bodyMeasurementListeners.delete(listener);
+    bodyMeasurementListeners.delete(registration);
   };
 }
 
-function notifyBodyMeasurementsChanged() {
-  for (const listener of bodyMeasurementListeners) {
-    listener();
+function notifyBodyMeasurementsChanged(userId: string) {
+  for (const registration of bodyMeasurementListeners) {
+    if (registration.userId === userId) {
+      registration.listener();
+    }
   }
 }
 
@@ -237,7 +248,7 @@ export function saveBodyMeasurement(
     throw new Error("The measurement could not be read after saving.");
   }
 
-  notifyBodyMeasurementsChanged();
+  notifyBodyMeasurementsChanged(input.userId);
   markSyncPending('progress');
   return saved;
 }
@@ -412,7 +423,7 @@ export async function refreshBodyMeasurementsFromRemote(userId: string) {
   }
 
   if ((data ?? []).length > 0) {
-    notifyBodyMeasurementsChanged();
+    notifyBodyMeasurementsChanged(userId);
   }
 }
 

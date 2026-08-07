@@ -8,6 +8,7 @@ import { Input } from '@/src/components/Input';
 import { MetricCard } from '@/src/components/MetricCard';
 import { ProgressBar } from '@/src/components/ProgressBar';
 import { Screen } from '@/src/components/Screen';
+import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import { SectionHeader } from '@/src/components/SectionHeader';
 import {
   DEFAULT_DAILY_TARGETS,
@@ -15,8 +16,8 @@ import {
   addLocalWaterLog,
   createFood,
   getDailyNutritionSummary,
-  getNutritionOwnerUserId,
   searchFoodsByName,
+  subscribeToNutritionLogChanges,
   syncPendingNutritionLogs,
   type DailyNutritionSummary,
 } from '@/src/features/nutrition/nutrition-service';
@@ -64,6 +65,8 @@ function progress(current: number, target: number) {
 }
 
 export default function NutritionScreen() {
+  const { session } = useAuthSession();
+  const ownerId = session?.user.id ?? null;
   const [summary, setSummary] = useState<DailyNutritionSummary>(emptySummary);
   const [isAddFoodOpen, setIsAddFoodOpen] = useState(false);
   const [mealType, setMealType] = useState<MealType>('breakfast');
@@ -82,12 +85,17 @@ export default function NutritionScreen() {
   const [fat, setFat] = useState('0');
 
   const refreshSummary = useCallback(() => {
-    setSummary(getDailyNutritionSummary());
-  }, []);
+    setSummary(ownerId ? getDailyNutritionSummary(ownerId) : emptySummary);
+  }, [ownerId]);
 
   useEffect(() => {
     refreshSummary();
   }, [refreshSummary]);
+
+  useEffect(() => {
+    if (!ownerId) return undefined;
+    return subscribeToNutritionLogChanges(ownerId, refreshSummary);
+  }, [ownerId, refreshSummary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,10 +248,10 @@ export default function NutritionScreen() {
     }
 
     try {
-      const userId = await getNutritionOwnerUserId();
+      if (!ownerId) throw new Error('A signed-in nutrition owner is required.');
 
       addLocalMealItem({
-        userId,
+        userId: ownerId,
         mealType,
         food: selectedFood,
         quantity: parsedQuantity,
@@ -273,8 +281,8 @@ export default function NutritionScreen() {
 
   async function handleQuickAddWater(amountMl: number) {
     try {
-      const userId = await getNutritionOwnerUserId();
-      addLocalWaterLog({ userId, amountMl });
+      if (!ownerId) throw new Error('A signed-in nutrition owner is required.');
+      addLocalWaterLog({ userId: ownerId, amountMl });
       refreshSummary();
 
       void syncPendingNutritionLogs().catch((error) => {
