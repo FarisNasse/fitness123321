@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { fileExists, readProjectFile, readProjectJson } from './helpers/project.mjs';
 
+// Keep this direct-dependency policy in lockstep with Expo Doctor's SDK 56 recommendations.
 const expectedSdkDependencies = {
   '@react-native-async-storage/async-storage': '2.2.0',
   'expo-constants': '~56.0.23',
