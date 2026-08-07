@@ -49,7 +49,7 @@ test('workout service repeats the latest completed user workout without copying 
     'if (!previousWorkout) {',
     'return null;',
     'const nextSessionLocalId = createLocalWorkoutSession(',
-    'const exercisesToRepeat = getLocalWorkoutSessionExercises(previousWorkout.local_id);',
+    'const exercisesToRepeat = getLocalWorkoutSessionExercises(',
     'for (const exercise of exercisesToRepeat) {',
     'addLocalWorkoutSessionExercise(',
   ], 'repeatLastCompletedWorkout should create a fresh session and copy only exercise selections');
@@ -67,12 +67,12 @@ test('workout service repeats the latest completed user workout without copying 
 test('workout service records exercise selections when picking or logging movements', () => {
   const service = readProjectFile('src/features/workouts/workout-service.ts');
 
-  assert.match(service, /export function getLocalWorkoutSessionExercises\(sessionLocalId: string\)/);
-  assert.match(service, /const savedExercises = getExercisesBySession\(sessionLocalId\)/);
-  assert.match(service, /getExerciseIdsBySessionFromSets\(sessionLocalId\)\.map\(\(row, index\) => \(\{/);
+  assert.match(service, /export function getLocalWorkoutSessionExercises\(\s*userId: string,\s*sessionLocalId: string\s*\)/);
+  assert.match(service, /const savedExercises = getExercisesBySession\(userId, sessionLocalId\)/);
+  assert.match(service, /getExerciseIdsBySessionFromSets\(userId, sessionLocalId\)\.map\(\(row, index\) => \(\{/);
   assert.match(service, /export function addLocalWorkoutSessionExercise\([\s\S]*sessionLocalId: string,[\s\S]*exerciseId: string,[\s\S]*sortOrder\?: number/);
   assert.match(service, /insert or ignore into workout_session_exercises_local/);
-  assert.match(service, /addLocalWorkoutSessionExercise\(input\.sessionLocalId, input\.exerciseId\);/);
+  assert.match(service, /addLocalWorkoutSessionExercise\(\s*input\.userId,\s*input\.sessionLocalId,\s*input\.exerciseId\s*\);/);
 });
 
 test('workouts tab exposes Repeat Last Workout only when history can be repeated', () => {
@@ -80,7 +80,7 @@ test('workouts tab exposes Repeat Last Workout only when history can be repeated
 
   assert.match(workouts, /repeatLastCompletedWorkout/);
   assert.match(workouts, /async function repeatLastWorkout\(\)/);
-  assert.match(workouts, /const repeatedWorkout = repeatLastCompletedWorkout\(userId\)/);
+  assert.match(workouts, /const repeatedWorkout = repeatLastCompletedWorkout\(ownerId\)/);
   assert.match(workouts, /if \(!repeatedWorkout\) \{/);
   assert.match(workouts, /router\.push\(`\/workout\/session\/\$\{repeatedWorkout\.sessionLocalId\}`\)/);
   assertIncludes(workouts, 'title="Repeat Last Workout"');
@@ -92,7 +92,7 @@ test('live workout screen preloads saved exercises before any new sets are logge
   const controller = readProjectFile('src/features/workouts/live/useLiveWorkoutController.ts');
 
   assert.match(controller, /getLocalWorkoutSessionExercises/);
-  assert.match(controller, /const savedExerciseRows = getLocalWorkoutSessionExercises\(sessionId\)/);
+  assert.match(controller, /const savedExerciseRows = getLocalWorkoutSessionExercises\(ownerId, sessionId\)/);
   assert.match(controller, /const orderedSessionExercises = savedExerciseRows[\s\S]*\.map\(\(row\) => resolveExercise\(row\.exercise_id\)\)/);
   assert.match(controller, /const nextExercises = \[\.\.\.orderedSessionExercises, \.\.\.exercisesFromLoggedSets\]/);
   assert.match(controller, /setSelectedExercises\(\(current\) => \{/);
@@ -105,7 +105,7 @@ test('exercise picker persists the session exercise order independently of set r
   assertInOrder(controller, [
     'async function chooseExercise(exercise: Exercise) {',
     'if (sessionId) {',
-    'addLocalWorkoutSessionExercise(sessionId, exercise.id);',
+    'addLocalWorkoutSessionExercise(ownerId, sessionId, exercise.id);',
     'rememberExercises([exercise]);',
     'rememberExerciseSelection(exercise);',
   ], 'chooseExercise should record the exercise selection before updating screen state');

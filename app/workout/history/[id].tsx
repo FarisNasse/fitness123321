@@ -6,6 +6,7 @@ import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
 import { EmptyState } from '@/src/components/EmptyState';
 import { Screen } from '@/src/components/Screen';
+import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import {
   getExerciseById,
   getSeededExercises,
@@ -18,6 +19,8 @@ import { reportError } from '@/src/lib/error-reporting';
 import type { Exercise } from '@/src/types/models';
 
 export default function WorkoutHistoryDetailScreen() {
+  const { session: authSession } = useAuthSession();
+  const ownerId = authSession?.user.id ?? null;
   const { id } = useLocalSearchParams<{ id: string }>();
   const exercises = useMemo(() => getSeededExercises(), []);
   const exerciseLookup = useMemo(
@@ -42,7 +45,7 @@ export default function WorkoutHistoryDetailScreen() {
     }
 
     try {
-      const session = getLocalWorkoutSession(sessionId);
+      const session = ownerId ? getLocalWorkoutSession(ownerId, sessionId) : null;
 
       return {
         session,
@@ -59,7 +62,7 @@ export default function WorkoutHistoryDetailScreen() {
         error: 'Workout history could not be read.',
       };
     }
-  }, [sessionId]);
+  }, [ownerId, sessionId]);
 
   const session = sessionResult.session;
   const setsResult = useMemo(() => {
@@ -68,7 +71,10 @@ export default function WorkoutHistoryDetailScreen() {
     }
 
     try {
-      return { sets: getLocalWorkoutSets(sessionId), error: null };
+      return {
+        sets: ownerId ? getLocalWorkoutSets(ownerId, sessionId) : [],
+        error: null,
+      };
     } catch (error) {
       reportError(error, {
         source: 'workout-history-screen',
@@ -80,7 +86,7 @@ export default function WorkoutHistoryDetailScreen() {
         error: 'Workout sets could not be read.',
       };
     }
-  }, [sessionId, session]);
+  }, [ownerId, sessionId, session]);
   const sets = setsResult.sets;
 
   const groupedSets = useMemo(() => {

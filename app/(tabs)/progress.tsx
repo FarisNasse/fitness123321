@@ -10,11 +10,11 @@ import { MetricCard } from '@/src/components/MetricCard';
 import { PRCard } from '@/src/components/PRCard';
 import { Screen } from '@/src/components/Screen';
 import { SectionHeader } from '@/src/components/SectionHeader';
+import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import { WeightChart, type WeightChartPoint } from '@/src/components/WeightChart';
 import {
   centimetersToInches,
   getBodyMeasurementHistory,
-  getBodyMeasurementOwnerUserId,
   inchesToCentimeters,
   kilogramsToPounds,
   poundsToKilograms,
@@ -136,6 +136,8 @@ function OptionalMeasurement({ label, value }: { label: string; value: string })
 }
 
 export default function ProgressScreen() {
+  const { session } = useAuthSession();
+  const ownerId = session?.user.id ?? null;
   const [sessions, setSessions] = useState<LocalWorkoutSessionRow[]>([]);
   const [measurements, setMeasurements] = useState<BodyMeasurementRecord[]>([]);
   const [isMeasurementOpen, setIsMeasurementOpen] = useState(false);
@@ -151,15 +153,17 @@ export default function ProgressScreen() {
   const exercises = useMemo(() => getSeededExercises(), []);
 
   const loadLocalMeasurements = useCallback(async () => {
-    const userId = await getBodyMeasurementOwnerUserId();
-    setMeasurements(getBodyMeasurementHistory(userId));
-  }, []);
+    setMeasurements(ownerId ? getBodyMeasurementHistory(ownerId) : []);
+  }, [ownerId]);
 
   const refreshMeasurements = useCallback(async () => {
     try {
-      const userId = await getBodyMeasurementOwnerUserId();
-      await refreshBodyMeasurementsFromRemote(userId);
-      setMeasurements(getBodyMeasurementHistory(userId));
+      if (!ownerId) {
+        setMeasurements([]);
+        return;
+      }
+      await refreshBodyMeasurementsFromRemote(ownerId);
+      setMeasurements(getBodyMeasurementHistory(ownerId));
     } catch (error) {
       reportError(error, {
         source: 'progress-screen',
@@ -168,19 +172,21 @@ export default function ProgressScreen() {
       });
       Alert.alert('Unable to load measurements', 'Measurements could not be refreshed right now.');
     }
-  }, []);
+  }, [ownerId]);
 
   useFocusEffect(
     useCallback(() => {
-      setSessions(getCompletedWorkoutSessions(12));
+      setSessions(ownerId ? getCompletedWorkoutSessions(ownerId, 12) : []);
       void refreshMeasurements();
 
-      const unsubscribe = subscribeToBodyMeasurementChanges(() => {
+      if (!ownerId) return undefined;
+
+      const unsubscribe = subscribeToBodyMeasurementChanges(ownerId, () => {
         void loadLocalMeasurements();
       });
 
       return unsubscribe;
-    }, [loadLocalMeasurements, refreshMeasurements])
+    }, [loadLocalMeasurements, ownerId, refreshMeasurements])
   );
 
   const records = useMemo<PersonalRecord[]>(() => {
@@ -189,8 +195,10 @@ export default function ProgressScreen() {
     );
     const bestByExercise = new Map<string, number>();
 
+    if (!ownerId) return [];
+
     for (const session of sessions) {
-      for (const set of getLocalWorkoutSets(session.local_id)) {
+      for (const set of getLocalWorkoutSets(ownerId, session.local_id)) {
         const reps = Number(set.reps);
         const setWeight = Number(set.weight);
 
@@ -214,7 +222,7 @@ export default function ProgressScreen() {
         exercise: exerciseLookup[exerciseId] ?? 'Unknown exercise',
         value: `${Math.round(estimate)} lb est. 1RM`,
       }));
-  }, [exercises, sessions]);
+  }, [exercises, ownerId, sessions]);
 
   const latestMeasurement = measurements[measurements.length - 1] ?? null;
   const previousMeasurement = measurements[measurements.length - 2] ?? null;
@@ -292,11 +300,11 @@ export default function ProgressScreen() {
     setIsSavingMeasurement(true);
 
     try {
-      const userId = await getBodyMeasurementOwnerUserId();
+      if (!ownerId) throw new Error('A signed-in measurement owner is required.');
       const parsedBodyFat = parseOptionalPercentage(bodyFat);
 
       saveBodyMeasurement({
-        userId,
+        userId: ownerId,
         measuredAt: parseMeasurementDate(measurementDate),
         weightKg: poundsToKilograms(parseRequiredNumber(weight, 'Weight')),
         bodyFatPercent: parsedBodyFat,

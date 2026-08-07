@@ -133,21 +133,29 @@ function getFoodMultiplier(food: Food, quantity: number, unit: string) {
   return unitsMatch ? quantity / servingSize : quantity;
 }
 
-const nutritionLogListeners = new Set<() => void>();
+type NutritionLogListener = {
+  userId: string;
+  listener: () => void;
+};
 
-export function subscribeToNutritionLogChanges(listener: () => void) {
-  nutritionLogListeners.add(listener);
+const nutritionLogListeners = new Set<NutritionLogListener>();
+
+export function subscribeToNutritionLogChanges(userId: string, listener: () => void) {
+  const registration = { userId, listener };
+  nutritionLogListeners.add(registration);
 
   return () => {
-    nutritionLogListeners.delete(listener);
+    nutritionLogListeners.delete(registration);
   };
 }
 
-function notifyNutritionLogChanged() {
+function notifyNutritionLogChanged(userId: string) {
   markSyncPending('nutrition');
 
-  for (const listener of nutritionLogListeners) {
-    listener();
+  for (const registration of nutritionLogListeners) {
+    if (registration.userId === userId) {
+      registration.listener();
+    }
   }
 }
 
@@ -377,7 +385,7 @@ export function addLocalMealItem(input: {
     ]
   );
 
-  notifyNutritionLogChanged();
+  notifyNutritionLogChanged(input.userId);
 
   return { mealLogLocalId, mealItemLocalId };
 }
@@ -406,34 +414,40 @@ export function addLocalWaterLog(input: {
     [localId, input.userId, loggedAt, input.amountMl, now]
   );
 
-  notifyNutritionLogChanged();
+  notifyNutritionLogChanged(input.userId);
 
   return localId;
 }
 
-export function getMealItemsByMealLog(mealLogLocalId: string) {
+export function getMealItemsByMealLog(userId: string, mealLogLocalId: string) {
   return db.getAllSync<LocalMealItemRow>(
     `
-    select *
-    from meal_items_local
-    where meal_log_local_id = ?
-    order by updated_at asc
+    select mi.*
+    from meal_items_local mi
+    join meal_logs_local ml on ml.local_id = mi.meal_log_local_id
+    where ml.user_id = ?
+      and mi.meal_log_local_id = ?
+    order by mi.updated_at asc
     `,
-    [mealLogLocalId]
+    [userId, mealLogLocalId]
   );
 }
 
-export function getDailyNutritionSummary(date = new Date()): DailyNutritionSummary {
+export function getDailyNutritionSummary(
+  userId: string,
+  date = new Date()
+): DailyNutritionSummary {
   const { startIso, endIso } = getLocalDayRange(date);
   const mealLogs = db.getAllSync<LocalMealLogRow>(
     `
     select *
     from meal_logs_local
-    where logged_at >= ?
+    where user_id = ?
+      and logged_at >= ?
       and logged_at < ?
     order by logged_at asc
     `,
-    [startIso, endIso]
+    [userId, startIso, endIso]
   );
 
   const mealLogIds = mealLogs.map((meal) => meal.local_id);
@@ -469,11 +483,12 @@ export function getDailyNutritionSummary(date = new Date()): DailyNutritionSumma
     `
     select *
     from water_logs_local
-    where logged_at >= ?
+    where user_id = ?
+      and logged_at >= ?
       and logged_at < ?
     order by logged_at asc
     `,
-    [startIso, endIso]
+    [userId, startIso, endIso]
   );
 
   const totals = entries.reduce<DailyNutritionTotals>(
@@ -665,7 +680,7 @@ async function syncPendingMealLogs(
       saveMealLogServerId(mealLog.local_id, serverMealLogId);
     }
 
-    const itemsToSync = getMealItemsByMealLog(mealLog.local_id).filter(
+    const itemsToSync = getMealItemsByMealLog(mealLog.user_id, mealLog.local_id).filter(
       (item) => item.sync_status === 'pending' || item.sync_status === 'failed'
     );
 

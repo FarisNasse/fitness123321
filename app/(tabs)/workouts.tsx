@@ -8,12 +8,12 @@ import { EmptyState } from '@/src/components/EmptyState';
 import { Screen } from '@/src/components/Screen';
 import { SectionHeader } from '@/src/components/SectionHeader';
 import { WeekStrip } from '@/src/components/WeekStrip';
+import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import { WorkoutHistoryCard } from '@/src/components/WorkoutHistoryCard';
 import {
   createLocalWorkoutSession,
   getCompletedWorkoutSessions,
   getLocalWorkoutSets,
-  getWorkoutOwnerUserId,
   getWorkoutSyncStatusLabel,
   repeatLastCompletedWorkout,
   getWorkoutSyncUiStatus,
@@ -25,6 +25,8 @@ import { reportError } from '@/src/lib/error-reporting';
 import { USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
 
 export default function WorkoutsScreen() {
+  const { session } = useAuthSession();
+  const ownerId = session?.user.id ?? null;
   const [recentSessions, setRecentSessions] = useState<LocalWorkoutSessionRow[]>([]);
   const [recentSessionsError, setRecentSessionsError] = useState<string | null>(null);
   const [isLoadingRecentSessions, setIsLoadingRecentSessions] = useState(true);
@@ -38,7 +40,12 @@ export default function WorkoutsScreen() {
     setRecentSessionsError(null);
 
     try {
-      setRecentSessions(getCompletedWorkoutSessions(4));
+      if (!ownerId) {
+        setRecentSessions([]);
+        return;
+      }
+
+      setRecentSessions(getCompletedWorkoutSessions(ownerId, 4));
     } catch (error) {
       setRecentSessions([]);
       reportError(error, {
@@ -50,12 +57,14 @@ export default function WorkoutsScreen() {
     } finally {
       setIsLoadingRecentSessions(false);
     }
-  }, []);
+  }, [ownerId]);
 
-  const setsLoggedCount = recentSessions.reduce(
-    (total, session) => total + getLocalWorkoutSets(session.local_id).length,
-    0
-  );
+  const setsLoggedCount = ownerId
+    ? recentSessions.reduce(
+        (total, session) => total + getLocalWorkoutSets(ownerId, session.local_id).length,
+        0
+      )
+    : 0;
 
   function browseExercises() {
     router.push('/workout/exercises');
@@ -104,8 +113,8 @@ export default function WorkoutsScreen() {
 
   async function startWorkout() {
     try {
-      const userId = await getWorkoutOwnerUserId();
-      const sessionId = createLocalWorkoutSession(userId, 'Quick workout');
+      if (!ownerId) throw new Error('A signed-in workout owner is required.');
+      const sessionId = createLocalWorkoutSession(ownerId, 'Quick workout');
       refreshRecentSessions();
       router.push(`/workout/session/${sessionId}`);
     } catch (error) {
@@ -120,8 +129,8 @@ export default function WorkoutsScreen() {
 
   async function repeatLastWorkout() {
     try {
-      const userId = await getWorkoutOwnerUserId();
-      const repeatedWorkout = repeatLastCompletedWorkout(userId);
+      if (!ownerId) throw new Error('A signed-in workout owner is required.');
+      const repeatedWorkout = repeatLastCompletedWorkout(ownerId);
 
       if (!repeatedWorkout) {
         Alert.alert(
@@ -210,7 +219,7 @@ export default function WorkoutsScreen() {
           ) : (
             <View className="gap-3">
               {recentSessions.map((session) => {
-                const setCount = getLocalWorkoutSets(session.local_id).length;
+                const setCount = ownerId ? getLocalWorkoutSets(ownerId, session.local_id).length : 0;
                 const syncUiStatus = getWorkoutSyncUiStatus(
                   session,
                   isSyncingAll || syncingSessionIds.has(session.local_id)

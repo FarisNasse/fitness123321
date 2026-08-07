@@ -10,6 +10,7 @@ import { MoodSelector } from '@/src/components/MoodSelector';
 import { Screen } from '@/src/components/Screen';
 import { SectionHeader } from '@/src/components/SectionHeader';
 import { SegmentedControl } from '@/src/components/SegmentedControl';
+import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import {
   buildSleepWindow,
   formatTimeInput,
@@ -17,7 +18,6 @@ import {
   getLatestWellnessCheckIn,
   getLocalDateKey,
   getSleepDurationMinutes,
-  getWellnessOwnerUserId,
   saveDailyWellnessCheckIn,
   syncPendingWellnessCheckIns,
 } from '@/src/features/wellness/wellness-service';
@@ -31,6 +31,8 @@ function formatDuration(totalMinutes: number) {
 }
 
 export default function WellnessScreen() {
+  const { session } = useAuthSession();
+  const ownerId = session?.user.id ?? null;
   const [mood, setMood] = useState(3);
   const [energy, setEnergy] = useState(3);
   const [stress, setStress] = useState(2);
@@ -42,9 +44,12 @@ export default function WellnessScreen() {
 
   const refreshCheckIn = useCallback(async () => {
     try {
-      const userId = await getWellnessOwnerUserId();
+      if (!ownerId) {
+        setHasSavedToday(false);
+        return;
+      }
       const checkIn =
-        getDailyWellnessCheckIn(userId) ?? getLatestWellnessCheckIn(userId);
+        getDailyWellnessCheckIn(ownerId) ?? getLatestWellnessCheckIn(ownerId);
 
       if (!checkIn) {
         setHasSavedToday(false);
@@ -66,7 +71,7 @@ export default function WellnessScreen() {
       });
       Alert.alert('Unable to load wellness', 'Your wellness check-in could not be loaded.');
     }
-  }, []);
+  }, [ownerId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -94,11 +99,11 @@ export default function WellnessScreen() {
     setIsSaving(true);
 
     try {
-      const userId = await getWellnessOwnerUserId();
+      if (!ownerId) throw new Error('A signed-in wellness owner is required.');
       const sleepWindow = buildSleepWindow(new Date(), bedtime, wakeTime);
 
       saveDailyWellnessCheckIn({
-        userId,
+        userId: ownerId,
         sleepStart: sleepWindow.sleepStart,
         sleepEnd: sleepWindow.sleepEnd,
         mood,

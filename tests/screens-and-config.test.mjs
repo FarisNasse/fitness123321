@@ -44,7 +44,7 @@ test('Expo SDK package ranges match the committed lockfile policy', () => {
   const pkg = readProjectJson('package.json');
   const lock = readProjectJson('package-lock.json');
 
-  assert.equal(pkg.dependencies.expo, '~56.0.15');
+  assert.equal(pkg.dependencies.expo, '~56.0.19');
   assert.equal(pkg.dependencies['expo-crypto'], '56.0.4');
 
   assert.equal(lock.packages[''].dependencies.expo, pkg.dependencies.expo);
@@ -54,7 +54,7 @@ test('Expo SDK package ranges match the committed lockfile policy', () => {
   );
 
   // Expo-managed packages use a tilde range for compatible patch updates.
-  assert.match(pkg.dependencies.expo, /^~56\.0\.15$/);
+  assert.match(pkg.dependencies.expo, /^~56\.0\.19$/);
 
   // expo-crypto is intentionally pinned to an exact version.
   assert.doesNotMatch(pkg.dependencies['expo-crypto'], /^[~^]/);
@@ -114,7 +114,9 @@ test('root layout initializes local persistence and shared sync retries workouts
   const syncState = readProjectFile('src/lib/sync-state.tsx');
 
   assert.match(layout, /initializeLocalDb\(\);/);
-  assert.match(layout, /<SyncStateProvider canSync=/);
+  assert.match(layout, /<SyncStateProvider[\s\S]*canSync=/);
+  assert.match(layout, /ownerId=\{session\?\.user\.id \?\? null\}/);
+  assert.match(layout, /queryClient\.clear\(\);/);
   assert.match(syncState, /workouts: syncPendingWorkoutSessions/);
   assert.match(syncState, /AppState\.addEventListener\(\s*'change'/s);
   assert.match(syncState, /if \(state === 'active'\)/);
@@ -241,10 +243,10 @@ test('onboarding persists goal and level for the authenticated profile', () => {
 test('workouts tab is wired as a simplified workout hub', () => {
   const workouts = readProjectFile('app/(tabs)/workouts.tsx');
 
-  assert.match(workouts, /getWorkoutOwnerUserId\(\)/);
-  assert.match(workouts, /createLocalWorkoutSession\(userId, 'Quick workout'\)/);
+  assert.match(workouts, /const ownerId = session\?\.user\.id \?\? null/);
+  assert.match(workouts, /createLocalWorkoutSession\(ownerId, 'Quick workout'\)/);
   assert.match(workouts, /router\.push\(`\/workout\/session\/\$\{sessionId\}`\)/);
-  assert.match(workouts, /getCompletedWorkoutSessions\(4\)/);
+  assert.match(workouts, /getCompletedWorkoutSessions\(ownerId, 4\)/);
   assert.match(workouts, /Start a workout, log your sets, and review what you completed\./);
   assert.match(workouts, /Quick actions/);
   assert.doesNotMatch(workouts, /Quick start/);
@@ -294,7 +296,7 @@ test('live workout screen no longer depends on a placeholder exercise id', () =>
   assert.match(controller, /const \[selectedExercise, setSelectedExercise\] = useState<Exercise \| null>\(null\)/);
   assert.match(controller, /function addSet\(\) \{\s*if \(!selectedExercise \|\| !sessionId \|\| !session\) return;/s);
   assert.match(view, /onPress=\{controller\.addSet\}/);
-  assert.match(controller, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
+  assert.match(controller, /addLocalWorkoutSet\(\{\s*userId: ownerId,\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
 });
 
 test('live workout exercise picker sheet wires ExerciseLibrary selection into session state', () => {
@@ -315,7 +317,7 @@ test('live workout screen groups logged sets by exercise and renders compact exe
   const view = readLiveWorkoutUiSource();
 
   assert.match(selectors, /function buildExerciseSetMap\(sets: LocalWorkoutSetRow\[\]\)[\s\S]*map\.get\(set\.exercise_id\) \?\? \[\];[\s\S]*map\.set\(set\.exercise_id, \[\.\.\.exerciseSets, set\]\);[\s\S]*new Map<string, LocalWorkoutSetRow\[\]>\(\)/);
-  assert.match(controller, /const nextSets = getLocalWorkoutSets\(sessionId\);\s*const nextMap = buildExerciseSetMap\(nextSets\);\s*setSets\(nextSets\);\s*setExerciseSetMap\(nextMap\);/);
+  assert.match(controller, /const nextSets = getLocalWorkoutSets\(ownerId, sessionId\);\s*const nextMap = buildExerciseSetMap\(nextSets\);\s*setSets\(nextSets\);\s*setExerciseSetMap\(nextMap\);/);
   assert.match(controller, /Array\.from\(nextMap\.keys\(\)\)\s*\.map\(\(exerciseId\) => resolveExercise\(exerciseId\)\)/);
   assert.match(view, /<RecentSetList[\s\S]*sets=\{controller\.recentSets\}/);
   assert.match(view, /controller\.selectedExercises\.map\(\(exercise\) => \{/);
@@ -340,11 +342,11 @@ test('live workout module supports exercise picking, validation, set logging, re
   assert.match(controller, /setEditValidationMessage\('Enter a valid rep count\.'\)/);
   assert.match(controller, /setEditValidationMessage\('Enter a valid weight\.'\)/);
   assert.match(controller, /function addSet\(\)/);
-  assert.match(controller, /addLocalWorkoutSet\(\{\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
+  assert.match(controller, /addLocalWorkoutSet\(\{\s*userId: ownerId,\s*sessionLocalId: sessionId,\s*exerciseId: selectedExercise\.id,/s);
   assert.match(controller, /const setNumber = currentExerciseSets\.length \+ 1/);
   assert.match(view, /Last[\s\S]*Set \{draft\.setNumber\}[\s\S]*Recent sets/);
   assert.match(view, /onPress=\{\(\) => void controller\.selectExerciseForLogging\(exercise\)\}/);
-  assert.match(controller, /completeLocalWorkoutSession\(sessionId\)/);
+  assert.match(controller, /completeLocalWorkoutSession\(ownerId, sessionId\)/);
   assert.match(controller, /syncPendingWorkoutSessions\(\)/);
   assert.match(controller, /router\.replace\('\/workouts'\)/);
 });
@@ -352,8 +354,8 @@ test('live workout module supports exercise picking, validation, set logging, re
 test('workout history screen reads local session and groups sets by exercise', () => {
   const history = readProjectFile('app/workout/history/[id].tsx');
 
-  assert.match(history, /getLocalWorkoutSession\(sessionId\)/);
-  assert.match(history, /getLocalWorkoutSets\(sessionId\)/);
+  assert.match(history, /getLocalWorkoutSession\(ownerId, sessionId\)/);
+  assert.match(history, /getLocalWorkoutSets\(ownerId, sessionId\)/);
   assert.match(history, /getSeededExercises\(\)/);
   assert.match(history, /getExerciseById\(set\.exercise_id\)/);
   assert.match(history, /Unknown exercise/);
@@ -395,7 +397,9 @@ test('exercise library supports loading, searching, filtering, clearing, details
   assert.match(library, /onSelect\?\.\(exercise\)/);
   assert.match(library, /<Modal[\s\S]*visible=\{Boolean\(selectedExercise\)\}/);
 
-  assert.match(library, /Muscle diagram placeholder/);
+  assert.doesNotMatch(library, /Muscle diagram placeholder/);
+  assert.match(library, /Exercise details/);
+  assert.match(library, /Instructions/);
 });
 
 test('tailwind theme tokens keep dark readable fallbacks when CSS variables are missing', () => {

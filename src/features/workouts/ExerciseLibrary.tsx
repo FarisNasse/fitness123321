@@ -516,15 +516,6 @@ export function ExerciseLibrary({
                   </View>
                 </View>
 
-                <View className="h-36 items-center justify-center rounded-card border border-dashed border-base-300 bg-base-100" style={styles.diagramPlaceholder}>
-                  <Text className="font-black text-base-muted" style={styles.diagramPlaceholderTitle}>
-                    Muscle diagram placeholder
-                  </Text>
-                  <Text className="mt-1.5 text-base-muted/80" style={styles.diagramPlaceholderSubtitle}>
-                    {selectedExercise.targetMuscle ?? selectedExercise.muscleGroup}
-                  </Text>
-                </View>
-
                 <View className="gap-2" style={styles.exerciseMetadataCard}>
                   <Text className="text-base font-black text-base-content" style={styles.instructionsTitle}>Exercise details</Text>
                   <Text className="font-body leading-5 text-base-muted" style={styles.metadataText}>

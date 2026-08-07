@@ -107,21 +107,23 @@ function buildFallbackSuggestedSets(
   }));
 }
 
-export function getLocalExerciseTarget(exerciseId: string) {
+export function getLocalExerciseTarget(userId: string, exerciseId: string) {
   return (
     db.getAllSync<ExerciseTargetLocalRow>(
       `
       select *
       from exercise_targets_local
-      where exercise_id = ?
+      where user_id = ?
+        and exercise_id = ?
       limit 1
       `,
-      [exerciseId]
+      [userId, exerciseId]
     )[0] ?? null
   );
 }
 
 export function upsertLocalExerciseTarget(input: {
+  userId: string;
   exerciseId: string;
   targetSets: number;
   repMin: number;
@@ -129,7 +131,7 @@ export function upsertLocalExerciseTarget(input: {
   incrementSize: number;
   deloadPercentage: number;
 }) {
-  const existingTarget = getLocalExerciseTarget(input.exerciseId);
+  const existingTarget = getLocalExerciseTarget(input.userId, input.exerciseId);
   const localId = existingTarget?.local_id ?? Crypto.randomUUID();
   const now = new Date().toISOString();
   const targetSets = toPositiveInteger(
@@ -154,6 +156,7 @@ export function upsertLocalExerciseTarget(input: {
     `
     insert into exercise_targets_local (
       local_id,
+      user_id,
       exercise_id,
       target_sets,
       rep_min,
@@ -163,8 +166,8 @@ export function upsertLocalExerciseTarget(input: {
       sync_status,
       updated_at
     )
-    values (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-    on conflict(exercise_id) do update set
+    values (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+    on conflict(user_id, exercise_id) do update set
       target_sets = excluded.target_sets,
       rep_min = excluded.rep_min,
       rep_max = excluded.rep_max,
@@ -175,6 +178,7 @@ export function upsertLocalExerciseTarget(input: {
     `,
     [
       localId,
+      input.userId,
       input.exerciseId,
       targetSets,
       repMin,
@@ -185,17 +189,18 @@ export function upsertLocalExerciseTarget(input: {
     ]
   );
 
-  return getLocalExerciseTarget(input.exerciseId);
+  return getLocalExerciseTarget(input.userId, input.exerciseId);
 }
 
-function getRecentCompletedExerciseSets(exerciseId: string) {
+function getRecentCompletedExerciseSets(userId: string, exerciseId: string) {
   return db.getAllSync<LocalWorkoutSet>(
     `
     select ws.*
     from workout_sets_local ws
     join workout_sessions_local s
       on s.local_id = ws.session_local_id
-    where ws.exercise_id = ?
+    where s.user_id = ?
+      and ws.exercise_id = ?
       and coalesce(ws.is_deleted, 0) = 0
       and ws.deleted_at is null
       and coalesce(s.is_deleted, 0) = 0
@@ -206,7 +211,8 @@ function getRecentCompletedExerciseSets(exerciseId: string) {
         from workout_sets_local ws2
         join workout_sessions_local s2
           on s2.local_id = ws2.session_local_id
-        where ws2.exercise_id = ?
+        where s2.user_id = ?
+          and ws2.exercise_id = ?
           and coalesce(ws2.is_deleted, 0) = 0
           and ws2.deleted_at is null
           and coalesce(s2.is_deleted, 0) = 0
@@ -217,16 +223,17 @@ function getRecentCompletedExerciseSets(exerciseId: string) {
       )
     order by ws.set_number asc
     `,
-    [exerciseId, exerciseId]
+    [userId, exerciseId, userId, exerciseId]
   );
 }
 
 export async function getSmartExerciseDefaults(
+  userId: string,
   exerciseId: string
 ): Promise<SmartExerciseDefaults> {
-  const target = getLocalExerciseTarget(exerciseId);
+  const target = getLocalExerciseTarget(userId, exerciseId);
   const normalizedTarget = normalizeExerciseTarget(target);
-  const recentSets = getRecentCompletedExerciseSets(exerciseId);
+  const recentSets = getRecentCompletedExerciseSets(userId, exerciseId);
 
   if (recentSets.length > 0) {
     const suggestedSets = recentSets.map((set, index) => ({
@@ -304,18 +311,23 @@ function groupWorkoutSetsByExercise(sets: LocalWorkoutSet[]) {
 }
 
 export function getWorkoutCompletionProgressionRecommendations(
+  userId: string,
   sessionLocalId: string,
   options: {
     effortFeedback?: ProgressionEffortFeedback | null;
     exerciseNamesById?: Record<string, string>;
   } = {}
 ) {
-  const currentSetsByExercise = groupWorkoutSetsByExercise(getLocalWorkoutSets(sessionLocalId));
+  const currentSetsByExercise = groupWorkoutSetsByExercise(
+    getLocalWorkoutSets(userId, sessionLocalId)
+  );
 
   return Array.from(currentSetsByExercise.entries()).map(
     ([exerciseId, currentSets]) => {
-      const target = normalizeExerciseTarget(getLocalExerciseTarget(exerciseId));
-      const previousSets = getRecentCompletedExerciseSets(exerciseId);
+      const target = normalizeExerciseTarget(
+        getLocalExerciseTarget(userId, exerciseId)
+      );
+      const previousSets = getRecentCompletedExerciseSets(userId, exerciseId);
 
       return buildProgressionRecommendation({
         exerciseId,
@@ -334,6 +346,7 @@ export function getWorkoutCompletionProgressionRecommendations(
 }
 
 export function getWorkoutCompletionProgressionReasonText(
+  userId: string,
   sessionLocalId: string,
   options: {
     effortFeedback?: ProgressionEffortFeedback | null;
@@ -341,6 +354,7 @@ export function getWorkoutCompletionProgressionReasonText(
   } = {}
 ) {
   const recommendations = getWorkoutCompletionProgressionRecommendations(
+    userId,
     sessionLocalId,
     options
   );
@@ -396,48 +410,51 @@ export function createLocalWorkoutSession(userId: string, name = 'Workout') {
   return localId;
 }
 
-export function getLocalWorkoutSession(sessionLocalId: string) {
+export function getLocalWorkoutSession(userId: string, sessionLocalId: string) {
   return (
     db.getAllSync<LocalWorkoutSessionRow>(
       `
       select *
       from workout_sessions_local
-      where local_id = ?
+      where user_id = ?
+        and local_id = ?
         and coalesce(is_deleted, 0) = 0
         and deleted_at is null
       limit 1
       `,
-      [sessionLocalId]
+      [userId, sessionLocalId]
     )[0] ?? null
   );
 }
 
-export function getRecentLocalWorkoutSessions(limit = 5) {
+export function getRecentLocalWorkoutSessions(userId: string, limit = 5) {
   return db.getAllSync<LocalWorkoutSessionRow>(
     `
     select *
     from workout_sessions_local
-    where coalesce(is_deleted, 0) = 0
-      and deleted_at is null
-    order by started_at desc
-    limit ?
-    `,
-    [limit]
-  );
-}
-
-export function getCompletedWorkoutSessions(limit = 5) {
-  return db.getAllSync<LocalWorkoutSessionRow>(
-    `
-    select *
-    from workout_sessions_local
-    where completed_at is not null
+    where user_id = ?
       and coalesce(is_deleted, 0) = 0
       and deleted_at is null
     order by started_at desc
     limit ?
     `,
-    [limit]
+    [userId, limit]
+  );
+}
+
+export function getCompletedWorkoutSessions(userId: string, limit = 5) {
+  return db.getAllSync<LocalWorkoutSessionRow>(
+    `
+    select *
+    from workout_sessions_local
+    where user_id = ?
+      and completed_at is not null
+      and coalesce(is_deleted, 0) = 0
+      and deleted_at is null
+    order by started_at desc
+    limit ?
+    `,
+    [userId, limit]
   );
 }
 
@@ -459,10 +476,10 @@ export function getMostRecentCompletedWorkoutSession(userId: string) {
   );
 }
 
-function buildFallbackWorkoutSessionExercises(sessionLocalId: string) {
+function buildFallbackWorkoutSessionExercises(userId: string, sessionLocalId: string) {
   const now = new Date().toISOString();
 
-  return getExerciseIdsBySessionFromSets(sessionLocalId).map((row, index) => ({
+  return getExerciseIdsBySessionFromSets(userId, sessionLocalId).map((row, index) => ({
     local_id: `${sessionLocalId}:${row.exercise_id}`,
     session_local_id: sessionLocalId,
     exercise_id: row.exercise_id,
@@ -498,25 +515,33 @@ function insertLocalWorkoutSessionExercise(
   return localId;
 }
 
-export function getLocalWorkoutSessionExercises(sessionLocalId: string) {
-  const savedExercises = getExercisesBySession(sessionLocalId);
+export function getLocalWorkoutSessionExercises(
+  userId: string,
+  sessionLocalId: string
+) {
+  const savedExercises = getExercisesBySession(userId, sessionLocalId);
 
   if (savedExercises.length > 0) {
     return savedExercises;
   }
 
-  return buildFallbackWorkoutSessionExercises(sessionLocalId);
+  return buildFallbackWorkoutSessionExercises(userId, sessionLocalId);
 }
 
 export function addLocalWorkoutSessionExercise(
+  userId: string,
   sessionLocalId: string,
   exerciseId: string,
   sortOrder?: number
 ) {
-  let savedExercises = getExercisesBySession(sessionLocalId);
+  if (!getLocalWorkoutSession(userId, sessionLocalId)) {
+    return null;
+  }
+
+  let savedExercises = getExercisesBySession(userId, sessionLocalId);
 
   if (savedExercises.length === 0) {
-    for (const fallbackExercise of buildFallbackWorkoutSessionExercises(sessionLocalId)) {
+    for (const fallbackExercise of buildFallbackWorkoutSessionExercises(userId, sessionLocalId)) {
       insertLocalWorkoutSessionExercise(
         sessionLocalId,
         fallbackExercise.exercise_id,
@@ -524,7 +549,7 @@ export function addLocalWorkoutSessionExercise(
       );
     }
 
-    savedExercises = getExercisesBySession(sessionLocalId);
+    savedExercises = getExercisesBySession(userId, sessionLocalId);
   }
 
   const existing = savedExercises.find((exercise) => exercise.exercise_id === exerciseId);
@@ -558,10 +583,14 @@ export function repeatLastCompletedWorkout(userId: string) {
     userId,
     `Repeat: ${previousWorkout.name}`
   );
-  const exercisesToRepeat = getLocalWorkoutSessionExercises(previousWorkout.local_id);
+  const exercisesToRepeat = getLocalWorkoutSessionExercises(
+    userId,
+    previousWorkout.local_id
+  );
 
   for (const exercise of exercisesToRepeat) {
     addLocalWorkoutSessionExercise(
+      userId,
       nextSessionLocalId,
       exercise.exercise_id,
       exercise.sort_order
@@ -575,8 +604,8 @@ export function repeatLastCompletedWorkout(userId: string) {
   };
 }
 
-export function getLocalWorkoutSets(sessionLocalId: string) {
-  return getSetsBySession(sessionLocalId);
+export function getLocalWorkoutSets(userId: string, sessionLocalId: string) {
+  return getSetsBySession(userId, sessionLocalId);
 }
 
 export function getWorkoutSyncUiStatus(
@@ -587,7 +616,7 @@ export function getWorkoutSyncUiStatus(
     return 'syncing';
   }
 
-  const syncableSets = getSetsBySessionForSync(session.local_id);
+  const syncableSets = getSetsBySessionForSync(session.user_id, session.local_id);
 
   if (
     session.sync_status === 'failed' ||
@@ -619,7 +648,7 @@ export function getWorkoutSyncStatusLabel(status: WorkoutSyncUiStatus) {
   }
 }
 
-function markWorkoutSessionPending(sessionLocalId: string) {
+function markWorkoutSessionPending(userId: string, sessionLocalId: string) {
   const now = new Date().toISOString();
 
   db.runSync(
@@ -627,27 +656,36 @@ function markWorkoutSessionPending(sessionLocalId: string) {
     update workout_sessions_local
     set sync_status = 'pending',
         updated_at = ?
-    where local_id = ?
+    where user_id = ?
+      and local_id = ?
       and coalesce(is_deleted, 0) = 0
     `,
-    [now, sessionLocalId]
+    [now, userId, sessionLocalId]
   );
 }
 
+function getOwnedWorkoutSet(userId: string, setLocalId: string) {
+  return db.getAllSync<LocalWorkoutSet>(
+    `
+    select ws.*
+    from workout_sets_local ws
+    join workout_sessions_local s
+      on s.local_id = ws.session_local_id
+    where s.user_id = ?
+      and ws.local_id = ?
+    limit 1
+    `,
+    [userId, setLocalId]
+  )[0] ?? null;
+}
+
 export function updateLocalWorkoutSet(
+  userId: string,
   setLocalId: string,
   reps: number,
   weight: number
 ) {
-  const existing = db.getAllSync<LocalWorkoutSet>(
-    `
-    select *
-    from workout_sets_local
-    where local_id = ?
-    limit 1
-    `,
-    [setLocalId]
-  )[0];
+  const existing = getOwnedWorkoutSet(userId, setLocalId);
 
   if (!existing || existing.is_deleted || existing.deleted_at) return;
 
@@ -664,20 +702,12 @@ export function updateLocalWorkoutSet(
     `,
     [reps, weight, now, setLocalId]
   );
-  markWorkoutSessionPending(existing.session_local_id);
+  markWorkoutSessionPending(userId, existing.session_local_id);
   markSyncPending('workouts');
 }
 
-export function deleteLocalWorkoutSet(setLocalId: string) {
-  const deleted = db.getAllSync<LocalWorkoutSet>(
-    `
-    select *
-    from workout_sets_local
-    where local_id = ?
-    limit 1
-    `,
-    [setLocalId]
-  )[0];
+export function deleteLocalWorkoutSet(userId: string, setLocalId: string) {
+  const deleted = getOwnedWorkoutSet(userId, setLocalId);
 
   if (!deleted || deleted.is_deleted || deleted.deleted_at) return;
 
@@ -723,21 +753,13 @@ export function deleteLocalWorkoutSet(setLocalId: string) {
     );
   }
 
-  markWorkoutSessionPending(deleted.session_local_id);
+  markWorkoutSessionPending(userId, deleted.session_local_id);
   markSyncPending('workouts');
 }
 
 
-export function restoreLocalWorkoutSet(setLocalId: string) {
-  const deleted = db.getAllSync<LocalWorkoutSet>(
-    `
-    select *
-    from workout_sets_local
-    where local_id = ?
-    limit 1
-    `,
-    [setLocalId]
-  )[0];
+export function restoreLocalWorkoutSet(userId: string, setLocalId: string) {
+  const deleted = getOwnedWorkoutSet(userId, setLocalId);
 
   if (!deleted || !deleted.is_deleted || !deleted.deleted_at) return;
 
@@ -783,11 +805,12 @@ export function restoreLocalWorkoutSet(setLocalId: string) {
     [deleted.set_number, now, setLocalId]
   );
 
-  markWorkoutSessionPending(deleted.session_local_id);
+  markWorkoutSessionPending(userId, deleted.session_local_id);
   markSyncPending('workouts');
 }
 
-export function deleteLocalWorkoutSession(sessionLocalId: string) {
+export function deleteLocalWorkoutSession(userId: string, sessionLocalId: string) {
+  if (!getLocalWorkoutSession(userId, sessionLocalId)) return;
   const now = new Date().toISOString();
 
   db.runSync(
@@ -811,23 +834,33 @@ export function deleteLocalWorkoutSession(sessionLocalId: string) {
         deleted_at = ?,
         sync_status = 'pending',
         updated_at = ?
-    where local_id = ?
+    where user_id = ?
+      and local_id = ?
       and coalesce(is_deleted, 0) = 0
     `,
-    [now, now, sessionLocalId]
+    [now, now, userId, sessionLocalId]
   );
 
   markSyncPending('workouts');
 }
 
 export function addLocalWorkoutSet(input: {
+  userId: string;
   sessionLocalId: string;
   exerciseId: string;
   setNumber: number;
   reps?: number;
   weight?: number;
 }) {
-  addLocalWorkoutSessionExercise(input.sessionLocalId, input.exerciseId);
+  if (!getLocalWorkoutSession(input.userId, input.sessionLocalId)) {
+    throw new Error('Workout session unavailable for this account.');
+  }
+
+  addLocalWorkoutSessionExercise(
+    input.userId,
+    input.sessionLocalId,
+    input.exerciseId
+  );
 
   const localId = Crypto.randomUUID();
   const now = new Date().toISOString();
@@ -860,12 +893,15 @@ export function addLocalWorkoutSet(input: {
     ]
   );
 
-  markWorkoutSessionPending(input.sessionLocalId);
+  markWorkoutSessionPending(input.userId, input.sessionLocalId);
   markSyncPending('workouts');
   return localId;
 }
 
-export function completeLocalWorkoutSession(sessionLocalId: string) {
+export function completeLocalWorkoutSession(
+  userId: string,
+  sessionLocalId: string
+) {
   const now = new Date().toISOString();
 
   db.runSync(
@@ -875,10 +911,11 @@ export function completeLocalWorkoutSession(sessionLocalId: string) {
         duration_seconds = cast((julianday(?) - julianday(started_at)) * 86400 as integer),
         sync_status = 'pending',
         updated_at = ?
-    where local_id = ?
+    where user_id = ?
+      and local_id = ?
       and coalesce(is_deleted, 0) = 0
     `,
-    [now, now, now, sessionLocalId]
+    [now, now, now, userId, sessionLocalId]
   );
 
   markSyncPending('workouts');
@@ -997,7 +1034,7 @@ async function syncDeletedWorkoutSession(
 ) {
   const remoteSessionId = session.server_id ?? session.local_id;
   const deletedAt = session.deleted_at ?? new Date().toISOString();
-  const setsToFinalize = getSetsBySessionForSync(session.local_id);
+  const setsToFinalize = getSetsBySessionForSync(session.user_id, session.local_id);
 
   const { data, error } = await supabase
     .from('workout_sessions')
@@ -1164,7 +1201,7 @@ async function syncPendingWorkoutSessionsImpl() {
         continue;
       }
 
-      const setsToSync = getSetsBySessionForSync(session.local_id).filter(
+      const setsToSync = getSetsBySessionForSync(session.user_id, session.local_id).filter(
         (set) => set.sync_status === 'pending' || set.sync_status === 'failed'
       );
       const deletedSets = setsToSync.filter(

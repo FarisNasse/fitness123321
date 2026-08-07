@@ -49,7 +49,7 @@ test('saving an edited set validates input, updates local storage, closes the sh
   assert.match(controller, /setEditValidationMessage\('Enter a valid weight\.'\)/);
   assert.doesNotMatch(controller, /Alert\.alert/);
   assertInOrder(controller, [
-    'updateLocalWorkoutSet(editingSet.local_id, parsedReps, parsedWeight);',
+    'updateLocalWorkoutSet(ownerId, editingSet.local_id, parsedReps, parsedWeight);',
     'setEditingSet(null);',
     "dispatch({ type: 'sheet.closed' });",
     'refreshSets();',
@@ -62,7 +62,7 @@ test('deleting a set is moved into the edit sheet rather than a tiny row-level c
 
   assert.match(controller, /function deleteEditingSet\(\) \{/);
   assert.match(controller, /const setLocalId = editingSet\.local_id;/);
-  assert.match(controller, /deleteLocalWorkoutSet\(setLocalId\);/);
+  assert.match(controller, /deleteLocalWorkoutSet\(ownerId, setLocalId\);/);
   assert.match(controller, /queueWorkoutSync\('deleting a set'\)/);
   assert.match(view, /<Button title="Delete set" onPress=\{controller\.deleteEditingSet\} variant="danger" \/>/);
 });
@@ -74,14 +74,14 @@ test('new sets continue numbering within the active exercise only', () => {
   assert.match(controller, /const selectedExerciseSets = useMemo\(\(\) => \{[\s\S]*return exerciseSetMap\.get\(selectedExercise\.id\) \?\? \[\];[\s\S]*\}, \[exerciseSetMap, selectedExercise\]\);/);
   assert.match(controller, /const currentExerciseSets = exerciseSetMap\.get\(selectedExercise\.id\) \?\? \[\];/);
   assert.match(controller, /const setNumber = currentExerciseSets\.length \+ 1;/);
-  assert.match(compact, /addLocalWorkoutSet\(\{ sessionLocalId: sessionId, exerciseId: selectedExercise\.id, setNumber,/);
+  assert.match(compact, /addLocalWorkoutSet\(\{ userId: ownerId, sessionLocalId: sessionId, exerciseId: selectedExercise\.id, setNumber,/);
 });
 
 test('workout service exposes explicit update and delete helpers for logged sets', () => {
   const service = readProjectFile('src/features/workouts/workout-service.ts');
 
-  assert.match(service, /export function updateLocalWorkoutSet\(\s*setLocalId: string,\s*reps: number,\s*weight: number\s*\)/);
-  assert.match(service, /export function deleteLocalWorkoutSet\(setLocalId: string\)/);
+  assert.match(service, /export function updateLocalWorkoutSet\(\s*userId: string,\s*setLocalId: string,\s*reps: number,\s*weight: number\s*\)/);
+  assert.match(service, /export function deleteLocalWorkoutSet\(userId: string, setLocalId: string\)/);
 });
 
 test('updateLocalWorkoutSet updates only reps, weight, sync status, and timestamp for the target set', () => {
@@ -95,13 +95,11 @@ test('deleteLocalWorkoutSet reads the target row first and safely no-ops when it
   const service = readProjectFile('src/features/workouts/workout-service.ts');
 
   assertInOrder(service, [
-    'export function deleteLocalWorkoutSet(setLocalId: string) {',
-    'select *',
-    'from workout_sets_local',
-    'where local_id = ?',
-    'limit 1',
+    'export function deleteLocalWorkoutSet(userId: string, setLocalId: string) {',
+    'const deleted = getOwnedWorkoutSet(userId, setLocalId);',
     'if (!deleted || deleted.is_deleted || deleted.deleted_at) return;',
-  ], 'deleteLocalWorkoutSet should fetch the deleted row before deletion');
+  ], 'deleteLocalWorkoutSet should fetch the owner-scoped row before deletion');
+  assert.match(service, /function getOwnedWorkoutSet[\s\S]*select ws\.\*[\s\S]*join workout_sessions_local s[\s\S]*where s\.user_id = \?[\s\S]*limit 1/);
 });
 
 test('deleteLocalWorkoutSet soft-deletes and renumbers only later sets from the same session and exercise', () => {

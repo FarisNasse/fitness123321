@@ -21,23 +21,32 @@ export type SaveWellnessCheckInInput = {
   steps: number;
 };
 
-const wellnessListeners = new Set<(checkIn: WellnessCheckIn) => void>();
+type WellnessListener = {
+  userId: string;
+  listener: (checkIn: WellnessCheckIn) => void;
+};
+
+const wellnessListeners = new Set<WellnessListener>();
 
 export function subscribeToWellnessChanges(
+  userId: string,
   listener: (checkIn: WellnessCheckIn) => void
 ) {
-  wellnessListeners.add(listener);
+  const registration = { userId, listener };
+  wellnessListeners.add(registration);
 
   return () => {
-    wellnessListeners.delete(listener);
+    wellnessListeners.delete(registration);
   };
 }
 
 function notifyWellnessChanged(checkIn: WellnessCheckIn) {
   markSyncPending('wellness');
 
-  for (const listener of wellnessListeners) {
-    listener(checkIn);
+  for (const registration of wellnessListeners) {
+    if (registration.userId === checkIn.user_id) {
+      registration.listener(checkIn);
+    }
   }
 }
 

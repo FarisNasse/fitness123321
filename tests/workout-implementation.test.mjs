@@ -83,7 +83,7 @@ test('workout service creates, completes, reads, and lists local sessions', () =
   assert.match(service, /export function getLocalWorkoutSession/);
   assert.match(service, /export function getRecentLocalWorkoutSessions/);
   assert.match(service, /export function getCompletedWorkoutSessions/);
-  assert.match(service, /where completed_at is not null/);
+  assert.match(service, /where user_id = \?[\s\S]*completed_at is not null/);
   assert.match(service, /export function completeLocalWorkoutSession/);
   assert.match(service, /duration_seconds = cast\(\(julianday\(\?\) - julianday\(started_at\)\) \* 86400 as integer\)/);
 });
@@ -92,7 +92,7 @@ test('workout service creates, completes, reads, and lists local sessions', () =
 test('workout set persistence requires a caller supplied exercise id', () => {
   const service = readProjectFile('src/features/workouts/workout-service.ts');
 
-  assert.match(service, /export function addLocalWorkoutSet\(input: \{\s*sessionLocalId: string;\s*exerciseId: string;\s*setNumber: number;/s);
+  assert.match(service, /export function addLocalWorkoutSet\(input: \{\s*userId: string;\s*sessionLocalId: string;\s*exerciseId: string;\s*setNumber: number;/s);
   assert.doesNotMatch(service, /placeholderExerciseId|placeholder-exercise/i);
   assert.match(service, /insert into workout_sets_local \([\s\S]*exercise_id,[\s\S]*is_deleted,[\s\S]*deleted_at,[\s\S]*values \(\?, \?, \?, \?, \?, \?, 1, 0, null, 'pending', \?\)/);
   assert.match(service, /input\.sessionLocalId,\s*input\.exerciseId,\s*input\.setNumber,/);
@@ -104,8 +104,8 @@ test('set logging writes completed pending sets for the selected exercise', () =
   assert.match(service, /export function addLocalWorkoutSet/);
   assert.match(service, /session_local_id,\s*exercise_id,\s*set_number,\s*reps,\s*weight,\s*completed,\s*is_deleted,\s*deleted_at,\s*sync_status,/s);
   assert.match(service, /values \(\?, \?, \?, \?, \?, \?, 1, 0, null, 'pending', \?\)/);
-  assert.match(service, /export function getLocalWorkoutSets\(sessionLocalId: string\)/);
-  assert.match(service, /return getSetsBySession\(sessionLocalId\);/);
+  assert.match(service, /export function getLocalWorkoutSets\(userId: string, sessionLocalId: string\)/);
+  assert.match(service, /return getSetsBySession\(userId, sessionLocalId\);/);
 });
 
 test('remote sync avoids known RLS traps and handles stale remote rows', () => {

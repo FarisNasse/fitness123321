@@ -29,14 +29,14 @@ test('measurement service validates weight, keeps optional values nullable, and 
   assert.match(service, /input\.bodyFatPercent \?\? null/);
   assert.match(service, /input\.waistCm \?\? null/);
   assert.match(service, /order by measured_at asc, updated_at asc/);
-  assert.match(service, /notifyBodyMeasurementsChanged\(\)/);
+  assert.match(service, /notifyBodyMeasurementsChanged\(input\.userId\)/);
 });
 
 test('progress screen logs measurements and derives the card and chart from saved history', () => {
   const screen = readProjectFile('app/(tabs)/progress.tsx');
   const chart = readProjectFile('src/components/WeightChart.tsx');
 
-  assert.match(screen, /getBodyMeasurementHistory\(userId\)/);
+  assert.match(screen, /getBodyMeasurementHistory\(ownerId\)/);
   assert.match(screen, /saveBodyMeasurement\(\{/);
   assert.match(screen, /weightKg: poundsToKilograms/);
   assert.match(screen, /bodyFatPercent: parsedBodyFat/);

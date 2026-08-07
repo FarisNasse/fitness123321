@@ -7,9 +7,9 @@ test('wellness screen loads and saves a complete dated daily check-in', () => {
   const screen = readProjectFile('app/(tabs)/wellness.tsx');
 
   assert.match(screen, /useFocusEffect/);
-  assert.match(screen, /getWellnessOwnerUserId\(\)/);
-  assert.match(screen, /getDailyWellnessCheckIn\(userId\)/);
-  assert.match(screen, /getLatestWellnessCheckIn\(userId\)/);
+  assert.match(screen, /const ownerId = session\?\.user\.id \?\? null/);
+  assert.match(screen, /getDailyWellnessCheckIn\(ownerId\)/);
+  assert.match(screen, /getLatestWellnessCheckIn\(ownerId\)/);
   assert.match(screen, /setMood\(Number\(checkIn\.mood_score\)\)/);
   assert.match(screen, /setEnergy\(Number\(checkIn\.energy_score\)\)/);
   assert.match(screen, /setStress\(Number\(checkIn\.stress_score\)\)/);
@@ -75,8 +75,8 @@ test('dashboard and app lifecycle refresh wellness steps without wearable integr
   const syncState = readProjectFile('src/lib/sync-state.tsx');
 
   assert.match(dashboard, /const \[steps, setSteps\] = useState\(0\)/);
-  assert.match(dashboard, /getDailyWellnessCheckIn\(userId\)/);
-  assert.match(dashboard, /subscribeToWellnessChanges\(\(checkIn\) =>/);
+  assert.match(dashboard, /getDailyWellnessCheckIn\(ownerId\)/);
+  assert.match(dashboard, /subscribeToWellnessChanges\(ownerId, \(checkIn\) =>/);
   assert.match(dashboard, /setSteps\(Number\(checkIn\.steps \?\? 0\)\)/);
   assert.match(dashboard, /progress=\{progress\(steps, targets\.steps\)\}/);
   assert.match(syncState, /wellness: syncPendingWellnessCheckIns/);

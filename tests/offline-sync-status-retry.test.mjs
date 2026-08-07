@@ -13,8 +13,8 @@ test('offline safety schema keeps local soft-delete tombstones for workout sessi
   assert.match(localDb, /addMissingLocalColumn\((['"])workout_sets_local\1, (['"])is_deleted integer not null default 0\2\)/);
   assert.match(localDb, /addMissingLocalColumn\((['"])workout_sets_local\1, (['"])deleted_at text\2\)/);
   assert.match(localDb, /where deleted_at is not null[\s\S]*and coalesce\(is_deleted, 0\) = 0/);
-  assert.match(localDb, /export function getSetsBySession\(sessionLocalId: string\)[\s\S]*coalesce\(is_deleted, 0\) = 0[\s\S]*deleted_at is null/);
-  assert.match(localDb, /export function getSetsBySessionForSync\(sessionLocalId: string\)[\s\S]*sync_status in \('pending', 'failed'\)/);
+  assert.match(localDb, /export function getSetsBySession\(\s*userId: string,\s*sessionLocalId: string\s*\)[\s\S]*coalesce\(s\.is_deleted, 0\) = 0[\s\S]*s\.deleted_at is null[\s\S]*coalesce\(ws\.is_deleted, 0\) = 0[\s\S]*ws\.deleted_at is null/);
+  assert.match(localDb, /export function getSetsBySessionForSync\(\s*userId: string,\s*sessionLocalId: string\s*\)[\s\S]*sync_status in \('pending', 'failed'\)/);
 });
 
 test('Supabase migrations add matching soft-delete fields without requiring hard deletes', () => {
@@ -38,8 +38,8 @@ test('workout service marks local rows deleted and syncs tombstones as remote so
   const service = readProjectFile('src/features/workouts/workout-service.ts');
   const compact = normalizeWhitespace(service);
 
-  assert.match(compact, /export function deleteLocalWorkoutSet\(setLocalId: string\).*update workout_sets_local set is_deleted = 1, deleted_at = \?, sync_status = 'pending', updated_at = \? where local_id = \? and coalesce\(is_deleted, 0\) = 0/);
-  assert.match(compact, /export function deleteLocalWorkoutSession\(sessionLocalId: string\).*update workout_sets_local set is_deleted = 1, deleted_at = \?, sync_status = 'pending', updated_at = \? where session_local_id = \? and coalesce\(is_deleted, 0\) = 0 and deleted_at is null.*update workout_sessions_local set is_deleted = 1, deleted_at = \?, sync_status = 'pending', updated_at = \? where local_id = \? and coalesce\(is_deleted, 0\) = 0/);
+  assert.match(compact, /export function deleteLocalWorkoutSet\(userId: string, setLocalId: string\).*getOwnedWorkoutSet\(userId, setLocalId\).*update workout_sets_local set is_deleted = 1, deleted_at = \?, sync_status = 'pending', updated_at = \? where local_id = \? and coalesce\(is_deleted, 0\) = 0/);
+  assert.match(compact, /export function deleteLocalWorkoutSession\(userId: string, sessionLocalId: string\).*getLocalWorkoutSession\(userId, sessionLocalId\).*update workout_sets_local set is_deleted = 1, deleted_at = \?, sync_status = 'pending', updated_at = \? where session_local_id = \? and coalesce\(is_deleted, 0\) = 0 and deleted_at is null.*update workout_sessions_local set is_deleted = 1, deleted_at = \?, sync_status = 'pending', updated_at = \? where user_id = \? and local_id = \? and coalesce\(is_deleted, 0\) = 0/);
   assert.match(service, /async function syncDeletedWorkoutSet[\s\S]*\.from\('workout_sets'\)[\s\S]*\.upsert\([\s\S]*is_deleted: true,[\s\S]*deleted_at: deletedAt/);
   assert.match(service, /async function syncDeletedWorkoutSession[\s\S]*\.from\('workout_sessions'\)[\s\S]*\.upsert\([\s\S]*is_deleted: true,[\s\S]*deleted_at: deletedAt/);
   assert.match(service, /A missing remote row is recreated as a tombstone/);
