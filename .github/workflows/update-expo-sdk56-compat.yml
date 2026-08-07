@@ -50,14 +50,24 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
 
-          const path = 'tests/screens-and-config.test.mjs';
-          const source = fs
-            .readFileSync(path, 'utf8')
+          const screensPath = 'tests/screens-and-config.test.mjs';
+          const screensSource = fs
+            .readFileSync(screensPath, 'utf8')
             .replace(
               "assert.equal(pkg.dependencies.expo, '~56.0.15');",
               "assert.equal(pkg.dependencies.expo, '~56.0.19');"
+            )
+            .replace('/^~56\\.0\\.15$/', '/^~56\\.0\\.19$/');
+          fs.writeFileSync(screensPath, screensSource);
+
+          const alignmentPath = 'tests/expo-sdk-56-alignment.test.mjs';
+          const alignmentSource = fs
+            .readFileSync(alignmentPath, 'utf8')
+            .replace(
+              "'expo-constants': '~56.0.18',",
+              "'expo-constants': '~56.0.23',"
             );
-          fs.writeFileSync(path, source);
+          fs.writeFileSync(alignmentPath, alignmentSource);
           NODE
 
       - name: Run all repository checks
