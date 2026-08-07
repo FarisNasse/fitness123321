@@ -178,7 +178,8 @@ export function SyncStateProvider({ children, canSync, ownerId }: SyncStateProvi
       const isCurrentOwner = () =>
         ownerGenerationRef.current === syncGeneration && ownerIdRef.current === syncOwnerId;
 
-      const syncPromise = (async () => {
+      let syncPromise: Promise<void>;
+      syncPromise = (async () => {
         setDomainPhase(domain, 'syncing');
 
         try {
