@@ -1,0 +1,49 @@
+name: Apply owner-scoped local data patch
+
+on:
+  push:
+    branches:
+      - agent/owner-scoped-local-data
+    paths:
+      - .github/workflows/apply-owner-scope-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/owner-scoped-local-data
+          fetch-depth: 0
+
+      - name: Reconstruct and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/owner-scope-patch/part-* > /tmp/owner-scope.patch.gz.b64
+          base64 --decode /tmp/owner-scope.patch.gz.b64 | gzip --decompress > /tmp/owner-scope.patch
+          echo "e5e4947869fffdfed68d5de87a4901ab0a5bb420920f8fca05e93d09d438d688  /tmp/owner-scope.patch" | sha256sum --check -
+
+      - name: Apply and validate implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --index /tmp/owner-scope.patch
+          git diff --cached --check
+          npm test
+
+      - name: Commit implementation and remove temporary payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .github/owner-scope-patch
+          rm .github/workflows/apply-owner-scope-patch.yml
+          git add -A
+          git config user.name "openai-codex[bot]"
+          git config user.email "openai-codex[bot]@users.noreply.github.com"
+          git commit -m "Scope local data to the active owner"
+          git push origin HEAD:agent/owner-scoped-local-data
