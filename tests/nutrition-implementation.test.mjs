@@ -99,7 +99,7 @@ test('dashboard reads live nutrition totals and daily targets alongside persiste
   assert.match(dashboard, /getDailyTargets\(\)/);
   assert.match(dashboard, /subscribeToNutritionLogChanges\(ownerId, refreshSummary\)/);
   assert.match(dashboard, /DEFAULT_DAILY_TARGETS/);
-  assert.match(dashboard, /Today\'s baseline/);
+  assert.match(dashboard, /Today's baseline/);
   assert.match(dashboard, /<MetricCard\s+label="Calories"[\s\S]*summary\.totals\.calories[\s\S]*targets\.calories/);
   assert.match(dashboard, /<MetricCard\s+label="Protein"[\s\S]*summary\.totals\.proteinG[\s\S]*targets\.proteinG/);
   assert.match(dashboard, /<MetricCard label="Water" value=\{`\$\{waterLoggedLabel\}L \/ \$\{waterTargetLabel\}L`\}/);
