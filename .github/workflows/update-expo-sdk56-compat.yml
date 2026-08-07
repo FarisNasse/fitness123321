@@ -1,0 +1,89 @@
+name: Update Expo SDK 56 compatibility
+
+on:
+  push:
+    branches:
+      - agent/owner-scoped-local-data
+    paths:
+      - .github/workflows/update-expo-sdk56-compat.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/owner-scoped-local-data
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Align Expo SDK 56 packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx expo install \
+            expo@~56.0.19 \
+            expo-constants@~56.0.23 \
+            expo-dev-client@~56.0.24 \
+            expo-linking@~56.0.16 \
+            expo-router@~56.2.18 \
+            expo-splash-screen@~56.0.14 \
+            react-native-screens@~4.26.0
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const path = 'tests/screens-and-config.test.mjs';
+          const source = fs
+            .readFileSync(path, 'utf8')
+            .replace(
+              "assert.equal(pkg.dependencies.expo, '~56.0.15');",
+              "assert.equal(pkg.dependencies.expo, '~56.0.19');"
+            );
+          fs.writeFileSync(path, source);
+          NODE
+
+      - name: Run all repository checks
+        run: npm run test:all
+
+      - name: Validate Expo dependencies
+        run: npm run check:expo
+
+      - name: Prepare exact source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/update-expo-sdk56-compat.yml
+          zip -qr /tmp/fitness123321-completed.zip . \
+            -x '.git/*' \
+            -x 'node_modules/*'
+
+      - name: Upload completed source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitness123321-completed
+          path: /tmp/fitness123321-completed.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Commit aligned dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git config user.name "openai-codex[bot]"
+          git config user.email "openai-codex[bot]@users.noreply.github.com"
+          git commit -m "Align Expo SDK 56 dependencies"
+          git push origin HEAD:agent/owner-scoped-local-data
