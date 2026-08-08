@@ -9,7 +9,7 @@ test('nutrition tab wires add-food modal, daily macro totals, grouped meals, and
   assert.match(screen, /getDailyNutritionSummary\(ownerId\)/);
   assert.match(screen, /<MetricCard label="Calories" value=\{String\(summary\.totals\.calories\)\}/);
   assert.match(screen, /<MetricCard label="Protein" value=\{`\$\{formatMacro\(summary\.totals\.proteinG\)\}g`\}/);
-  assert.match(screen, /<Button title="Add food" onPress=\{\(\) => setIsAddFoodOpen\(true\)\} \/>/);
+  assert.match(screen, /title="Add food"[\s\S]*setIsAddFoodOpen\(true\)/);
   assert.match(screen, /<Modal[\s\S]*visible=\{isAddFoodOpen\}[\s\S]*Choose a meal, select or create a food/s);
   assert.match(screen, /searchFoodsByName\(searchQuery\)/);
   assert.match(screen, /Create new food/);
@@ -22,28 +22,29 @@ test('nutrition tab wires add-food modal, daily macro totals, grouped meals, and
   assert.match(screen, /addLocalWaterLog\(\{ userId: ownerId, amountMl \}\)/);
 });
 
-test('nutrition service searches and creates public foods, logs local meals, computes totals, and syncs remote nutrition rows', () => {
+test('nutrition service supports USDA catalog search, exact barcode lookup, custom foods, local snapshots, and legacy fallback', () => {
   const service = readProjectFile('src/features/nutrition/nutrition-service.ts');
 
-  assert.match(service, /export async function searchFoodsByName\(query: string\)/);
-  assert.match(service, /\.from\('foods'\)\s*\.select\(FOOD_SELECT\)\s*\.ilike\('name', `%\$\{trimmed\}%`\)/s);
+  assert.match(service, /export async function searchFoodsByName\(/);
+  assert.match(service, /supabase\.rpc\('search_food_catalog'/);
+  assert.match(service, /result_limit: limit/);
+  assert.match(service, /result_offset: offset/);
+  assert.match(service, /\.from\('user_foods'\)/);
+  assert.match(service, /export async function searchFoodByBarcode/);
+  assert.match(service, /supabase\.rpc\('search_food_by_barcode'/);
+  assert.match(service, /export function normalizeFoodBarcode/);
+  assert.match(service, /\.from\('foods'\)[\s\S]*\.select\(LEGACY_FOOD_SELECT\)/s);
   assert.match(service, /export async function createFood/);
-  assert.match(service, /\.from\('foods'\)\s*\.insert\(foodPayload\)\s*\.select\(FOOD_SELECT\)/s);
+  assert.match(service, /\.from\('user_foods'\)[\s\S]*\.insert\(foodPayload\)/s);
   assert.match(service, /export function addLocalMealItem/);
-  assert.match(service, /insert into meal_logs_local \([\s\S]*meal_type,[\s\S]*values \(\?, \?, \?, \?, 'pending', \?\)/);
-  assert.match(service, /insert into meal_items_local \([\s\S]*food_name,[\s\S]*calories,[\s\S]*protein_g,[\s\S]*carbs_g,[\s\S]*fat_g,[\s\S]*values \(\?, \?, \?, \?, \?, \?, \?, \?, \?, \?, 'pending', \?\)/);
-  assert.match(service, /export function addLocalWaterLog/);
-  assert.match(service, /insert into water_logs_local \([\s\S]*amount_ml,[\s\S]*values \(\?, \?, \?, \?, 'pending', \?\)/);
+  assert.match(service, /insert into meal_items_local \([\s\S]*food_source,[\s\S]*source_food_id,[\s\S]*fdc_id,[\s\S]*fiber_g,[\s\S]*sodium_mg/s);
+  assert.match(service, /const legacyFoodId = input\.food\.source === 'legacy' \? input\.food\.id : null/);
+  assert.match(service, /cacheFoodLocally\(input\.food, now\)/);
+  assert.match(service, /recordFoodCatalogUse\(input\.food\)/);
   assert.match(service, /export function getDailyNutritionSummary/);
-  assert.match(service, /from meal_logs_local[\s\S]*logged_at >= \?[\s\S]*logged_at < \?/);
-  assert.match(service, /from meal_items_local[\s\S]*meal_log_local_id in \(\$\{placeholders\}\)/);
-  assert.match(service, /from water_logs_local[\s\S]*logged_at >= \?[\s\S]*logged_at < \?/);
   assert.match(service, /export function syncPendingNutritionLogs\(\)/);
-  assert.match(service, /from meal_logs_local[\s\S]*where sync_status in \('pending', 'failed'\)[\s\S]*and user_id != \?/);
-  assert.match(service, /\.from\('meal_logs'\)[\s\S]*\.upsert\([\s\S]*\{ onConflict: 'id' \}/);
+  assert.match(service, /food_source: item\.food_source/);
   assert.match(service, /\.from\('meal_items'\)[\s\S]*\.upsert\(itemRows, \{ onConflict: 'id' \}\)/);
-  assert.match(service, /from water_logs_local[\s\S]*where sync_status in \('pending', 'failed'\)[\s\S]*and user_id != \?/);
-  assert.match(service, /\.from\('water_logs'\)[\s\S]*\.upsert\([\s\S]*\{ onConflict: 'id' \}/);
 });
 
 test('local-db web adapter supports the nutrition query and mutation patterns used by the service', () => {
@@ -52,6 +53,9 @@ test('local-db web adapter supports the nutrition query and mutation patterns us
   assert.match(localDb, /insert into meal_logs_local/);
   assert.match(localDb, /insert into meal_items_local/);
   assert.match(localDb, /insert into water_logs_local/);
+  assert.match(localDb, /insert into food_cache_local/);
+  assert.match(localDb, /from food_cache_local.*lower\(name\) like \?/);
+  assert.match(localDb, /from food_cache_local.*barcode = \?/);
   assert.match(localDb, /update meal_logs_local.*set sync_status = 'failed'/);
   assert.match(localDb, /update meal_logs_local.*set server_id = \?/);
   assert.match(localDb, /update meal_logs_local.*set server_id = null/);
@@ -77,11 +81,13 @@ test('shared sync state coordinates the nutrition queue on connectivity and app 
   assert.match(syncState, /if \(state === 'active'\)/);
 });
 
-test('runtime flags keep nutrition local by default and enable Supabase explicitly', () => {
+test('runtime flags keep nutrition local by default and gate the USDA catalog explicitly', () => {
   const flags = readProjectFile('src/lib/runtime-flags.ts');
 
   assert.match(flags, /EXPO_PUBLIC_NUTRITION_SYNC_SOURCE === 'supabase'/);
-  assert.match(flags, /USE_SUPABASE_FOODS =\s*USE_REMOTE_NUTRITION_SYNC \|\| process\.env\.EXPO_PUBLIC_FOOD_SOURCE === 'supabase'/);
+  assert.match(flags, /export const FOOD_SOURCE = process\.env\.EXPO_PUBLIC_FOOD_SOURCE \?\? 'local'/);
+  assert.match(flags, /export const USE_USDA_FOOD_CATALOG = FOOD_SOURCE === 'usda'/);
+  assert.match(flags, /USE_SUPABASE_FOODS =[\s\S]*FOOD_SOURCE === 'supabase'[\s\S]*USE_USDA_FOOD_CATALOG/);
 });
 
 

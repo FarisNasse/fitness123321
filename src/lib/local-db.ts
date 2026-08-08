@@ -79,6 +79,9 @@ export type LocalMealItem = {
   server_id: string | null;
   meal_log_local_id: string;
   food_id: string | null;
+  food_source: string | null;
+  source_food_id: string | null;
+  fdc_id: number | null;
   food_name: string;
   quantity: number;
   unit: string | null;
@@ -86,8 +89,36 @@ export type LocalMealItem = {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  fiber_g: number | null;
+  sugar_g: number | null;
+  saturated_fat_g: number | null;
+  sodium_mg: number | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
+};
+
+export type LocalFoodCache = {
+  food_id: string;
+  source: string;
+  source_id: string | null;
+  fdc_id: number | null;
+  name: string;
+  brand: string | null;
+  barcode: string | null;
+  category: string | null;
+  serving_size: number | null;
+  serving_unit: string | null;
+  household_serving_text: string | null;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number | null;
+  sugar_g: number | null;
+  saturated_fat_g: number | null;
+  sodium_mg: number | null;
+  last_used_at: string | null;
+  cached_at: string;
 };
 
 export type LocalWaterLog = {
@@ -141,6 +172,7 @@ type WebStore = {
   workout_sets_local: Record<string, unknown>[];
   meal_logs_local: Record<string, unknown>[];
   meal_items_local: Record<string, unknown>[];
+  food_cache_local: Record<string, unknown>[];
   water_logs_local: Record<string, unknown>[];
   mood_logs_local: Record<string, unknown>[];
   body_measurements_local: Record<string, unknown>[];
@@ -174,6 +206,7 @@ function createEmptyWebStore(): WebStore {
     workout_sets_local: [],
     meal_logs_local: [],
     meal_items_local: [],
+    food_cache_local: [],
     water_logs_local: [],
     mood_logs_local: [],
     body_measurements_local: [],
@@ -387,6 +420,9 @@ function createWebDbAdapter(): DbAdapter {
           localId,
           mealLogLocalId,
           foodId,
+          foodSource,
+          sourceFoodId,
+          fdcId,
           foodName,
           quantity,
           unit,
@@ -394,6 +430,10 @@ function createWebDbAdapter(): DbAdapter {
           proteinG,
           carbsG,
           fatG,
+          fiberG,
+          sugarG,
+          saturatedFatG,
+          sodiumMg,
           updatedAt,
         ] = params;
 
@@ -402,6 +442,9 @@ function createWebDbAdapter(): DbAdapter {
           server_id: null,
           meal_log_local_id: mealLogLocalId,
           food_id: foodId,
+          food_source: foodSource,
+          source_food_id: sourceFoodId,
+          fdc_id: fdcId,
           food_name: foodName,
           quantity,
           unit,
@@ -409,9 +452,76 @@ function createWebDbAdapter(): DbAdapter {
           protein_g: proteinG,
           carbs_g: carbsG,
           fat_g: fatG,
+          fiber_g: fiberG,
+          sugar_g: sugarG,
+          saturated_fat_g: saturatedFatG,
+          sodium_mg: sodiumMg,
           sync_status: 'pending',
           updated_at: updatedAt,
         });
+
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('insert into food_cache_local')) {
+        const [
+          foodId,
+          source,
+          sourceId,
+          fdcId,
+          name,
+          brand,
+          barcode,
+          category,
+          servingSize,
+          servingUnit,
+          householdServingText,
+          calories,
+          proteinG,
+          carbsG,
+          fatG,
+          fiberG,
+          sugarG,
+          saturatedFatG,
+          sodiumMg,
+          lastUsedAt,
+          cachedAt,
+        ] = params;
+
+        const existing = store.food_cache_local.find((item) => item.food_id === foodId);
+        const next = {
+          food_id: foodId,
+          source,
+          source_id: sourceId,
+          fdc_id: fdcId,
+          name,
+          brand,
+          barcode,
+          category,
+          serving_size: servingSize,
+          serving_unit: servingUnit,
+          household_serving_text: householdServingText,
+          calories,
+          protein_g: proteinG,
+          carbs_g: carbsG,
+          fat_g: fatG,
+          fiber_g: fiberG,
+          sugar_g: sugarG,
+          saturated_fat_g: saturatedFatG,
+          sodium_mg: sodiumMg,
+          last_used_at: lastUsedAt,
+          cached_at: cachedAt,
+        };
+
+        if (existing) {
+          Object.assign(existing, {
+            ...next,
+            last_used_at: lastUsedAt ?? existing.last_used_at ?? null,
+          });
+        } else {
+          store.food_cache_local.push(next);
+        }
 
         writeWebStore(store);
         return;
@@ -1413,6 +1523,50 @@ function createWebDbAdapter(): DbAdapter {
       }
 
       if (
+        normalized.includes('from food_cache_local') &&
+        normalized.includes('lower(name) like ?')
+      ) {
+        const query = String(params[0] ?? '').replaceAll('%', '').toLowerCase();
+        const limit = Number(params[1] ?? 25);
+
+        return store.food_cache_local
+          .filter((item) => String(item.name ?? '').toLowerCase().includes(query))
+          .sort((a, b) => {
+            const aName = String(a.name ?? '').toLowerCase();
+            const bName = String(b.name ?? '').toLowerCase();
+            const aPrefix = aName.startsWith(query) ? 0 : 1;
+            const bPrefix = bName.startsWith(query) ? 0 : 1;
+            if (aPrefix !== bPrefix) return aPrefix - bPrefix;
+            return Date.parse(String(b.last_used_at ?? b.cached_at ?? 0))
+              - Date.parse(String(a.last_used_at ?? a.cached_at ?? 0));
+          })
+          .slice(0, limit) as T[];
+      }
+
+      if (
+        normalized.includes('from food_cache_local') &&
+        normalized.includes('barcode = ?')
+      ) {
+        const barcode = String(params[0] ?? '');
+        return store.food_cache_local
+          .filter((item) => String(item.barcode ?? '') === barcode)
+          .slice(0, 5) as T[];
+      }
+
+      if (
+        normalized.includes('from food_cache_local') &&
+        normalized.includes('last_used_at is not null')
+      ) {
+        const limit = Number(params[0] ?? 8);
+        return store.food_cache_local
+          .filter((item) => Boolean(item.last_used_at))
+          .sort(
+            (a, b) => Date.parse(String(b.last_used_at)) - Date.parse(String(a.last_used_at))
+          )
+          .slice(0, limit) as T[];
+      }
+
+      if (
         normalized.includes('from water_logs_local') &&
         normalized.includes('sync_status')
       ) {
@@ -1958,6 +2112,9 @@ export function initializeLocalDb() {
       server_id text,
       meal_log_local_id text not null,
       food_id text,
+      food_source text,
+      source_food_id text,
+      fdc_id integer,
       food_name text not null,
       quantity real not null,
       unit text,
@@ -1965,8 +2122,36 @@ export function initializeLocalDb() {
       protein_g real not null default 0,
       carbs_g real not null default 0,
       fat_g real not null default 0,
+      fiber_g real,
+      sugar_g real,
+      saturated_fat_g real,
+      sodium_mg real,
       sync_status text not null default 'pending',
       updated_at text not null
+    );
+
+    create table if not exists food_cache_local (
+      food_id text primary key,
+      source text not null,
+      source_id text,
+      fdc_id integer,
+      name text not null,
+      brand text,
+      barcode text,
+      category text,
+      serving_size real,
+      serving_unit text,
+      household_serving_text text,
+      calories real not null default 0,
+      protein_g real not null default 0,
+      carbs_g real not null default 0,
+      fat_g real not null default 0,
+      fiber_g real,
+      sugar_g real,
+      saturated_fat_g real,
+      sodium_mg real,
+      last_used_at text,
+      cached_at text not null
     );
 
     create table if not exists water_logs_local (
@@ -2031,6 +2216,15 @@ export function initializeLocalDb() {
     create index if not exists idx_meal_logs_logged
     on meal_logs_local(logged_at);
 
+    create index if not exists idx_food_cache_name
+    on food_cache_local(name);
+
+    create index if not exists idx_food_cache_recent
+    on food_cache_local(last_used_at desc);
+
+    create index if not exists idx_food_cache_barcode
+    on food_cache_local(barcode);
+
     create index if not exists idx_water_logs_logged
     on water_logs_local(logged_at);
 
@@ -2050,6 +2244,13 @@ export function initializeLocalDb() {
   addMissingLocalColumn('workout_sessions_local', 'deleted_at text');
   addMissingLocalColumn('workout_sets_local', 'is_deleted integer not null default 0');
   addMissingLocalColumn('workout_sets_local', 'deleted_at text');
+  addMissingLocalColumn('meal_items_local', 'food_source text');
+  addMissingLocalColumn('meal_items_local', 'source_food_id text');
+  addMissingLocalColumn('meal_items_local', 'fdc_id integer');
+  addMissingLocalColumn('meal_items_local', 'fiber_g real');
+  addMissingLocalColumn('meal_items_local', 'sugar_g real');
+  addMissingLocalColumn('meal_items_local', 'saturated_fat_g real');
+  addMissingLocalColumn('meal_items_local', 'sodium_mg real');
   addMissingLocalColumn('mood_logs_local', 'check_in_date text');
   addMissingLocalColumn('mood_logs_local', 'sleep_start text');
   addMissingLocalColumn('mood_logs_local', 'sleep_end text');
