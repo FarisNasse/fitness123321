@@ -13,7 +13,7 @@
         "EXPO_PUBLIC_WELLNESS_SYNC_SOURCE": "local",
         "EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE": "local",
         "EXPO_PUBLIC_EXERCISE_SOURCE": "local",
-        "EXPO_PUBLIC_FOOD_SOURCE": "local"
+        "EXPO_PUBLIC_FOOD_SOURCE": "usda"
       }
     },
     "development": {
@@ -50,7 +50,7 @@
         "EXPO_PUBLIC_WELLNESS_SYNC_SOURCE": "supabase",
         "EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE": "supabase",
         "EXPO_PUBLIC_EXERCISE_SOURCE": "supabase",
-        "EXPO_PUBLIC_FOOD_SOURCE": "supabase"
+        "EXPO_PUBLIC_FOOD_SOURCE": "usda"
       }
     },
     "production": {
@@ -66,7 +66,7 @@
         "EXPO_PUBLIC_WELLNESS_SYNC_SOURCE": "supabase",
         "EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE": "supabase",
         "EXPO_PUBLIC_EXERCISE_SOURCE": "supabase",
-        "EXPO_PUBLIC_FOOD_SOURCE": "supabase"
+        "EXPO_PUBLIC_FOOD_SOURCE": "usda"
       }
     }
   }
