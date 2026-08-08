@@ -40,3 +40,5 @@ supabase/.temp/
 
 # EAS build metadata captured before generating committed evidence
 .eas-preview-build*.json
+
+.data/
