@@ -1,0 +1,78 @@
+name: Apply USDA CI lint fix
+
+on:
+  push:
+    branches:
+      - agent/fix-usda-lint-ci
+    paths:
+      - '.github/workflows/apply-usda-lint-ci-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply focused lint fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          importer = Path('scripts/food-data/import-food-catalog.mjs')
+          text = importer.read_text()
+          old = "  } catch {}\n  throw error;"
+          new = "  } catch (statusError) {\n    console.warn('Failed to mark food data import as failed:', statusError);\n  }\n  throw error;"
+          if old not in text:
+              raise SystemExit('Importer lint target not found')
+          importer.write_text(text.replace(old, new, 1))
+
+          library = Path('scripts/food-data/lib.mjs')
+          text = library.read_text()
+          old = "      throw new Error(`Invalid JSON on line ${lineNumber}: ${error.message}`);"
+          new = "      throw new Error(`Invalid JSON on line ${lineNumber}: ${error.message}`, { cause: error });"
+          if old not in text:
+              raise SystemExit('NDJSON error target not found')
+          library.write_text(text.replace(old, new, 1))
+
+          edge = Path('supabase/functions/search-usda-foods/index.ts')
+          text = edge.read_text()
+          if not text.startswith('// @ts-nocheck\n'):
+              raise SystemExit('Edge Function ts-nocheck target not found')
+          text = text.removeprefix('// @ts-nocheck\n')
+          marker = "} from '../_shared/usda-fdc.mjs';\n\n"
+          declaration = (
+              "declare const Deno: {\n"
+              "  env: { get(name: string): string | undefined };\n"
+              "  serve(handler: (request: Request) => Response | Promise<Response>): void;\n"
+              "};\n\n"
+          )
+          if marker not in text:
+              raise SystemExit('Edge Function import marker not found')
+          edge.write_text(text.replace(marker, marker + declaration, 1))
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run exact CI contract
+        run: npm run test:all
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-usda-lint-ci-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix USDA lint failures in test:all"
+          git push origin HEAD:agent/fix-usda-lint-ci
