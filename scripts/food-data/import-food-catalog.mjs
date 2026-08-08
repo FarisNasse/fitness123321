@@ -92,6 +92,8 @@ try {
         error_summary: String(error?.message ?? error).slice(0, 2000),
       }),
     });
-  } catch {}
+  } catch (statusError) {
+    console.warn('Failed to mark food data import as failed:', statusError);
+  }
   throw error;
 }
