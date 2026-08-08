@@ -5,6 +5,8 @@ export const VALID_SOURCES = new Set([
   'usda_foundation',
   'usda_fndds',
   'usda_branded',
+  'usda_sr_legacy',
+  'usda_experimental',
 ]);
 
 export const NUTRIENT_MAP = new Map([
@@ -42,6 +44,8 @@ export function normalizeSourceType(dataType) {
   if (value.includes('foundation')) return 'usda_foundation';
   if (value.includes('fndds') || value.includes('survey')) return 'usda_fndds';
   if (value.includes('branded')) return 'usda_branded';
+  if (value.includes('sr legacy')) return 'usda_sr_legacy';
+  if (value.includes('experimental')) return 'usda_experimental';
   return null;
 }
 
@@ -99,8 +103,6 @@ export function extractNutrients(food) {
       continue;
     }
 
-    // Multiple USDA energy fields can exist. Prefer nutrient 1008 when present,
-    // otherwise keep the first valid kcal value rather than summing energy fields.
     if (mapping.key === 'calories' && values.calories != null && id !== 1008) continue;
     values[mapping.key] = amount;
   }
@@ -152,8 +154,6 @@ function servingInfo(food, sourceType) {
     food?.household_serving_text ??
     null;
 
-  // Branded nutrient values in FoodData Central are standardized per 100 g.
-  // Only scale them to the label serving when USDA supplies that serving in grams.
   if (
     sourceType === 'usda_branded' &&
     declaredSize != null &&
@@ -168,8 +168,6 @@ function servingInfo(food, sourceType) {
     };
   }
 
-  // Foundation/FNDDS portions include an explicit gram weight. That relationship
-  // is safe to use; otherwise retain the USDA-native 100 g nutrient basis.
   const portion = sourcePortion(food);
   if (portion) return portion;
 
@@ -283,10 +281,6 @@ export async function readUsdaJsonRecords(filePath) {
   throw new Error('Unsupported USDA JSON shape: expected an array or a recognized food array key.');
 }
 
-/**
- * Stream USDA bulk JSON without loading multi-gigabyte Branded releases into RAM.
- * Supports a root array and the root array keys used by FDC bulk JSON exports.
- */
 export async function* streamUsdaJsonRecords(filePath) {
   const input = fs.createReadStream(filePath, { encoding: 'utf8' });
   const keys = ['FoundationFoods', 'SurveyFoods', 'FNDDS', 'BrandedFoods', 'foods', 'data'];
