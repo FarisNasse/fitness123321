@@ -1,0 +1,508 @@
+--- a/src/features/nutrition/nutrition-service.ts
++++ b/src/features/nutrition/nutrition-service.ts
+@@ -10,12 +10,18 @@
+ } from '@/src/lib/local-db';
+ import { markSyncPending } from '@/src/lib/sync-events';
+ import {
++  ALLOW_USDA_DEMO_FALLBACK,
++  HAS_REMOTE_SUPABASE_CONFIG,
+   LOCAL_DEV_USER_ID,
+   USE_REMOTE_NUTRITION_SYNC,
+   USE_SUPABASE_FOODS,
+   USE_USDA_FOOD_CATALOG,
+ } from '@/src/lib/runtime-flags';
+ import type { Food, FoodSource, MealType } from '@/src/types/models';
++import {
++  searchFoodDataCentral,
++  searchFoodDataCentralByBarcode,
++} from '@/supabase/functions/_shared/usda-fdc.mjs';
+ 
+ export type LocalMealLogRow = LocalMealLog;
+ export type LocalMealItemRow = LocalMealItem;
+@@ -135,6 +141,9 @@
+   'usda_foundation',
+   'usda_fndds',
+   'usda_branded',
++  'usda_sr_legacy',
++  'usda_experimental',
++  'usda_other',
+ ]);
+ 
+ function optionalNumber(value: number | string | null | undefined) {
+@@ -249,6 +258,12 @@
+       return 'USDA FNDDS';
+     case 'usda_branded':
+       return 'USDA Branded';
++    case 'usda_sr_legacy':
++      return 'USDA SR Legacy';
++    case 'usda_experimental':
++      return 'USDA Experimental';
++    case 'usda_other':
++      return 'USDA FoodData Central';
+     case 'custom':
+       return 'Custom';
+     case 'restaurant':
+@@ -511,6 +526,84 @@
+   return mapDailyTargets(data as DailyTargetsRow | null);
+ }
+ 
++function foodIdentityKey(food: Food) {
++  return food.fdcId ? `fdc:${food.fdcId}` : `${food.source}:${food.id}`;
++}
++
++function mergeFoodResults(...groups: Food[][]) {
++  const seen = new Set<string>();
++  const merged: Food[] = [];
++
++  for (const group of groups) {
++    for (const food of group) {
++      const key = foodIdentityKey(food);
++      if (seen.has(key)) continue;
++      seen.add(key);
++      merged.push(food);
++    }
++  }
++
++  return merged;
++}
++
++async function invokeUsdaSearchProxy(
++  supabase: Awaited<ReturnType<typeof importSupabaseClient>>,
++  query: string,
++  limit: number,
++  offset: number
++) {
++  const pageNumber = Math.floor(offset / limit) + 1;
++  const { data, error } = await supabase.functions.invoke('search-usda-foods', {
++    body: {
++      action: 'search',
++      query,
++      pageSize: limit,
++      pageNumber,
++    },
++  });
++
++  if (error) throw error;
++  if (data?.error) throw new Error(String(data.error));
++  return ((data?.foods ?? []) as CatalogFoodRow[]).map(mapCatalogFood);
++}
++
++async function invokeUsdaBarcodeProxy(
++  supabase: Awaited<ReturnType<typeof importSupabaseClient>>,
++  barcode: string
++) {
++  const { data, error } = await supabase.functions.invoke('search-usda-foods', {
++    body: { action: 'barcode', barcode },
++  });
++
++  if (error) throw error;
++  if (data?.error) throw new Error(String(data.error));
++  return ((data?.foods ?? []) as CatalogFoodRow[]).map(mapCatalogFood);
++}
++
++async function importSupabaseClient() {
++  const module = await import('@/src/lib/supabase');
++  return module.supabase;
++}
++
++async function searchUsdaDemo(query: string, limit: number, offset: number) {
++  if (!ALLOW_USDA_DEMO_FALLBACK) return [];
++
++  const pageNumber = Math.floor(offset / limit) + 1;
++  const rows = await searchFoodDataCentral({
++    query,
++    apiKey: 'DEMO_KEY',
++    pageSize: limit,
++    pageNumber,
++  });
++  return (rows as CatalogFoodRow[]).map(mapCatalogFood);
++}
++
++async function searchUsdaBarcodeDemo(barcode: string) {
++  if (!ALLOW_USDA_DEMO_FALLBACK) return [];
++  const rows = await searchFoodDataCentralByBarcode({ barcode, apiKey: 'DEMO_KEY' });
++  return (rows as CatalogFoodRow[]).map(mapCatalogFood);
++}
++
+ export async function searchFoodsByName(
+   query: string,
+   options: { limit?: number; offset?: number } = {}
+@@ -527,66 +620,108 @@
+     return searchCachedFoodsByName(trimmed, limit);
+   }
+ 
+-  const { supabase } = await import('@/src/lib/supabase');
+-
+-  if (USE_USDA_FOOD_CATALOG) {
+-    try {
+-      const { data: authData } = await supabase.auth.getUser();
+-      const customPromise = authData.user?.id
+-        ? supabase
+-            .from('user_foods')
+-            .select(USER_FOOD_SELECT)
+-            .eq('user_id', authData.user.id)
+-            .ilike('name', `%${trimmed}%`)
+-            .order('updated_at', { ascending: false })
+-            .limit(Math.min(limit, 10))
+-        : Promise.resolve({ data: [], error: null });
+-
+-      const [customResult, catalogResult] = await Promise.all([
+-        customPromise,
+-        supabase.rpc('search_food_catalog', {
+-          search_query: trimmed,
+-          result_limit: limit,
+-          result_offset: offset,
+-        }),
+-      ]);
++  if (USE_USDA_FOOD_CATALOG && !HAS_REMOTE_SUPABASE_CONFIG) {
++    if (ALLOW_USDA_DEMO_FALLBACK) {
++      const demoFoods = await searchUsdaDemo(trimmed, limit, offset);
++      for (const food of demoFoods) cacheFoodLocally(food);
++      return demoFoods;
++    }
+ 
+-      if (catalogResult.error) {
+-        throw catalogResult.error;
+-      }
++    throw new Error('USDA food search requires Supabase configuration in production.');
++  }
+ 
+-      if (customResult.error) {
+-        reportError(customResult.error, {
+-          source: 'nutrition-service',
+-          operation: 'search-custom-foods',
+-          domain: 'nutrition',
+-        });
+-      }
++  const supabase = await importSupabaseClient();
+ 
+-      const customFoods = ((customResult.data ?? []) as UserFoodRow[]).map(mapUserFood);
+-      const catalogFoods = ((catalogResult.data ?? []) as CatalogFoodRow[]).map(mapCatalogFood);
+-      const merged = [...customFoods, ...catalogFoods].filter(
+-        (food, index, foods) => foods.findIndex((candidate) => candidate.id === food.id) === index
+-      );
+-      const results = merged.slice(0, limit);
++  if (USE_USDA_FOOD_CATALOG) {
++    let catalogFoods: Food[] = [];
++    let customFoods: Food[] = [];
++    let liveUsdaFoods: Food[] = [];
++    let hadLiveSearchFailure = false;
+ 
+-      for (const food of results) {
+-        cacheFoodLocally(food);
++    try {
++      const { data: authData } = await supabase.auth.getUser();
++      if (authData.user?.id) {
++        const { data, error } = await supabase
++          .from('user_foods')
++          .select(USER_FOOD_SELECT)
++          .eq('user_id', authData.user.id)
++          .ilike('name', `%${trimmed}%`)
++          .order('updated_at', { ascending: false })
++          .limit(Math.min(limit, 10));
++
++        if (error) {
++          reportError(error, {
++            source: 'nutrition-service',
++            operation: 'search-custom-foods',
++            domain: 'nutrition',
++          });
++        } else {
++          customFoods = ((data ?? []) as UserFoodRow[]).map(mapUserFood);
++        }
+       }
++    } catch (error) {
++      reportError(error, {
++        source: 'nutrition-service',
++        operation: 'resolve-food-search-user',
++        domain: 'nutrition',
++      });
++    }
+ 
+-      return results;
++    try {
++      const { data, error } = await supabase.rpc('search_food_catalog', {
++        search_query: trimmed,
++        result_limit: limit,
++        result_offset: offset,
++      });
++      if (error) throw error;
++      catalogFoods = ((data ?? []) as CatalogFoodRow[]).map(mapCatalogFood);
+     } catch (error) {
++      hadLiveSearchFailure = true;
+       reportError(error, {
+         source: 'nutrition-service',
+-        operation: 'search-usda-food-catalog',
++        operation: 'search-local-usda-catalog',
+         domain: 'nutrition',
+-        tags: { fallback: 'local-food-cache' },
++        tags: { fallback: 'fooddata-central-proxy' },
+       });
++    }
++
++    if (catalogFoods.length < limit) {
++      try {
++        liveUsdaFoods = await invokeUsdaSearchProxy(supabase, trimmed, limit, offset);
++        hadLiveSearchFailure = false;
++      } catch (error) {
++        hadLiveSearchFailure = true;
++        reportError(error, {
++          source: 'nutrition-service',
++          operation: 'search-fooddata-central-proxy',
++          domain: 'nutrition',
++          tags: { fallback: ALLOW_USDA_DEMO_FALLBACK ? 'usda-demo-key' : 'local-food-cache' },
++        });
+ 
+-      const cached = searchCachedFoodsByName(trimmed, limit);
+-      if (cached.length > 0) return cached;
+-      throw new Error('Food search is temporarily unavailable.');
++        if (ALLOW_USDA_DEMO_FALLBACK) {
++          try {
++            liveUsdaFoods = await searchUsdaDemo(trimmed, limit, offset);
++            hadLiveSearchFailure = false;
++          } catch (demoError) {
++            reportError(demoError, {
++              source: 'nutrition-service',
++              operation: 'search-fooddata-central-demo',
++              domain: 'nutrition',
++              tags: { fallback: 'local-food-cache' },
++            });
++          }
++        }
++      }
+     }
++
++    const results = mergeFoodResults(customFoods, catalogFoods, liveUsdaFoods).slice(0, limit);
++    for (const food of results) cacheFoodLocally(food);
++    if (results.length > 0) return results;
++
++    const cached = searchCachedFoodsByName(trimmed, limit);
++    if (cached.length > 0) return cached;
++    if (hadLiveSearchFailure) throw new Error('Food search is temporarily unavailable.');
++    return [];
+   }
+ 
+   const { data, error } = await supabase
+@@ -618,50 +753,86 @@
+     return getCachedFoodByBarcode(barcode);
+   }
+ 
+-  const { supabase } = await import('@/src/lib/supabase');
++  if (USE_USDA_FOOD_CATALOG && !HAS_REMOTE_SUPABASE_CONFIG) {
++    if (ALLOW_USDA_DEMO_FALLBACK) {
++      const demoFoods = await searchUsdaBarcodeDemo(barcode);
++      for (const food of demoFoods) cacheFoodLocally(food);
++      return demoFoods.length > 0 ? demoFoods : getCachedFoodByBarcode(barcode);
++    }
++
++    return getCachedFoodByBarcode(barcode);
++  }
++
++  const supabase = await importSupabaseClient();
+ 
+   if (USE_USDA_FOOD_CATALOG) {
++    let customFoods: Food[] = [];
++    let catalogFoods: Food[] = [];
++    let liveFoods: Food[] = [];
++
+     try {
+       const { data: authData } = await supabase.auth.getUser();
+-      const customPromise = authData.user?.id
+-        ? supabase
+-            .from('user_foods')
+-            .select(USER_FOOD_SELECT)
+-            .eq('user_id', authData.user.id)
+-            .eq('barcode', barcode)
+-            .limit(5)
+-        : Promise.resolve({ data: [], error: null });
+-
+-      const [customResult, catalogResult] = await Promise.all([
+-        customPromise,
+-        supabase.rpc('search_food_by_barcode', { input_barcode: barcode }),
+-      ]);
+-
+-      if (catalogResult.error) throw catalogResult.error;
+-      if (customResult.error) {
+-        reportError(customResult.error, {
+-          source: 'nutrition-service',
+-          operation: 'search-custom-food-barcode',
+-          domain: 'nutrition',
+-        });
++      if (authData.user?.id) {
++        const { data, error } = await supabase
++          .from('user_foods')
++          .select(USER_FOOD_SELECT)
++          .eq('user_id', authData.user.id)
++          .eq('barcode', barcode)
++          .limit(5);
++        if (!error) customFoods = ((data ?? []) as UserFoodRow[]).map(mapUserFood);
+       }
++    } catch (error) {
++      reportError(error, {
++        source: 'nutrition-service',
++        operation: 'search-custom-food-barcode',
++        domain: 'nutrition',
++      });
++    }
+ 
+-      const results = [
+-        ...((customResult.data ?? []) as UserFoodRow[]).map(mapUserFood),
+-        ...((catalogResult.data ?? []) as CatalogFoodRow[]).map(mapCatalogFood),
+-      ].slice(0, 5);
+-
+-      for (const food of results) cacheFoodLocally(food);
+-      return results;
++    try {
++      const { data, error } = await supabase.rpc('search_food_by_barcode', {
++        input_barcode: barcode,
++      });
++      if (error) throw error;
++      catalogFoods = ((data ?? []) as CatalogFoodRow[]).map(mapCatalogFood);
+     } catch (error) {
+       reportError(error, {
+         source: 'nutrition-service',
+-        operation: 'search-food-barcode',
++        operation: 'search-catalog-barcode',
+         domain: 'nutrition',
+-        tags: { fallback: 'local-food-cache' },
++        tags: { fallback: 'fooddata-central-proxy' },
+       });
+-      return getCachedFoodByBarcode(barcode);
+     }
++
++    if (catalogFoods.length === 0) {
++      try {
++        liveFoods = await invokeUsdaBarcodeProxy(supabase, barcode);
++      } catch (error) {
++        reportError(error, {
++          source: 'nutrition-service',
++          operation: 'search-fooddata-central-barcode-proxy',
++          domain: 'nutrition',
++          tags: { fallback: ALLOW_USDA_DEMO_FALLBACK ? 'usda-demo-key' : 'local-food-cache' },
++        });
++
++        if (ALLOW_USDA_DEMO_FALLBACK) {
++          try {
++            liveFoods = await searchUsdaBarcodeDemo(barcode);
++          } catch (demoError) {
++            reportError(demoError, {
++              source: 'nutrition-service',
++              operation: 'search-fooddata-central-barcode-demo',
++              domain: 'nutrition',
++            });
++          }
++        }
++      }
++    }
++
++    const results = mergeFoodResults(customFoods, catalogFoods, liveFoods).slice(0, 5);
++    for (const food of results) cacheFoodLocally(food);
++    if (results.length > 0) return results;
++    return getCachedFoodByBarcode(barcode);
+   }
+ 
+   const { data, error } = await supabase
+--- a/tests/nutrition-implementation.test.mjs
++++ b/tests/nutrition-implementation.test.mjs
+@@ -43,6 +43,11 @@
+   assert.match(service, /supabase\.rpc\('search_food_catalog'/);
+   assert.match(service, /result_limit: limit/);
+   assert.match(service, /result_offset: offset/);
++  assert.match(service, /supabase\.functions\.invoke\('search-usda-foods'/);
++  assert.match(service, /searchFoodDataCentral\(\{/);
++  assert.match(service, /apiKey: 'DEMO_KEY'/);
++  assert.match(service, /USE_USDA_FOOD_CATALOG && !HAS_REMOTE_SUPABASE_CONFIG/);
++  assert.match(service, /mergeFoodResults\(customFoods, catalogFoods, liveUsdaFoods\)/);
+   assert.match(service, /\.from\('user_foods'\)/);
+   assert.match(service, /export async function searchFoodByBarcode/);
+   assert.match(service, /supabase\.rpc\('search_food_by_barcode'/);
+@@ -95,12 +100,14 @@
+   assert.match(syncState, /if \(state === 'active'\)/);
+ });
+ 
+-test('runtime flags keep nutrition local by default and gate the USDA catalog explicitly', () => {
++test('runtime flags make USDA the default food source while keeping other domains local-first', () => {
+   const flags = readProjectFile('src/lib/runtime-flags.ts');
+ 
+   assert.match(flags, /EXPO_PUBLIC_NUTRITION_SYNC_SOURCE === 'supabase'/);
+-  assert.match(flags, /export const FOOD_SOURCE = process\.env\.EXPO_PUBLIC_FOOD_SOURCE \?\? 'local'/);
++  assert.match(flags, /export const HAS_REMOTE_SUPABASE_CONFIG = Boolean/);
++  assert.match(flags, /export const FOOD_SOURCE = process\.env\.EXPO_PUBLIC_FOOD_SOURCE \?\? 'usda'/);
+   assert.match(flags, /export const USE_USDA_FOOD_CATALOG = FOOD_SOURCE === 'usda'/);
++  assert.match(flags, /export const ALLOW_USDA_DEMO_FALLBACK = APP_ENV !== 'production'/);
+   assert.match(flags, /USE_SUPABASE_FOODS =[\s\S]*FOOD_SOURCE === 'supabase'[\s\S]*USE_USDA_FOOD_CATALOG/);
+ });
+ 
+--- a/tests/usda-food-catalog.test.mjs
++++ b/tests/usda-food-catalog.test.mjs
+@@ -133,3 +133,54 @@
+   const source = readProjectFile('scripts/food-data/validate-food-catalog.mjs');
+   assert.match(source, /duplicate fdc_id in normalized file/);
+ });
++
++test('live FoodData Central search normalizer exposes apple and yogurt results from API-shaped payloads', async () => {
++  const { searchFoodDataCentral } = await import('../supabase/functions/_shared/usda-fdc.mjs');
++  const payload = {
++    foods: [
++      {
++        fdcId: 111,
++        dataType: 'Foundation',
++        description: 'Apples, raw, with skin',
++        foodNutrients: [
++          { nutrientId: 1008, nutrientName: 'Energy', unitName: 'KCAL', value: 52 },
++          { nutrientId: 1003, nutrientName: 'Protein', unitName: 'G', value: 0.26 },
++        ],
++      },
++      {
++        fdcId: 222,
++        dataType: 'Branded',
++        description: 'Greek Yogurt, Plain',
++        brandOwner: 'Example Dairy',
++        gtinUpc: '00012345678905',
++        servingSize: 170,
++        servingSizeUnit: 'g',
++        foodNutrients: [
++          { nutrientId: 1008, nutrientName: 'Energy', unitName: 'KCAL', value: 59 },
++          { nutrientId: 1003, nutrientName: 'Protein', unitName: 'G', value: 10.3 },
++        ],
++      },
++    ],
++  };
++
++  const fetchImpl = async () => new Response(JSON.stringify(payload), { status: 200 });
++  const apple = await searchFoodDataCentral({ query: 'Apple', apiKey: 'test-key', fetchImpl });
++  const yogurt = await searchFoodDataCentral({ query: 'Yogurt', apiKey: 'test-key', fetchImpl });
++
++  assert.equal(apple[0].description, 'Apples, raw, with skin');
++  assert.equal(apple[0].source_type, 'usda_foundation');
++  assert.equal(yogurt.some((food) => /yogurt/i.test(food.description)), true);
++  assert.equal(yogurt.find((food) => food.fdc_id === 222)?.gtin_upc, '00012345678905');
++});
++
++test('USDA backend proxy keeps the secret key server-side and exposes search plus barcode actions', () => {
++  const edge = readProjectFile('supabase/functions/search-usda-foods/index.ts');
++  const shared = readProjectFile('supabase/functions/_shared/usda-fdc.mjs');
++
++  assert.match(edge, /Deno\.env\.get\('USDA_FDC_API_KEY'\)/);
++  assert.match(edge, /action === 'barcode'/);
++  assert.match(edge, /searchFoodDataCentral\(/);
++  assert.match(edge, /searchFoodDataCentralByBarcode\(/);
++  assert.match(shared, /\/foods\/search\?api_key=/);
++  assert.doesNotMatch(shared, /USDA_FDC_API_KEY\s*=/);
++});
+--- a/tests/eas-build-config.test.mjs
++++ b/tests/eas-build-config.test.mjs
+@@ -89,10 +89,12 @@
+     'EXPO_PUBLIC_WELLNESS_SYNC_SOURCE',
+     'EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE',
+     'EXPO_PUBLIC_EXERCISE_SOURCE',
+-    'EXPO_PUBLIC_FOOD_SOURCE',
+   ]) {
+     assert.equal(inheritedEnv[variable], 'local', `${variable} must be available to preview builds`);
+   }
++  assert.equal(inheritedEnv.EXPO_PUBLIC_FOOD_SOURCE, 'usda');
++  assert.equal(eas.build['auth-preview'].env.EXPO_PUBLIC_FOOD_SOURCE, 'usda');
++  assert.equal(eas.build.production.env.EXPO_PUBLIC_FOOD_SOURCE, 'usda');
+ });
+ 
+ test('project-link helper commits a verified owner and EAS UUID without placeholders', () => {
