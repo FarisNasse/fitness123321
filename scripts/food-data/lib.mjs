@@ -267,7 +267,7 @@ export async function* readNdjson(filePath) {
     try {
       yield { lineNumber, value: JSON.parse(line) };
     } catch (error) {
-      throw new Error(`Invalid JSON on line ${lineNumber}: ${error.message}`);
+      throw new Error(`Invalid JSON on line ${lineNumber}: ${error.message}`, { cause: error });
     }
   }
 }
