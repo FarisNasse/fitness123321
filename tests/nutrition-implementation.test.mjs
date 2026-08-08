@@ -43,6 +43,11 @@ test('nutrition service supports USDA catalog search, exact barcode lookup, cust
   assert.match(service, /supabase\.rpc\('search_food_catalog'/);
   assert.match(service, /result_limit: limit/);
   assert.match(service, /result_offset: offset/);
+  assert.match(service, /supabase\.functions\.invoke\('search-usda-foods'/);
+  assert.match(service, /searchFoodDataCentral\(\{/);
+  assert.match(service, /apiKey: 'DEMO_KEY'/);
+  assert.match(service, /USE_USDA_FOOD_CATALOG && !HAS_REMOTE_SUPABASE_CONFIG/);
+  assert.match(service, /mergeFoodResults\(customFoods, catalogFoods, liveUsdaFoods\)/);
   assert.match(service, /\.from\('user_foods'\)/);
   assert.match(service, /export async function searchFoodByBarcode/);
   assert.match(service, /supabase\.rpc\('search_food_by_barcode'/);
@@ -95,12 +100,14 @@ test('shared sync state coordinates the nutrition queue on connectivity and app 
   assert.match(syncState, /if \(state === 'active'\)/);
 });
 
-test('runtime flags keep nutrition local by default and gate the USDA catalog explicitly', () => {
+test('runtime flags make USDA the default food source while keeping other domains local-first', () => {
   const flags = readProjectFile('src/lib/runtime-flags.ts');
 
   assert.match(flags, /EXPO_PUBLIC_NUTRITION_SYNC_SOURCE === 'supabase'/);
-  assert.match(flags, /export const FOOD_SOURCE = process\.env\.EXPO_PUBLIC_FOOD_SOURCE \?\? 'local'/);
+  assert.match(flags, /export const HAS_REMOTE_SUPABASE_CONFIG = Boolean/);
+  assert.match(flags, /export const FOOD_SOURCE = process\.env\.EXPO_PUBLIC_FOOD_SOURCE \?\? 'usda'/);
   assert.match(flags, /export const USE_USDA_FOOD_CATALOG = FOOD_SOURCE === 'usda'/);
+  assert.match(flags, /export const ALLOW_USDA_DEMO_FALLBACK = APP_ENV !== 'production'/);
   assert.match(flags, /USE_SUPABASE_FOODS =[\s\S]*FOOD_SOURCE === 'supabase'[\s\S]*USE_USDA_FOOD_CATALOG/);
 });
 

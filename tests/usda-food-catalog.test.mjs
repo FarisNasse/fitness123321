@@ -133,3 +133,54 @@ test('normalized NDJSON validator script rejects duplicate FDC IDs', async () =>
   const source = readProjectFile('scripts/food-data/validate-food-catalog.mjs');
   assert.match(source, /duplicate fdc_id in normalized file/);
 });
+
+test('live FoodData Central search normalizer exposes apple and yogurt results from API-shaped payloads', async () => {
+  const { searchFoodDataCentral } = await import('../supabase/functions/_shared/usda-fdc.mjs');
+  const payload = {
+    foods: [
+      {
+        fdcId: 111,
+        dataType: 'Foundation',
+        description: 'Apples, raw, with skin',
+        foodNutrients: [
+          { nutrientId: 1008, nutrientName: 'Energy', unitName: 'KCAL', value: 52 },
+          { nutrientId: 1003, nutrientName: 'Protein', unitName: 'G', value: 0.26 },
+        ],
+      },
+      {
+        fdcId: 222,
+        dataType: 'Branded',
+        description: 'Greek Yogurt, Plain',
+        brandOwner: 'Example Dairy',
+        gtinUpc: '00012345678905',
+        servingSize: 170,
+        servingSizeUnit: 'g',
+        foodNutrients: [
+          { nutrientId: 1008, nutrientName: 'Energy', unitName: 'KCAL', value: 59 },
+          { nutrientId: 1003, nutrientName: 'Protein', unitName: 'G', value: 10.3 },
+        ],
+      },
+    ],
+  };
+
+  const fetchImpl = async () => new Response(JSON.stringify(payload), { status: 200 });
+  const apple = await searchFoodDataCentral({ query: 'Apple', apiKey: 'test-key', fetchImpl });
+  const yogurt = await searchFoodDataCentral({ query: 'Yogurt', apiKey: 'test-key', fetchImpl });
+
+  assert.equal(apple[0].description, 'Apples, raw, with skin');
+  assert.equal(apple[0].source_type, 'usda_foundation');
+  assert.equal(yogurt.some((food) => /yogurt/i.test(food.description)), true);
+  assert.equal(yogurt.find((food) => food.fdc_id === 222)?.gtin_upc, '00012345678905');
+});
+
+test('USDA backend proxy keeps the secret key server-side and exposes search plus barcode actions', () => {
+  const edge = readProjectFile('supabase/functions/search-usda-foods/index.ts');
+  const shared = readProjectFile('supabase/functions/_shared/usda-fdc.mjs');
+
+  assert.match(edge, /Deno\.env\.get\('USDA_FDC_API_KEY'\)/);
+  assert.match(edge, /action === 'barcode'/);
+  assert.match(edge, /searchFoodDataCentral\(/);
+  assert.match(edge, /searchFoodDataCentralByBarcode\(/);
+  assert.match(shared, /\/foods\/search\?api_key=/);
+  assert.doesNotMatch(shared, /USDA_FDC_API_KEY\s*=/);
+});

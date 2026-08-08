@@ -89,10 +89,12 @@ test('EAS profiles match the pinned runtime and produce a remotely signed Androi
     'EXPO_PUBLIC_WELLNESS_SYNC_SOURCE',
     'EXPO_PUBLIC_BODY_MEASUREMENT_SYNC_SOURCE',
     'EXPO_PUBLIC_EXERCISE_SOURCE',
-    'EXPO_PUBLIC_FOOD_SOURCE',
   ]) {
     assert.equal(inheritedEnv[variable], 'local', `${variable} must be available to preview builds`);
   }
+  assert.equal(inheritedEnv.EXPO_PUBLIC_FOOD_SOURCE, 'usda');
+  assert.equal(eas.build['auth-preview'].env.EXPO_PUBLIC_FOOD_SOURCE, 'usda');
+  assert.equal(eas.build.production.env.EXPO_PUBLIC_FOOD_SOURCE, 'usda');
 });
 
 test('project-link helper commits a verified owner and EAS UUID without placeholders', () => {
