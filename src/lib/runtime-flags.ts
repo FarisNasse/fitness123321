@@ -1,8 +1,14 @@
 export const LOCAL_DEV_USER_ID = '00000000-0000-0000-0000-000000000999';
 export const LOCAL_DEV_USER_EMAIL = 'local-dev@example.test';
 
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? '';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '';
+
 export const HAS_REMOTE_SUPABASE_CONFIG = Boolean(
-  process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim()
+  SUPABASE_URL &&
+    SUPABASE_ANON_KEY &&
+    !SUPABASE_URL.includes('your-project.supabase.co') &&
+    SUPABASE_ANON_KEY !== 'your-supabase-anon-key'
 );
 
 export const AUTH_MODE = process.env.EXPO_PUBLIC_AUTH_MODE ?? 'local';
