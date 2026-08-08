@@ -742,14 +742,13 @@ function FoodSearchResult({
     >
       <Text className="text-base font-bold text-base-content">{food.name}</Text>
       <Text className="text-xs font-bold uppercase tracking-wide text-base-muted">
-        {getFoodSourceLabel(food)}{food.brand ? ` · ${forod.brand}` : ''}
+        {getFoodSourceLabel(food)}{food.brand ? ` · ${food.brand}` : ''}
       </Text>
       <Text className="text-sm font-body text-base-muted">
         {serving} · {Math.round(food.calories)} kcal
       </Text>
       <Text className="text-sm font-body text-base-muted">
-        P {formatMacro(food.proteinG)}g · C {formatMacro(food.carbsG)}g · F{ '}
-        {formatMacro(food.fatG)}g
+        P {formatMacro(food.proteinG)}g · C {formatMacro(food.carbsG)}g · F {formatMacro(food.fatG)}g
       </Text>
     </Pressable>
   );

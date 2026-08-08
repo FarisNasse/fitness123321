@@ -22,6 +22,20 @@ test('nutrition tab wires add-food modal, daily macro totals, grouped meals, and
   assert.match(screen, /addLocalWaterLog\(\{ userId: ownerId, amountMl \}\)/);
 });
 
+test('nutrition food result card keeps source, brand, and macro JSX valid', () => {
+  const screen = readProjectFile('app/(tabs)/nutrition.tsx');
+
+  assert.doesNotMatch(screen, /forod\./);
+  assert.match(
+    screen,
+    /\{getFoodSourceLabel\(food\)\}\{food\.brand \? ` · \$\{food\.brand\}` : ''\}/
+  );
+  assert.match(
+    screen,
+    /P \{formatMacro\(food\.proteinG\)\}g · C \{formatMacro\(food\.carbsG\)\}g · F \{formatMacro\(food\.fatG\)\}g/
+  );
+});
+
 test('nutrition service supports USDA catalog search, exact barcode lookup, custom foods, local snapshots, and legacy fallback', () => {
   const service = readProjectFile('src/features/nutrition/nutrition-service.ts');
 
