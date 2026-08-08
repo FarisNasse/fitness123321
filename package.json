@@ -30,7 +30,10 @@
     "test": "node --test",
     "test:all": "npm run check:lockfile && npm run test && npm run check:exercises && npm run check:local && npm run typecheck && npm run lint",
     "issues:workout-roadmap": "node scripts/github/cleanup-workout-roadmap.mjs",
-    "check:lockfile": "node scripts/check-lockfile-registry.mjs"
+    "check:lockfile": "node scripts/check-lockfile-registry.mjs",
+    "food:normalize": "node scripts/food-data/normalize-usda-data.mjs",
+    "food:validate": "node scripts/food-data/validate-food-catalog.mjs",
+    "food:import": "node scripts/food-data/import-food-catalog.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "0.4.2",
