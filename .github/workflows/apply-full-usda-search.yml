@@ -1,0 +1,47 @@
+name: Apply full USDA search integration
+
+on:
+  push:
+    branches:
+      - agent/fix-full-usda-search
+    paths:
+      - '.github/agent-patches/full-usda-search.patch'
+      - '.github/workflows/apply-full-usda-search.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check .github/agent-patches/full-usda-search.patch
+
+      - name: Apply and test integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply .github/agent-patches/full-usda-search.patch
+          node --test
+          git diff --check
+
+      - name: Commit integrated search
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/agent-patches/full-usda-search.patch
+          rm -f .github/workflows/apply-full-usda-search.yml
+          rmdir .github/agent-patches 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Integrate live USDA food search"
+          git push origin HEAD:agent/fix-full-usda-search
