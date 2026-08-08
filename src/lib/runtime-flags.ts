@@ -19,8 +19,12 @@ export const USE_REMOTE_BODY_MEASUREMENT_SYNC =
 export const USE_SUPABASE_EXERCISES =
   process.env.EXPO_PUBLIC_EXERCISE_SOURCE === 'supabase';
 
+export const FOOD_SOURCE = process.env.EXPO_PUBLIC_FOOD_SOURCE ?? 'local';
+
+export const USE_USDA_FOOD_CATALOG = FOOD_SOURCE === 'usda';
+
 export const USE_SUPABASE_FOODS =
-  USE_REMOTE_NUTRITION_SYNC || process.env.EXPO_PUBLIC_FOOD_SOURCE === 'supabase';
+  USE_REMOTE_NUTRITION_SYNC || FOOD_SOURCE === 'supabase' || USE_USDA_FOOD_CATALOG;
 
 export const AUTH_REDIRECT_URL =
   process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL?.trim() || null;
