@@ -1,8 +1,12 @@
-// @ts-nocheck
 import {
   searchFoodDataCentral,
   searchFoodDataCentralByBarcode,
 } from '../_shared/usda-fdc.mjs';
+
+declare const Deno: {
+  env: { get(name: string): string | undefined };
+  serve(handler: (request: Request) => Response | Promise<Response>): void;
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
