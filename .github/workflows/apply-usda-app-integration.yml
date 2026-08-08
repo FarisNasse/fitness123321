@@ -1,0 +1,50 @@
+name: Apply USDA app integration
+
+on:
+  push:
+    branches:
+      - agent/usda-food-catalog
+    paths:
+      - '.github/agent-patches/usda-app.patch.*.b64'
+      - '.github/workflows/apply-usda-app-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble and validate patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > /tmp/usda-app.patch
+          for part in .github/agent-patches/usda-app.patch.*.b64; do
+            base64 --decode "$part" >> /tmp/usda-app.patch
+          done
+          git apply --check /tmp/usda-app.patch
+
+      - name: Apply app integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply /tmp/usda-app.patch
+          node --test
+          git diff --check
+
+      - name: Commit integrated app changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .github/agent-patches
+          rm -f .github/workflows/apply-usda-app-integration.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Integrate USDA catalog into nutrition experience"
+          git push origin HEAD:agent/usda-food-catalog
