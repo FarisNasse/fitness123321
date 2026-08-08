@@ -70,17 +70,35 @@ export type ExerciseTargetLocal = {
   updatedAt: string;
 };
 
+export type FoodSource =
+  | 'legacy'
+  | 'usda_foundation'
+  | 'usda_fndds'
+  | 'usda_branded'
+  | 'restaurant'
+  | 'custom';
+
 export type Food = {
   id: string;
+  source: FoodSource;
+  sourceId?: string;
+  fdcId?: number;
   name: string;
   brand?: string;
   barcode?: string;
+  category?: string;
   servingSize?: number;
   servingUnit?: string;
+  householdServingText?: string;
   calories: number;
   proteinG: number;
   carbsG: number;
   fatG: number;
+  fiberG?: number;
+  sugarG?: number;
+  saturatedFatG?: number;
+  sodiumMg?: number;
+  imageUrl?: string;
 };
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
