@@ -75,6 +75,9 @@ export type FoodSource =
   | 'usda_foundation'
   | 'usda_fndds'
   | 'usda_branded'
+  | 'usda_sr_legacy'
+  | 'usda_experimental'
+  | 'usda_other'
   | 'restaurant'
   | 'custom';
 
