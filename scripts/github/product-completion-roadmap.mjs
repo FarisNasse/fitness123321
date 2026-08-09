@@ -103,7 +103,7 @@ export const productCompletionRoadmap = [
         "title": "P0.1 \u2014 Align the project with Expo SDK 56",
         "goal": "Eliminate Expo/native dependency drift so development clients and preview builds use a supported, predictable native stack.",
         "tasks": [
-          "Remove the redundant app.json or deliberately merge every required value into app.config.ts.",
+          "Remove the redundant app.json or deliberately merge every required value into app.config.js.",
           "Add required direct peer dependencies, including expo-font, expo-constants, and react-native-worklets when required by the installed SDK packages.",
           "Use expo install to replace mismatched packages with Expo SDK 56-compatible versions.",
           "Verify Babel, Reanimated/Worklets, Gesture Handler, Router, fonts, SQLite, and native screens in a built development client.",

@@ -145,7 +145,7 @@ test('runtime flags make USDA the default food source while keeping other domain
 test('nutrition barcode UX includes a real camera scanner and keeps manual entry as fallback', () => {
   const screen = readProjectFile('app/(tabs)/nutrition.tsx');
   const packageJson = JSON.parse(readProjectFile('package.json'));
-  const appConfig = readProjectFile('app.config.ts');
+  const appConfig = readProjectFile('app.config.js');
 
   assert.equal(packageJson.dependencies['expo-camera'], '~56.0.8');
   assert.match(screen, /import \{ CameraView, useCameraPermissions \} from 'expo-camera'/);

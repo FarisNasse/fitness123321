@@ -4,7 +4,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = path.resolve(import.meta.dirname, '..');
-const appConfigPath = path.join(projectRoot, 'app.config.ts');
+const appConfigPath = path.join(projectRoot, 'app.config.js');
 
 const OWNER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,13 +29,13 @@ export function configureEasProjectSource(source, { owner, projectId, force = fa
 
   if (current.owner && current.owner !== owner && !force) {
     throw new Error(
-      `app.config.ts is already owned by ${current.owner}. Re-run with --force only after verifying the EAS project.`,
+      `app.config.js is already owned by ${current.owner}. Re-run with --force only after verifying the EAS project.`,
     );
   }
 
   if (current.projectId && current.projectId !== projectId && !force) {
     throw new Error(
-      `app.config.ts is already linked to ${current.projectId}. Re-run with --force only after verifying the EAS project.`,
+      `app.config.js is already linked to ${current.projectId}. Re-run with --force only after verifying the EAS project.`,
     );
   }
 
@@ -44,7 +44,7 @@ export function configureEasProjectSource(source, { owner, projectId, force = fa
   } else {
     const slugLine = "  slug: 'all-in-one-fitness',";
     if (!next.includes(slugLine)) {
-      throw new Error('Could not find the expected Expo slug in app.config.ts.');
+      throw new Error('Could not find the expected Expo slug in app.config.js.');
     }
     next = next.replace(slugLine, `${slugLine}\n  owner: '${owner}',`);
   }
@@ -54,13 +54,13 @@ export function configureEasProjectSource(source, { owner, projectId, force = fa
   } else {
     if (/\bextra:\s*\{/.test(next)) {
       throw new Error(
-        'app.config.ts already contains an extra block. Add extra.eas.projectId manually to avoid overwriting it.',
+        'app.config.js already contains an extra block. Add extra.eas.projectId manually to avoid overwriting it.',
       );
     }
 
     const assetPatternLine = "  assetBundlePatterns: ['**/*'],";
     if (!next.includes(assetPatternLine)) {
-      throw new Error('Could not find assetBundlePatterns in app.config.ts.');
+      throw new Error('Could not find assetBundlePatterns in app.config.js.');
     }
 
     const easExtra = [
@@ -115,7 +115,7 @@ function main() {
   const next = configureEasProjectSource(source, options);
   fs.writeFileSync(appConfigPath, next);
 
-  console.log(`Linked app.config.ts to Expo owner ${options.owner}.`);
+  console.log(`Linked app.config.js to Expo owner ${options.owner}.`);
   console.log(`Committed EAS project ID: ${options.projectId}`);
   console.log('Next: npm run check:eas-link');
 }

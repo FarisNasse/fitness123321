@@ -18,9 +18,9 @@ const expectedSdkDependencies = {
   'react-native-worklets': '0.8.3',
 };
 
-test('app.config.ts is the single Expo app configuration source', () => {
+test('app.config.js is the single Expo app configuration source', () => {
   const pkg = readProjectJson('package.json');
-  const appConfig = readProjectFile('app.config.ts');
+  const appConfig = readProjectFile('app.config.js');
 
   assert.equal(fileExists('app.json'), false);
   assert.equal(pkg.main, 'expo-router/entry');

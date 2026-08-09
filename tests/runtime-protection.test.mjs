@@ -23,7 +23,7 @@ test('production diagnostics include environment and release metadata with sourc
   const reporter = readProjectFile('src/lib/error-reporting.ts');
   const metadata = readProjectFile('src/lib/runtime-metadata.ts');
   const metro = readProjectFile('metro.config.js');
-  const appConfig = readProjectFile('app.config.ts');
+  const appConfig = readProjectFile('app.config.js');
   const packageJson = readProjectJson('package.json');
 
   assert.equal(packageJson.dependencies['@sentry/react-native'], '~7.11.0');

@@ -83,7 +83,7 @@ as placeholders.
 
 ## Expo SDK 56 release baseline
 
-`app.config.ts` is the only Expo app-configuration source. The Router entry point
+`app.config.js` is the only Expo app-configuration source. The Router entry point
 remains in `package.json`; do not reintroduce an `app.json` unless every value is
 intentionally merged into the dynamic config.
 
@@ -176,9 +176,9 @@ npx eas-cli@latest project:info
 npx eas-cli@latest build:configure
 ```
 
-The committed configuration is not release-ready until `app.config.ts` contains
+The committed configuration is not release-ready until `app.config.js` contains
 both the real Expo `owner` and the real `extra.eas.projectId`. Never invent the
-UUID. If EAS cannot update the dynamic TypeScript config automatically, copy the
+UUID. If EAS cannot update the dynamic JavaScript config automatically, copy the
 owner and project ID shown by `project:info` and run:
 
 ```bash
@@ -187,7 +187,7 @@ npm run check:eas-link
 npm run check:preview
 ```
 
-Commit the resulting `app.config.ts` change. `check:eas-link` rejects missing or
+Commit the resulting `app.config.js` change. `check:eas-link` rejects missing or
 placeholder linkage, Node drift, local signing credentials, changed native
 identifiers, and a missing release-evidence workflow.
 

@@ -403,7 +403,7 @@ function cacheFoodLocally(food: Food, userId: string, lastUsedAt: string | null 
       food.householdServingText ?? null,
       food.nutritionBasisSize ?? food.servingSize ?? 1,
       food.nutritionBasisUnit ?? food.servingUnit ?? 'serving',
-      food.detailsComplete === false ? 0 : 1,
+      1,
       food.publicationDate ?? null,
       food.calories,
       food.proteinG,
@@ -490,18 +490,26 @@ function getFoodMultiplier(food: Food, quantity: number, unit: string) {
   return calculateFoodMultiplier(food, quantity, unit);
 }
 
+function hasMassUnit(unit: string) {
+  return Object.prototype.hasOwnProperty.call(MASS_TO_GRAMS, unit);
+}
+
+function hasVolumeUnit(unit: string) {
+  return Object.prototype.hasOwnProperty.call(VOLUME_TO_ML, unit);
+}
+
 export function getDefaultFoodLogAmount(food: Food) {
   const servingUnit = normalizeUnit(food.servingUnit);
   const basisUnit = normalizeUnit(food.nutritionBasisUnit ?? food.servingUnit);
   const servingSize = food.servingSize && food.servingSize > 0 ? food.servingSize : null;
 
   if (servingSize && (servingUnit === basisUnit ||
-      (MASS_TO_GRAMS[servingUnit] && MASS_TO_GRAMS[basisUnit]) ||
-      (VOLUME_TO_ML[servingUnit] && VOLUME_TO_ML[basisUnit]))) {
+      (hasMassUnit(servingUnit) && hasMassUnit(basisUnit)) ||
+      (hasVolumeUnit(servingUnit) && hasVolumeUnit(basisUnit)))) {
     return { quantity: servingSize, unit: food.servingUnit ?? food.nutritionBasisUnit ?? 'serving' };
   }
 
-  if (servingSize && MASS_TO_GRAMS[basisUnit]) {
+  if (servingSize && hasMassUnit(basisUnit)) {
     const portion = food.servingOptions?.find((option) =>
       normalizeUnit(option.unit) === servingUnit && Number(option.gramWeight) > 0
     );
@@ -520,7 +528,7 @@ export function getAllowedFoodLogUnits(food: Food) {
   const basisUnit = normalizeUnit(food.nutritionBasisUnit ?? food.servingUnit ?? 'serving');
   const units = new Set<string>();
 
-  if (MASS_TO_GRAMS[basisUnit]) {
+  if (hasMassUnit(basisUnit)) {
     ['g', 'oz', 'lb', 'kg'].forEach((unit) => units.add(unit));
     for (const option of food.servingOptions ?? []) {
       if (Number(option.gramWeight) > 0 && option.unit?.trim()) units.add(option.unit.trim());
@@ -533,7 +541,7 @@ export function getAllowedFoodLogUnits(food: Food) {
     return [...units];
   }
 
-  if (VOLUME_TO_ML[basisUnit]) {
+  if (hasVolumeUnit(basisUnit)) {
     ['mL', 'cup', 'tbsp', 'tsp', 'L'].forEach((unit) => units.add(unit));
     return [...units];
   }

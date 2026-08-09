@@ -27,6 +27,7 @@
     "preview": {
       "extends": "base",
       "distribution": "internal",
+      "environment": "preview",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "preview"
       },

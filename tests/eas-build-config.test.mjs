@@ -29,7 +29,7 @@ function readPngMetadata(relativePath) {
 }
 
 test('Expo config uses final application identifiers and references every brand asset', () => {
-  const appConfig = readProjectFile('app.config.ts');
+  const appConfig = readProjectFile('app.config.js');
 
   assert.doesNotMatch(appConfig, /com\.example/);
   assert.match(appConfig, new RegExp(`bundleIdentifier: '${APP_IDENTIFIER}'`));
@@ -43,7 +43,7 @@ test('Expo config uses final application identifiers and references every brand 
     'assets/favicon.png',
   ]) {
     assert.equal(fileExists(asset), true, `missing ${asset}`);
-    assert.ok(appConfig.includes(`./${asset}`), `${asset} is not referenced by app.config.ts`);
+    assert.ok(appConfig.includes(`./${asset}`), `${asset} is not referenced by app.config.js`);
   }
 
   assert.match(appConfig, /'expo-splash-screen'/);
@@ -98,10 +98,11 @@ test('EAS profiles match the pinned runtime and produce a remotely signed Androi
 });
 
 test('project-link helper commits a verified owner and EAS UUID without placeholders', () => {
-  const source = readProjectFile('app.config.ts');
+  const source = readProjectFile('app.config.js');
   const configured = configureEasProjectSource(source, {
     owner: 'verified-expo-owner',
     projectId: EXAMPLE_PROJECT_ID,
+    force: true,
   });
 
   assert.deepEqual(inspectEasProjectConfig(configured), {

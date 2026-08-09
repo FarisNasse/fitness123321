@@ -1,6 +1,7 @@
 const config = {
   name: 'All-In-One Fitness',
   slug: 'all-in-one-fitness',
+  owner: 'fk1032004',
   scheme: 'fitnessapp',
   version: '0.1.0',
   orientation: 'portrait',

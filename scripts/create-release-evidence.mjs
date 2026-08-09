@@ -179,7 +179,7 @@ function parseArguments(argv) {
 }
 
 function readLinkedProjectMetadata() {
-  const appConfig = fs.readFileSync(path.join(projectRoot, 'app.config.ts'), 'utf8');
+  const appConfig = fs.readFileSync(path.join(projectRoot, 'app.config.js'), 'utf8');
   const owner = appConfig.match(/\bowner:\s*'([^']+)'/)?.[1];
   const projectId = appConfig.match(/\bprojectId:\s*'([^']+)'/)?.[1];
   const androidIdentifier = appConfig.match(/\bpackage:\s*'([^']+)'/)?.[1];

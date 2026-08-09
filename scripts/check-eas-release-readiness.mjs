@@ -9,17 +9,17 @@ const readText = (relativePath) => fs.readFileSync(path.join(projectRoot, relati
 const readJson = (relativePath) => JSON.parse(readText(relativePath));
 const errors = [];
 
-const appConfig = readText('app.config.ts');
+const appConfig = readText('app.config.js');
 const eas = readJson('eas.json');
 const packageJson = readJson('package.json');
 const pinnedNode = readText('.nvmrc').trim();
 const { owner, projectId } = inspectEasProjectConfig(appConfig);
 
 if (!owner) {
-  errors.push('app.config.ts is missing the final Expo `owner`.');
+  errors.push('app.config.js is missing the final Expo `owner`.');
 }
 if (!projectId) {
-  errors.push('app.config.ts is missing `extra.eas.projectId`.');
+  errors.push('app.config.js is missing `extra.eas.projectId`.');
 }
 if (projectId && !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(projectId)) {
   errors.push('extra.eas.projectId is not a valid UUID.');
