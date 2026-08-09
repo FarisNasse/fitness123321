@@ -182,7 +182,7 @@ export default function NutritionScreen() {
     if (isAddFoodOpen) {
       setRecentFoods(getRecentFoods(ownerId ?? undefined));
     }
-  }, [isAddFoodOpen]);
+  }, [isAddFoodOpen, ownerId]);
 
   const entriesByMealType = useMemo(() => {
     const grouped: Record<MealType, typeof summary.entries> = {

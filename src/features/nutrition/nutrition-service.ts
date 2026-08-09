@@ -849,7 +849,9 @@ export async function searchFoodsByName(
           source: 'nutrition-service', operation: 'search-fooddata-central-demo', domain: 'nutrition',
           tags: { fallback: advancedQuery ? 'none' : 'local-food-cache' },
         });
-        if (advancedQuery) throw new Error('Advanced USDA search requires an online FoodData Central connection.');
+        if (advancedQuery) {
+          throw new Error('Advanced USDA search requires an online FoodData Central connection.', { cause: error });
+        }
       }
     }
     if (advancedQuery) {
@@ -894,7 +896,7 @@ export async function searchFoodsByName(
 
       if (advancedQuery) {
         if (customFoods.length > 0) return customFoods;
-        throw new Error('Advanced USDA search is temporarily unavailable.');
+        throw new Error('Advanced USDA search is temporarily unavailable.', { cause: liveError });
       }
 
       try {
@@ -918,7 +920,7 @@ export async function searchFoodsByName(
 
       const cached = searchCachedFoodsByName(ownerId, trimmed, limit, offset);
       if (cached.length > 0 || customFoods.length > 0) return mergeFoodResults(customFoods, cached);
-      throw new Error('Food search is temporarily unavailable.');
+      throw new Error('Food search is temporarily unavailable.', { cause: liveError });
     }
   }
 
