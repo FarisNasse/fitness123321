@@ -19,6 +19,16 @@ import {
 } from '@/src/lib/runtime-flags';
 import type { Food, FoodSource, MealType } from '@/src/types/models';
 import {
+  MASS_TO_GRAMS,
+  VOLUME_TO_ML,
+  calculateFoodMultiplier,
+  normalizeNutritionUnit as normalizeUnit,
+} from './nutrition-unit-math.mjs';
+import {
+  canonicalizeFdcGtin,
+  getFoodDataCentralDetails,
+  isValidFdcGtin,
+  normalizeFdcBarcode,
   searchFoodDataCentral,
   searchFoodDataCentralByBarcode,
 } from '@/supabase/functions/_shared/usda-fdc.mjs';
@@ -93,6 +103,18 @@ type CatalogFoodRow = {
   serving_size: number | null;
   serving_unit: string | null;
   household_serving_text: string | null;
+  nutrition_basis_size?: number | null;
+  nutrition_basis_unit?: string | null;
+  serving_options?: Array<{
+    label: string;
+    amount: number;
+    unit: string;
+    gram_weight?: number | null;
+  }> | null;
+  publication_date?: string | null;
+  available_date?: string | null;
+  modified_date?: string | null;
+  details_complete?: boolean | null;
   calories: number | null;
   protein_g: number | null;
   carbohydrates_g: number | null;
@@ -152,6 +174,12 @@ function optionalNumber(value: number | string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function nullableNumber(value: number | string | null | undefined) {
+  if (value == null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizeFoodSource(value: string | null | undefined): FoodSource {
   if (value && USDA_SOURCES.has(value as FoodSource)) {
     return value as FoodSource;
@@ -172,14 +200,17 @@ function mapLegacyFood(row: LegacyFoodRow): Food {
     barcode: row.barcode ?? undefined,
     servingSize: optionalNumber(row.serving_size),
     servingUnit: row.serving_unit ?? undefined,
-    calories: Number(row.calories ?? 0),
-    proteinG: Number(row.protein_g ?? 0),
-    carbsG: Number(row.carbs_g ?? 0),
-    fatG: Number(row.fat_g ?? 0),
+    nutritionBasisSize: optionalNumber(row.serving_size) ?? 1,
+    nutritionBasisUnit: row.serving_unit ?? 'serving',
+    detailsComplete: true,
+    calories: nullableNumber(row.calories),
+    proteinG: nullableNumber(row.protein_g),
+    carbsG: nullableNumber(row.carbs_g),
+    fatG: nullableNumber(row.fat_g),
   };
 }
 
-function mapCatalogFood(row: CatalogFoodRow): Food {
+function mapCatalogFood(row: CatalogFoodRow, detailsComplete = true): Food {
   return {
     id: row.id,
     source: normalizeFoodSource(row.source_type),
@@ -192,10 +223,24 @@ function mapCatalogFood(row: CatalogFoodRow): Food {
     servingSize: optionalNumber(row.serving_size),
     servingUnit: row.serving_unit ?? undefined,
     householdServingText: row.household_serving_text ?? undefined,
-    calories: Number(row.calories ?? 0),
-    proteinG: Number(row.protein_g ?? 0),
-    carbsG: Number(row.carbohydrates_g ?? 0),
-    fatG: Number(row.fat_g ?? 0),
+    nutritionBasisSize: optionalNumber(row.nutrition_basis_size) ?? optionalNumber(row.serving_size) ?? 1,
+    nutritionBasisUnit: row.nutrition_basis_unit ?? row.serving_unit ?? 'serving',
+    servingOptions: Array.isArray(row.serving_options)
+      ? row.serving_options.map((option) => ({
+          label: option.label,
+          amount: Number(option.amount),
+          unit: option.unit,
+          gramWeight: optionalNumber(option.gram_weight),
+        }))
+      : undefined,
+    detailsComplete: row.details_complete ?? detailsComplete,
+    publicationDate: row.publication_date ?? undefined,
+    availableDate: row.available_date ?? undefined,
+    modifiedDate: row.modified_date ?? undefined,
+    calories: nullableNumber(row.calories),
+    proteinG: nullableNumber(row.protein_g),
+    carbsG: nullableNumber(row.carbohydrates_g),
+    fatG: nullableNumber(row.fat_g),
     fiberG: optionalNumber(row.fiber_g),
     sugarG: optionalNumber(row.sugar_g),
     saturatedFatG: optionalNumber(row.saturated_fat_g),
@@ -215,10 +260,13 @@ function mapUserFood(row: UserFoodRow): Food {
     servingSize: optionalNumber(row.serving_size),
     servingUnit: row.serving_unit ?? undefined,
     householdServingText: row.household_serving_text ?? undefined,
-    calories: Number(row.calories ?? 0),
-    proteinG: Number(row.protein_g ?? 0),
-    carbsG: Number(row.carbohydrates_g ?? 0),
-    fatG: Number(row.fat_g ?? 0),
+    nutritionBasisSize: optionalNumber(row.serving_size) ?? 1,
+    nutritionBasisUnit: row.serving_unit ?? 'serving',
+    detailsComplete: true,
+    calories: nullableNumber(row.calories),
+    proteinG: nullableNumber(row.protein_g),
+    carbsG: nullableNumber(row.carbohydrates_g),
+    fatG: nullableNumber(row.fat_g),
     fiberG: optionalNumber(row.fiber_g),
     sugarG: optionalNumber(row.sugar_g),
     saturatedFatG: optionalNumber(row.saturated_fat_g),
@@ -239,10 +287,14 @@ function mapCachedFood(row: LocalFoodCache): Food {
     servingSize: optionalNumber(row.serving_size),
     servingUnit: row.serving_unit ?? undefined,
     householdServingText: row.household_serving_text ?? undefined,
-    calories: Number(row.calories ?? 0),
-    proteinG: Number(row.protein_g ?? 0),
-    carbsG: Number(row.carbs_g ?? 0),
-    fatG: Number(row.fat_g ?? 0),
+    nutritionBasisSize: optionalNumber(row.nutrition_basis_size) ?? optionalNumber(row.serving_size) ?? 1,
+    nutritionBasisUnit: row.nutrition_basis_unit ?? row.serving_unit ?? 'serving',
+    detailsComplete: Boolean(row.details_complete),
+    publicationDate: row.publication_date ?? undefined,
+    calories: nullableNumber(row.calories),
+    proteinG: nullableNumber(row.protein_g),
+    carbsG: nullableNumber(row.carbs_g),
+    fatG: nullableNumber(row.fat_g),
     fiberG: optionalNumber(row.fiber_g),
     sugarG: optionalNumber(row.sugar_g),
     saturatedFatG: optionalNumber(row.saturated_fat_g),
@@ -274,21 +326,43 @@ export function getFoodSourceLabel(food: Food) {
 }
 
 export function normalizeFoodBarcode(value: string) {
-  return value.trim().replace(/[^0-9]/g, '');
+  return normalizeFdcBarcode(value) ?? '';
 }
 
-function cacheFoodLocally(food: Food, lastUsedAt: string | null = null) {
+export function canonicalFoodBarcode(value: string) {
+  return canonicalizeFdcGtin(value) ?? '';
+}
+
+export function isValidFoodBarcode(value: string) {
+  return isValidFdcGtin(value);
+}
+
+function cacheFoodLocally(food: Food, userId: string, lastUsedAt: string | null = null) {
+  // The existing SQLite cache columns are NOT NULL for core macros. More importantly,
+  // an incomplete/unknown nutrient must never be persisted as an apparent zero.
+  if (
+    food.detailsComplete === false ||
+    food.calories == null ||
+    food.proteinG == null ||
+    food.carbsG == null ||
+    food.fatG == null
+  ) {
+    return;
+  }
+
   const cachedAt = new Date().toISOString();
   db.runSync(
     `
     insert into food_cache_local (
-      food_id, source, source_id, fdc_id, name, brand, barcode, category,
-      serving_size, serving_unit, household_serving_text, calories, protein_g,
+      food_id, user_id, source, source_id, fdc_id, name, brand, barcode, category,
+      serving_size, serving_unit, household_serving_text, nutrition_basis_size,
+      nutrition_basis_unit, details_complete, publication_date, calories, protein_g,
       carbs_g, fat_g, fiber_g, sugar_g, saturated_fat_g, sodium_mg,
       last_used_at, cached_at
     )
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     on conflict(food_id) do update set
+      user_id = excluded.user_id,
       source = excluded.source,
       source_id = excluded.source_id,
       fdc_id = excluded.fdc_id,
@@ -299,6 +373,10 @@ function cacheFoodLocally(food: Food, lastUsedAt: string | null = null) {
       serving_size = excluded.serving_size,
       serving_unit = excluded.serving_unit,
       household_serving_text = excluded.household_serving_text,
+      nutrition_basis_size = excluded.nutrition_basis_size,
+      nutrition_basis_unit = excluded.nutrition_basis_unit,
+      details_complete = excluded.details_complete,
+      publication_date = excluded.publication_date,
       calories = excluded.calories,
       protein_g = excluded.protein_g,
       carbs_g = excluded.carbs_g,
@@ -312,16 +390,21 @@ function cacheFoodLocally(food: Food, lastUsedAt: string | null = null) {
     `,
     [
       food.id,
+      userId,
       food.source,
       food.sourceId ?? food.id,
       food.fdcId ?? null,
       food.name,
       food.brand ?? null,
-      food.barcode ? normalizeFoodBarcode(food.barcode) : null,
+      food.barcode ? canonicalFoodBarcode(food.barcode) || null : null,
       food.category ?? null,
       food.servingSize ?? null,
       food.servingUnit ?? null,
       food.householdServingText ?? null,
+      food.nutritionBasisSize ?? food.servingSize ?? 1,
+      food.nutritionBasisUnit ?? food.servingUnit ?? 'serving',
+      food.detailsComplete === false ? 0 : 1,
+      food.publicationDate ?? null,
       food.calories,
       food.proteinG,
       food.carbsG,
@@ -336,7 +419,7 @@ function cacheFoodLocally(food: Food, lastUsedAt: string | null = null) {
   );
 }
 
-function searchCachedFoodsByName(query: string, limit = 25) {
+function searchCachedFoodsByName(userId: string, query: string, limit = 25, offset = 0) {
   const normalized = query.trim().toLowerCase();
   if (normalized.length < 2) return [];
 
@@ -345,35 +428,41 @@ function searchCachedFoodsByName(query: string, limit = 25) {
       `
       select *
       from food_cache_local
-      where lower(name) like ?
-      order by last_used_at desc, cached_at desc
-      limit ?
+      where user_id = ?
+        and (lower(name) like ? or lower(coalesce(brand, '')) like ?)
+      order by
+        case when lower(name) like ? then 0 else 1 end,
+        last_used_at desc,
+        cached_at desc
+      limit ? offset ?
       `,
-      [`%${normalized}%`, limit]
+      [userId, `%${normalized}%`, `%${normalized}%`, `${normalized}%`, limit, offset]
     )
     .map(mapCachedFood);
 }
 
-export function getRecentFoods(limit = 8) {
+export function getRecentFoods(userId = LOCAL_DEV_USER_ID, limit = 8) {
   return db
     .getAllSync<LocalFoodCache>(
       `
       select *
       from food_cache_local
-      where last_used_at is not null
+      where user_id = ? and last_used_at is not null
       order by last_used_at desc
       limit ?
       `,
-      [limit]
+      [userId, limit]
     )
     .map(mapCachedFood);
 }
 
-function getCachedFoodByBarcode(barcode: string) {
+function getCachedFoodByBarcode(userId: string, barcode: string) {
+  const canonical = canonicalFoodBarcode(barcode);
+  if (!canonical) return [];
   return db
     .getAllSync<LocalFoodCache>(
-      `select * from food_cache_local where barcode = ? limit 5`,
-      [barcode]
+      `select * from food_cache_local where user_id = ? and barcode = ? limit 5`,
+      [userId, canonical]
     )
     .map(mapCachedFood);
 }
@@ -397,17 +486,61 @@ function getLocalDayRange(date = new Date()) {
   };
 }
 
-function normalizeUnit(unit: string | null | undefined) {
-  return (unit ?? '').trim().toLowerCase();
+function getFoodMultiplier(food: Food, quantity: number, unit: string) {
+  return calculateFoodMultiplier(food, quantity, unit);
 }
 
-function getFoodMultiplier(food: Food, quantity: number, unit: string) {
-  const servingSize = food.servingSize && food.servingSize > 0 ? food.servingSize : 1;
+export function getDefaultFoodLogAmount(food: Food) {
   const servingUnit = normalizeUnit(food.servingUnit);
-  const loggedUnit = normalizeUnit(unit);
-  const unitsMatch = !servingUnit || !loggedUnit || servingUnit === loggedUnit;
+  const basisUnit = normalizeUnit(food.nutritionBasisUnit ?? food.servingUnit);
+  const servingSize = food.servingSize && food.servingSize > 0 ? food.servingSize : null;
 
-  return unitsMatch ? quantity / servingSize : quantity;
+  if (servingSize && (servingUnit === basisUnit ||
+      (MASS_TO_GRAMS[servingUnit] && MASS_TO_GRAMS[basisUnit]) ||
+      (VOLUME_TO_ML[servingUnit] && VOLUME_TO_ML[basisUnit]))) {
+    return { quantity: servingSize, unit: food.servingUnit ?? food.nutritionBasisUnit ?? 'serving' };
+  }
+
+  if (servingSize && MASS_TO_GRAMS[basisUnit]) {
+    const portion = food.servingOptions?.find((option) =>
+      normalizeUnit(option.unit) === servingUnit && Number(option.gramWeight) > 0
+    );
+    if (portion) {
+      return { quantity: servingSize, unit: food.servingUnit ?? portion.unit };
+    }
+  }
+
+  return {
+    quantity: food.nutritionBasisSize && food.nutritionBasisSize > 0 ? food.nutritionBasisSize : 1,
+    unit: food.nutritionBasisUnit ?? food.servingUnit ?? 'serving',
+  };
+}
+
+export function getAllowedFoodLogUnits(food: Food) {
+  const basisUnit = normalizeUnit(food.nutritionBasisUnit ?? food.servingUnit ?? 'serving');
+  const units = new Set<string>();
+
+  if (MASS_TO_GRAMS[basisUnit]) {
+    ['g', 'oz', 'lb', 'kg'].forEach((unit) => units.add(unit));
+    for (const option of food.servingOptions ?? []) {
+      if (Number(option.gramWeight) > 0 && option.unit?.trim()) units.add(option.unit.trim());
+    }
+    if (food.servingUnit && food.servingOptions?.some((option) =>
+      normalizeUnit(option.unit) === normalizeUnit(food.servingUnit) && Number(option.gramWeight) > 0
+    )) {
+      units.add(food.servingUnit);
+    }
+    return [...units];
+  }
+
+  if (VOLUME_TO_ML[basisUnit]) {
+    ['mL', 'cup', 'tbsp', 'tsp', 'L'].forEach((unit) => units.add(unit));
+    return [...units];
+  }
+
+  if (food.nutritionBasisUnit) units.add(food.nutritionBasisUnit);
+  if (food.servingUnit && normalizeUnit(food.servingUnit) === basisUnit) units.add(food.servingUnit);
+  return [...units].filter(Boolean).length > 0 ? [...units] : ['serving'];
 }
 
 type NutritionLogListener = {
@@ -455,13 +588,21 @@ function mapDailyTargets(row: DailyTargetsRow | null | undefined): DailyTargetsS
 }
 
 export function calculateLoggedFoodMacros(food: Food, quantity: number, unit: string) {
-  const multiplier = getFoodMultiplier(food, quantity, unit);
+  if (food.detailsComplete === false) {
+    throw new Error('USDA food details must be loaded before logging.');
+  }
 
+  const required = [food.calories, food.proteinG, food.carbsG, food.fatG];
+  if (required.some((value) => value == null || !Number.isFinite(value))) {
+    throw new Error('This food is missing one or more required macronutrients.');
+  }
+
+  const multiplier = getFoodMultiplier(food, quantity, unit);
   return {
-    calories: roundMacro(food.calories * multiplier),
-    proteinG: roundMacro(food.proteinG * multiplier),
-    carbsG: roundMacro(food.carbsG * multiplier),
-    fatG: roundMacro(food.fatG * multiplier),
+    calories: roundMacro(Number(food.calories) * multiplier),
+    proteinG: roundMacro(Number(food.proteinG) * multiplier),
+    carbsG: roundMacro(Number(food.carbsG) * multiplier),
+    fatG: roundMacro(Number(food.fatG) * multiplier),
   };
 }
 
@@ -533,7 +674,6 @@ function foodIdentityKey(food: Food) {
 function mergeFoodResults(...groups: Food[][]) {
   const seen = new Set<string>();
   const merged: Food[] = [];
-
   for (const group of groups) {
     for (const food of group) {
       const key = foodIdentityKey(food);
@@ -542,42 +682,7 @@ function mergeFoodResults(...groups: Food[][]) {
       merged.push(food);
     }
   }
-
   return merged;
-}
-
-async function invokeUsdaSearchProxy(
-  supabase: Awaited<ReturnType<typeof importSupabaseClient>>,
-  query: string,
-  limit: number,
-  offset: number
-) {
-  const pageNumber = Math.floor(offset / limit) + 1;
-  const { data, error } = await supabase.functions.invoke('search-usda-foods', {
-    body: {
-      action: 'search',
-      query,
-      pageSize: limit,
-      pageNumber,
-    },
-  });
-
-  if (error) throw error;
-  if (data?.error) throw new Error(String(data.error));
-  return ((data?.foods ?? []) as CatalogFoodRow[]).map(mapCatalogFood);
-}
-
-async function invokeUsdaBarcodeProxy(
-  supabase: Awaited<ReturnType<typeof importSupabaseClient>>,
-  barcode: string
-) {
-  const { data, error } = await supabase.functions.invoke('search-usda-foods', {
-    body: { action: 'barcode', barcode },
-  });
-
-  if (error) throw error;
-  if (data?.error) throw new Error(String(data.error));
-  return ((data?.foods ?? []) as CatalogFoodRow[]).map(mapCatalogFood);
 }
 
 async function importSupabaseClient() {
@@ -585,143 +690,228 @@ async function importSupabaseClient() {
   return module.supabase;
 }
 
-async function searchUsdaDemo(query: string, limit: number, offset: number) {
-  if (!ALLOW_USDA_DEMO_FALLBACK) return [];
+async function resolveFoodCacheOwnerId(
+  supabase?: Awaited<ReturnType<typeof importSupabaseClient>>
+) {
+  if (!USE_REMOTE_NUTRITION_SYNC) return LOCAL_DEV_USER_ID;
+  try {
+    const client = supabase ?? await importSupabaseClient();
+    const { data } = await client.auth.getUser();
+    return data.user?.id ?? LOCAL_DEV_USER_ID;
+  } catch {
+    return LOCAL_DEV_USER_ID;
+  }
+}
 
+async function invokeUsdaSearchProxy(
+  supabase: Awaited<ReturnType<typeof importSupabaseClient>>,
+  query: string,
+  limit: number,
+  offset: number,
+  signal?: AbortSignal
+) {
+  const pageNumber = Math.floor(offset / limit) + 1;
+  const { data, error } = await supabase.functions.invoke('search-usda-foods', {
+    body: { action: 'search', query, pageSize: limit, pageNumber },
+    signal,
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
+  return ((data?.foods ?? []) as CatalogFoodRow[]).map((row) => mapCatalogFood(row, false));
+}
+
+async function invokeUsdaDetailsProxy(
+  supabase: Awaited<ReturnType<typeof importSupabaseClient>>,
+  fdcId: number,
+  signal?: AbortSignal
+) {
+  const { data, error } = await supabase.functions.invoke('search-usda-foods', {
+    body: { action: 'details', fdcId },
+    signal,
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
+  if (!data?.food) throw new Error('USDA details response did not include a food.');
+  return mapCatalogFood(data.food as CatalogFoodRow, true);
+}
+
+async function invokeUsdaBarcodeProxy(
+  supabase: Awaited<ReturnType<typeof importSupabaseClient>>,
+  barcode: string,
+  signal?: AbortSignal
+) {
+  const { data, error } = await supabase.functions.invoke('search-usda-foods', {
+    body: { action: 'barcode', barcode },
+    signal,
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
+  return ((data?.foods ?? []) as CatalogFoodRow[]).map((row) => mapCatalogFood(row, true));
+}
+
+async function searchUsdaDemo(
+  query: string,
+  limit: number,
+  offset: number,
+  signal?: AbortSignal
+) {
+  if (!ALLOW_USDA_DEMO_FALLBACK) return [];
   const pageNumber = Math.floor(offset / limit) + 1;
   const rows = await searchFoodDataCentral({
     query,
     apiKey: 'DEMO_KEY',
     pageSize: limit,
     pageNumber,
+    signal,
   });
-  return (rows as CatalogFoodRow[]).map(mapCatalogFood);
+  return (rows as CatalogFoodRow[]).map((row) => mapCatalogFood(row, false));
 }
 
-async function searchUsdaBarcodeDemo(barcode: string) {
+async function hydrateUsdaDemo(food: Food, signal?: AbortSignal) {
+  if (!ALLOW_USDA_DEMO_FALLBACK || !food.fdcId) return food;
+  const row = await getFoodDataCentralDetails({
+    fdcId: food.fdcId,
+    apiKey: 'DEMO_KEY',
+    signal,
+  });
+  return mapCatalogFood(row as CatalogFoodRow, true);
+}
+
+async function searchUsdaBarcodeDemo(barcode: string, signal?: AbortSignal) {
   if (!ALLOW_USDA_DEMO_FALLBACK) return [];
-  const rows = await searchFoodDataCentralByBarcode({ barcode, apiKey: 'DEMO_KEY' });
-  return (rows as CatalogFoodRow[]).map(mapCatalogFood);
+  const rows = await searchFoodDataCentralByBarcode({ barcode, apiKey: 'DEMO_KEY', signal });
+  return (rows as CatalogFoodRow[]).map((row) => mapCatalogFood(row, true));
+}
+
+function usesUsdaSearchOperators(query: string) {
+  return /\b(?:AND|OR|NOT)\b|\w+\s*:|[()]/i.test(query);
+}
+
+export async function hydrateFoodDetails(food: Food, options: { signal?: AbortSignal } = {}) {
+  if (!USDA_SOURCES.has(food.source) || food.detailsComplete !== false) return food;
+  if (!food.fdcId) throw new Error('This USDA search result has no FDC ID.');
+
+  let hydrated: Food;
+  if (HAS_REMOTE_SUPABASE_CONFIG) {
+    const supabase = await importSupabaseClient();
+    hydrated = await invokeUsdaDetailsProxy(supabase, food.fdcId, options.signal);
+    const ownerId = await resolveFoodCacheOwnerId(supabase);
+    cacheFoodLocally(hydrated, ownerId);
+  } else if (ALLOW_USDA_DEMO_FALLBACK) {
+    hydrated = await hydrateUsdaDemo(food, options.signal);
+    const ownerId = await resolveFoodCacheOwnerId();
+    cacheFoodLocally(hydrated, ownerId);
+  } else {
+    throw new Error('USDA food details are unavailable while offline.');
+  }
+  return hydrated;
 }
 
 export async function searchFoodsByName(
   query: string,
-  options: { limit?: number; offset?: number } = {}
+  options: { limit?: number; offset?: number; signal?: AbortSignal } = {}
 ) {
   const trimmed = query.trim();
   const limit = Math.min(Math.max(options.limit ?? 25, 1), 50);
   const offset = Math.max(options.offset ?? 0, 0);
+  if (trimmed.length < 2) return [];
 
-  if (trimmed.length < 2) {
-    return [];
-  }
+  const advancedQuery = usesUsdaSearchOperators(trimmed);
 
   if (!USE_SUPABASE_FOODS) {
-    return searchCachedFoodsByName(trimmed, limit);
+    if (advancedQuery) {
+      throw new Error('Advanced USDA search requires an online FoodData Central connection.');
+    }
+    return searchCachedFoodsByName(LOCAL_DEV_USER_ID, trimmed, limit, offset);
   }
 
   if (USE_USDA_FOOD_CATALOG && !HAS_REMOTE_SUPABASE_CONFIG) {
+    const ownerId = await resolveFoodCacheOwnerId();
     if (ALLOW_USDA_DEMO_FALLBACK) {
-      const demoFoods = await searchUsdaDemo(trimmed, limit, offset);
-      for (const food of demoFoods) cacheFoodLocally(food);
-      return demoFoods;
+      try {
+        const demoFoods = await searchUsdaDemo(trimmed, limit, offset, options.signal);
+        const customFoods = offset === 0
+          ? searchCachedFoodsByName(ownerId, trimmed, 10, 0).filter((food) => food.source === 'custom')
+          : [];
+        if (demoFoods.length > 0 || customFoods.length > 0) {
+          return mergeFoodResults(customFoods, demoFoods);
+        }
+      } catch (error) {
+        reportError(error, {
+          source: 'nutrition-service', operation: 'search-fooddata-central-demo', domain: 'nutrition',
+          tags: { fallback: advancedQuery ? 'none' : 'local-food-cache' },
+        });
+        if (advancedQuery) throw new Error('Advanced USDA search requires an online FoodData Central connection.');
+      }
     }
-
-    throw new Error('USDA food search requires Supabase configuration in production.');
+    if (advancedQuery) {
+      throw new Error('Advanced USDA search requires an online FoodData Central connection.');
+    }
+    return searchCachedFoodsByName(ownerId, trimmed, limit, offset);
   }
 
   const supabase = await importSupabaseClient();
+  const ownerId = await resolveFoodCacheOwnerId(supabase);
 
   if (USE_USDA_FOOD_CATALOG) {
-    let catalogFoods: Food[] = [];
     let customFoods: Food[] = [];
-    let liveUsdaFoods: Food[] = [];
-    let hadLiveSearchFailure = false;
-
-    try {
-      const { data: authData } = await supabase.auth.getUser();
-      if (authData.user?.id) {
-        const { data, error } = await supabase
-          .from('user_foods')
-          .select(USER_FOOD_SELECT)
-          .eq('user_id', authData.user.id)
-          .ilike('name', `%${trimmed}%`)
-          .order('updated_at', { ascending: false })
-          .limit(Math.min(limit, 10));
-
-        if (error) {
-          reportError(error, {
-            source: 'nutrition-service',
-            operation: 'search-custom-foods',
-            domain: 'nutrition',
-          });
-        } else {
-          customFoods = ((data ?? []) as UserFoodRow[]).map(mapUserFood);
-        }
-      }
-    } catch (error) {
-      reportError(error, {
-        source: 'nutrition-service',
-        operation: 'resolve-food-search-user',
-        domain: 'nutrition',
-      });
-    }
-
-    try {
-      const { data, error } = await supabase.rpc('search_food_catalog', {
-        search_query: trimmed,
-        result_limit: limit,
-        result_offset: offset,
-      });
-      if (error) throw error;
-      catalogFoods = ((data ?? []) as CatalogFoodRow[]).map(mapCatalogFood);
-    } catch (error) {
-      hadLiveSearchFailure = true;
-      reportError(error, {
-        source: 'nutrition-service',
-        operation: 'search-local-usda-catalog',
-        domain: 'nutrition',
-        tags: { fallback: 'fooddata-central-proxy' },
-      });
-    }
-
-    if (catalogFoods.length < limit) {
+    if (offset === 0) {
       try {
-        liveUsdaFoods = await invokeUsdaSearchProxy(supabase, trimmed, limit, offset);
-        hadLiveSearchFailure = false;
-      } catch (error) {
-        hadLiveSearchFailure = true;
-        reportError(error, {
-          source: 'nutrition-service',
-          operation: 'search-fooddata-central-proxy',
-          domain: 'nutrition',
-          tags: { fallback: ALLOW_USDA_DEMO_FALLBACK ? 'usda-demo-key' : 'local-food-cache' },
-        });
-
-        if (ALLOW_USDA_DEMO_FALLBACK) {
-          try {
-            liveUsdaFoods = await searchUsdaDemo(trimmed, limit, offset);
-            hadLiveSearchFailure = false;
-          } catch (demoError) {
-            reportError(demoError, {
-              source: 'nutrition-service',
-              operation: 'search-fooddata-central-demo',
-              domain: 'nutrition',
-              tags: { fallback: 'local-food-cache' },
-            });
-          }
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData.user?.id) {
+          const { data, error } = await supabase
+            .from('user_foods')
+            .select(USER_FOOD_SELECT)
+            .eq('user_id', authData.user.id)
+            .ilike('name', `%${trimmed}%`)
+            .order('updated_at', { ascending: false })
+            .limit(10);
+          if (!error) customFoods = ((data ?? []) as UserFoodRow[]).map(mapUserFood);
         }
+      } catch (error) {
+        reportError(error, {
+          source: 'nutrition-service', operation: 'search-custom-foods', domain: 'nutrition',
+        });
       }
     }
 
-    const results = mergeFoodResults(customFoods, catalogFoods, liveUsdaFoods).slice(0, limit);
-    for (const food of results) cacheFoodLocally(food);
-    if (results.length > 0) return results;
+    try {
+      const liveFoods = await invokeUsdaSearchProxy(supabase, trimmed, limit, offset, options.signal);
+      return mergeFoodResults(customFoods, liveFoods);
+    } catch (liveError) {
+      reportError(liveError, {
+        source: 'nutrition-service', operation: 'search-fooddata-central-proxy', domain: 'nutrition',
+        tags: { fallback: advancedQuery ? 'none' : 'local-usda-catalog' },
+      });
 
-    const cached = searchCachedFoodsByName(trimmed, limit);
-    if (cached.length > 0) return cached;
-    if (hadLiveSearchFailure) throw new Error('Food search is temporarily unavailable.');
-    return [];
+      if (advancedQuery) {
+        if (customFoods.length > 0) return customFoods;
+        throw new Error('Advanced USDA search is temporarily unavailable.');
+      }
+
+      try {
+        const { data, error } = await supabase.rpc('search_food_catalog', {
+          search_query: trimmed,
+          result_limit: limit,
+          result_offset: offset,
+        });
+        if (error) throw error;
+        const catalogFoods = ((data ?? []) as CatalogFoodRow[]).map((row) => mapCatalogFood(row, true));
+        for (const food of catalogFoods) cacheFoodLocally(food, ownerId);
+        if (catalogFoods.length > 0 || customFoods.length > 0) {
+          return mergeFoodResults(customFoods, catalogFoods);
+        }
+      } catch (catalogError) {
+        reportError(catalogError, {
+          source: 'nutrition-service', operation: 'search-local-usda-catalog', domain: 'nutrition',
+          tags: { fallback: 'local-food-cache' },
+        });
+      }
+
+      const cached = searchCachedFoodsByName(ownerId, trimmed, limit, offset);
+      if (cached.length > 0 || customFoods.length > 0) return mergeFoodResults(customFoods, cached);
+      throw new Error('Food search is temporarily unavailable.');
+    }
   }
 
   const { data, error } = await supabase
@@ -729,46 +919,55 @@ export async function searchFoodsByName(
     .select(LEGACY_FOOD_SELECT)
     .ilike('name', `%${trimmed}%`)
     .order('name', { ascending: true })
-    .limit(Math.min(limit, 25));
+    .range(offset, offset + limit - 1);
 
   if (error) {
-    reportError(error, {
-      source: 'nutrition-service',
-      operation: 'search-foods',
-      domain: 'nutrition',
-    });
+    reportError(error, { source: 'nutrition-service', operation: 'search-foods', domain: 'nutrition' });
+    const cached = searchCachedFoodsByName(ownerId, trimmed, limit, offset);
+    if (cached.length > 0) return cached;
     throw new Error('Food search is temporarily unavailable.');
   }
 
   const results = ((data ?? []) as LegacyFoodRow[]).map(mapLegacyFood);
-  for (const food of results) cacheFoodLocally(food);
+  for (const food of results) cacheFoodLocally(food, ownerId);
   return results;
 }
 
-export async function searchFoodByBarcode(input: string) {
+export async function searchFoodByBarcode(
+  input: string,
+  options: { signal?: AbortSignal } = {}
+) {
   const barcode = normalizeFoodBarcode(input);
-  if (barcode.length < 6 || barcode.length > 14) return [];
+  const canonical = canonicalFoodBarcode(input);
+  if (!barcode || !canonical || !isValidFoodBarcode(barcode)) return [];
 
-  if (!USE_SUPABASE_FOODS) {
-    return getCachedFoodByBarcode(barcode);
-  }
+  const ownerId = await resolveFoodCacheOwnerId();
+  if (!USE_SUPABASE_FOODS) return getCachedFoodByBarcode(ownerId, canonical);
 
   if (USE_USDA_FOOD_CATALOG && !HAS_REMOTE_SUPABASE_CONFIG) {
     if (ALLOW_USDA_DEMO_FALLBACK) {
-      const demoFoods = await searchUsdaBarcodeDemo(barcode);
-      for (const food of demoFoods) cacheFoodLocally(food);
-      return demoFoods.length > 0 ? demoFoods : getCachedFoodByBarcode(barcode);
+      try {
+        const demoFoods = await searchUsdaBarcodeDemo(barcode, options.signal);
+        for (const food of demoFoods) cacheFoodLocally(food, ownerId);
+        if (demoFoods.length > 0) return demoFoods;
+      } catch (error) {
+        reportError(error, {
+          source: 'nutrition-service', operation: 'search-fooddata-central-barcode-demo', domain: 'nutrition',
+          tags: { fallback: 'local-food-cache' },
+        });
+      }
     }
-
-    return getCachedFoodByBarcode(barcode);
+    return getCachedFoodByBarcode(ownerId, canonical);
   }
 
   const supabase = await importSupabaseClient();
+  const resolvedOwnerId = await resolveFoodCacheOwnerId(supabase);
 
   if (USE_USDA_FOOD_CATALOG) {
     let customFoods: Food[] = [];
-    let catalogFoods: Food[] = [];
     let liveFoods: Food[] = [];
+    let catalogFoods: Food[] = [];
+    const barcodeVariants = [...new Set([barcode, canonical, canonical.replace(/^0+/, '')].filter(Boolean))];
 
     try {
       const { data: authData } = await supabase.auth.getUser();
@@ -777,80 +976,52 @@ export async function searchFoodByBarcode(input: string) {
           .from('user_foods')
           .select(USER_FOOD_SELECT)
           .eq('user_id', authData.user.id)
-          .eq('barcode', barcode)
+          .in('barcode', barcodeVariants)
           .limit(5);
         if (!error) customFoods = ((data ?? []) as UserFoodRow[]).map(mapUserFood);
       }
     } catch (error) {
       reportError(error, {
-        source: 'nutrition-service',
-        operation: 'search-custom-food-barcode',
-        domain: 'nutrition',
+        source: 'nutrition-service', operation: 'search-custom-food-barcode', domain: 'nutrition',
+      });
+    }
+
+    try {
+      liveFoods = await invokeUsdaBarcodeProxy(supabase, barcode, options.signal);
+    } catch (error) {
+      reportError(error, {
+        source: 'nutrition-service', operation: 'search-fooddata-central-barcode-proxy', domain: 'nutrition',
+        tags: { fallback: 'local-usda-catalog' },
       });
     }
 
     try {
       const { data, error } = await supabase.rpc('search_food_by_barcode', {
-        input_barcode: barcode,
+        input_barcode: canonical,
       });
       if (error) throw error;
-      catalogFoods = ((data ?? []) as CatalogFoodRow[]).map(mapCatalogFood);
+      catalogFoods = ((data ?? []) as CatalogFoodRow[]).map((row) => mapCatalogFood(row, true));
     } catch (error) {
       reportError(error, {
-        source: 'nutrition-service',
-        operation: 'search-catalog-barcode',
-        domain: 'nutrition',
-        tags: { fallback: 'fooddata-central-proxy' },
+        source: 'nutrition-service', operation: 'search-catalog-barcode', domain: 'nutrition',
       });
     }
 
-    if (catalogFoods.length === 0) {
-      try {
-        liveFoods = await invokeUsdaBarcodeProxy(supabase, barcode);
-      } catch (error) {
-        reportError(error, {
-          source: 'nutrition-service',
-          operation: 'search-fooddata-central-barcode-proxy',
-          domain: 'nutrition',
-          tags: { fallback: ALLOW_USDA_DEMO_FALLBACK ? 'usda-demo-key' : 'local-food-cache' },
-        });
-
-        if (ALLOW_USDA_DEMO_FALLBACK) {
-          try {
-            liveFoods = await searchUsdaBarcodeDemo(barcode);
-          } catch (demoError) {
-            reportError(demoError, {
-              source: 'nutrition-service',
-              operation: 'search-fooddata-central-barcode-demo',
-              domain: 'nutrition',
-            });
-          }
-        }
-      }
-    }
-
-    const results = mergeFoodResults(customFoods, catalogFoods, liveFoods).slice(0, 5);
-    for (const food of results) cacheFoodLocally(food);
+    const results = mergeFoodResults(customFoods, liveFoods, catalogFoods).slice(0, 5);
+    for (const food of results) cacheFoodLocally(food, resolvedOwnerId);
     if (results.length > 0) return results;
-    return getCachedFoodByBarcode(barcode);
+    return getCachedFoodByBarcode(resolvedOwnerId, canonical);
   }
 
   const { data, error } = await supabase
     .from('foods')
     .select(LEGACY_FOOD_SELECT)
-    .eq('barcode', barcode)
+    .in('barcode', [barcode, canonical])
     .limit(5);
-
-  if (error) {
-    reportError(error, {
-      source: 'nutrition-service',
-      operation: 'search-legacy-food-barcode',
-      domain: 'nutrition',
-    });
-    return getCachedFoodByBarcode(barcode);
-  }
-
-  return ((data ?? []) as LegacyFoodRow[]).map(mapLegacyFood);
+  if (error) return getCachedFoodByBarcode(resolvedOwnerId, canonical);
+  const results = ((data ?? []) as LegacyFoodRow[]).map(mapLegacyFood);
+  for (const food of results) cacheFoodLocally(food, resolvedOwnerId);
+  return results;
 }
 
 export async function createFood(input: {
@@ -867,13 +1038,21 @@ export async function createFood(input: {
   sodiumMg?: number;
   barcode?: string;
 }) {
+  if (input.barcode && !isValidFoodBarcode(input.barcode)) {
+    throw new Error('Barcode must be a valid GTIN-8, UPC-A/GTIN-12, EAN-13, or GTIN-14 with a valid check digit.');
+  }
+
+  const storedBarcode = input.barcode ? canonicalFoodBarcode(input.barcode) : undefined;
   const localFood = (): Food => ({
     id: Crypto.randomUUID(),
     source: 'custom',
     name: input.name.trim(),
-    barcode: input.barcode ? normalizeFoodBarcode(input.barcode) : undefined,
+    barcode: storedBarcode,
     servingSize: input.servingSize,
     servingUnit: input.servingUnit.trim() || 'serving',
+    nutritionBasisSize: input.servingSize,
+    nutritionBasisUnit: input.servingUnit.trim() || 'serving',
+    detailsComplete: true,
     calories: input.calories,
     proteinG: input.proteinG,
     carbsG: input.carbsG,
@@ -886,7 +1065,7 @@ export async function createFood(input: {
 
   if (!USE_SUPABASE_FOODS) {
     const food = localFood();
-    cacheFoodLocally(food);
+    cacheFoodLocally(food, LOCAL_DEV_USER_ID);
     return food;
   }
 
@@ -905,14 +1084,14 @@ export async function createFood(input: {
         });
       }
       const food = localFood();
-      cacheFoodLocally(food);
+      cacheFoodLocally(food, LOCAL_DEV_USER_ID);
       return food;
     }
 
     const foodPayload = {
       user_id: authData.user.id,
       name: input.name.trim(),
-      barcode: input.barcode ? normalizeFoodBarcode(input.barcode) : null,
+      barcode: storedBarcode ?? null,
       serving_size: input.servingSize,
       serving_unit: input.servingUnit.trim() || 'serving',
       calories: input.calories,
@@ -941,7 +1120,7 @@ export async function createFood(input: {
     }
 
     const food = mapUserFood(data as UserFoodRow);
-    cacheFoodLocally(food);
+    cacheFoodLocally(food, authData.user.id);
     return food;
   }
 
@@ -971,17 +1150,22 @@ export async function createFood(input: {
   }
 
   const food = mapLegacyFood(data as LegacyFoodRow);
-  cacheFoodLocally(food);
+  cacheFoodLocally(food, await resolveFoodCacheOwnerId(supabase));
   return food;
 }
 
 async function recordFoodCatalogUse(food: Food) {
-  if (!USE_USDA_FOOD_CATALOG || !USDA_SOURCES.has(food.source)) return;
+  const catalogId = food.sourceId ?? food.id;
+  if (
+    !USE_USDA_FOOD_CATALOG ||
+    !USDA_SOURCES.has(food.source) ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(catalogId)
+  ) return;
 
   try {
     const { supabase } = await import('@/src/lib/supabase');
     const { error } = await supabase.rpc('record_food_catalog_use', {
-      input_food_id: food.id,
+      input_food_id: catalogId,
     });
     if (error) throw error;
   } catch (error) {
@@ -1073,7 +1257,7 @@ export function addLocalMealItem(input: {
     ]
   );
 
-  cacheFoodLocally(input.food, now);
+  cacheFoodLocally(input.food, input.userId, now);
   void recordFoodCatalogUse(input.food);
   notifyNutritionLogChanged(input.userId);
 

@@ -110,13 +110,14 @@ export function extractNutrients(food) {
   return { ...values, nutrient_data: nutrientData, unitErrors };
 }
 
-function sourcePortion(food) {
+function portionOptions(food) {
   const portions = Array.isArray(food?.foodPortions)
     ? food.foodPortions
     : Array.isArray(food?.food_portions)
       ? food.food_portions
       : [];
 
+  const options = [];
   for (const portion of portions) {
     const grams = numberOrNull(portion?.gramWeight ?? portion?.gram_weight);
     if (grams == null || grams <= 0) continue;
@@ -128,19 +129,20 @@ function sourcePortion(food) {
     const household = explicitDescription
       ? String(explicitDescription).trim()
       : measure
-        ? [amount, String(measure).trim()]
-            .filter((value) => value != null && value !== '')
-            .join(' ')
+        ? [amount, String(measure).trim()].filter((value) => value != null && value !== '').join(' ')
         : null;
 
-    return {
-      serving_size: grams,
-      serving_unit: 'g',
+    const optionAmount = amount != null && amount > 0 ? amount : 1;
+    const optionUnit = measure ? String(measure).trim() : 'portion';
+    options.push({
+      label: household || `${optionAmount} ${optionUnit}`,
+      amount: optionAmount,
+      unit: optionUnit,
       household_serving_text: household || null,
-      gram_basis: grams,
-    };
+      gram_weight: grams,
+    });
   }
-  return null;
+  return options;
 }
 
 function servingInfo(food, sourceType) {
@@ -153,39 +155,46 @@ function servingInfo(food, sourceType) {
     food?.householdServingText ??
     food?.household_serving_text ??
     null;
+  const portions = portionOptions(food);
+  const servingOptions = [...portions];
 
   if (
     sourceType === 'usda_branded' &&
     declaredSize != null &&
     declaredSize > 0 &&
-    /^(g|gram|grams)$/i.test(declaredUnit)
+    /^(g|gram|grams|ml|milliliter|milliliters)$/i.test(declaredUnit)
   ) {
+    const unit = /^m/i.test(declaredUnit) ? 'mL' : 'g';
+    servingOptions.unshift({
+      label: household ? String(household).trim() : `${declaredSize} ${unit}`,
+      amount: declaredSize,
+      unit,
+      household_serving_text: household ? String(household).trim() : null,
+      gram_weight: unit === 'g' ? declaredSize : null,
+    });
     return {
       serving_size: declaredSize,
-      serving_unit: 'g',
+      serving_unit: unit,
       household_serving_text: household ? String(household).trim() : null,
-      gram_basis: declaredSize,
+      serving_options: servingOptions,
     };
   }
 
-  const portion = sourcePortion(food);
-  if (portion) return portion;
+  if (portions.length) {
+    return {
+      serving_size: portions[0].amount,
+      serving_unit: portions[0].unit,
+      household_serving_text: portions[0].household_serving_text,
+      serving_options: portions,
+    };
+  }
 
   return {
     serving_size: 100,
     serving_unit: 'g',
     household_serving_text: null,
-    gram_basis: 100,
+    serving_options: [{ label: '100 g', amount: 100, unit: 'g', household_serving_text: null, gram_weight: 100 }],
   };
-}
-
-function scaleCoreNutrients(nutrients, grams) {
-  const multiplier = grams / 100;
-  const scaled = { ...nutrients };
-  for (const key of CORE_KEYS) {
-    if (scaled[key] != null) scaled[key] = Number(scaled[key]) * multiplier;
-  }
-  return scaled;
 }
 
 export function normalizeFoodRecord(food, forcedSource = null) {
@@ -195,7 +204,9 @@ export function normalizeFoodRecord(food, forcedSource = null) {
   const nutrientResult = extractNutrients(food);
   const { unitErrors, nutrient_data: rawNutrientData, ...rawNutrients } = nutrientResult;
   const serving = servingInfo(food, sourceType);
-  const nutrients = scaleCoreNutrients(rawNutrients, serving.gram_basis);
+  // FoodData Central nutrient values are represented on their native 100 g basis.
+  // Do not scale the core columns to the preferred label serving; the basis is explicit.
+  const nutrients = rawNutrients;
 
   return {
     record: {
@@ -206,6 +217,8 @@ export function normalizeFoodRecord(food, forcedSource = null) {
       brand_name: food?.brandName ? String(food.brandName).trim() : null,
       gtin_upc: normalizeBarcode(food?.gtinUpc ?? food?.gtin_upc),
       food_category:
+        food?.brandedFoodCategory ??
+        food?.branded_food_category ??
         food?.foodCategory?.description ??
         food?.foodCategory ??
         food?.food_category ??
@@ -213,6 +226,9 @@ export function normalizeFoodRecord(food, forcedSource = null) {
       serving_size: serving.serving_size,
       serving_unit: serving.serving_unit,
       household_serving_text: serving.household_serving_text,
+      nutrition_basis_size: 100,
+      nutrition_basis_unit: 'g',
+      serving_options: serving.serving_options,
       ...nutrients,
       nutrient_data: {
         basis: 'per_100_g',
@@ -251,8 +267,8 @@ export function validateNormalizedRecord(record, { expectedSource = null } = {})
     errors.push('serving_size must be greater than zero when present');
   }
 
-  if (record?.gtin_upc != null && !/^\d{6,14}$/.test(String(record.gtin_upc))) {
-    errors.push('gtin_upc must contain 6-14 digits when present');
+  if (record?.gtin_upc != null && !/^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(String(record.gtin_upc))) {
+    errors.push('gtin_upc must be a GTIN-8, GTIN-12, GTIN-13, or GTIN-14 when present');
   }
   return errors;
 }

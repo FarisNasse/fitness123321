@@ -15,7 +15,7 @@ const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!input || !source || !VALID_SOURCES.has(source) || !supabaseUrl || !serviceKey) {
-  console.error('Usage: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node import-food-catalog.mjs --input normalized.ndjson --source usda_foundation|usda_fndds|usda_branded [--version VERSION] [--release-date YYYY-MM-DD]');
+  console.error('Usage: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node import-food-catalog.mjs --input normalized.ndjson --source usda_foundation|usda_fndds|usda_branded|usda_sr_legacy|usda_experimental [--version VERSION] [--release-date YYYY-MM-DD]');
   process.exit(2);
 }
 

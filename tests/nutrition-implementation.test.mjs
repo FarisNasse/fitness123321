@@ -11,7 +11,7 @@ test('nutrition tab wires add-food modal, daily macro totals, grouped meals, and
   assert.match(screen, /<MetricCard label="Protein" value=\{`\$\{formatMacro\(summary\.totals\.proteinG\)\}g`\}/);
   assert.match(screen, /title="Add food"[\s\S]*setIsAddFoodOpen\(true\)/);
   assert.match(screen, /<Modal[\s\S]*visible=\{isAddFoodOpen\}[\s\S]*Choose a meal, select or create a food/s);
-  assert.match(screen, /searchFoodsByName\(searchQuery\)/);
+  assert.match(screen, /searchFoodsByName\(trimmed, \{[\s\S]*limit: SEARCH_PAGE_SIZE[\s\S]*offset: 0[\s\S]*signal: controller\.signal/s);
   assert.match(screen, /Create new food/);
   assert.match(screen, /createFood\(\{/);
   assert.match(screen, /addLocalMealItem\(\{/);
@@ -47,7 +47,10 @@ test('nutrition service supports USDA catalog search, exact barcode lookup, cust
   assert.match(service, /searchFoodDataCentral\(\{/);
   assert.match(service, /apiKey: 'DEMO_KEY'/);
   assert.match(service, /USE_USDA_FOOD_CATALOG && !HAS_REMOTE_SUPABASE_CONFIG/);
-  assert.match(service, /mergeFoodResults\(customFoods, catalogFoods, liveUsdaFoods\)/);
+  assert.match(service, /return mergeFoodResults\(customFoods, liveFoods\)/);
+  assert.match(service, /return mergeFoodResults\(customFoods, catalogFoods\)/);
+  assert.match(service, /export async function hydrateFoodDetails/);
+  assert.match(service, /detailsComplete === false/);
   assert.match(service, /\.from\('user_foods'\)/);
   assert.match(service, /export async function searchFoodByBarcode/);
   assert.match(service, /supabase\.rpc\('search_food_by_barcode'/);
@@ -58,12 +61,38 @@ test('nutrition service supports USDA catalog search, exact barcode lookup, cust
   assert.match(service, /export function addLocalMealItem/);
   assert.match(service, /insert into meal_items_local \([\s\S]*food_source,[\s\S]*source_food_id,[\s\S]*fdc_id,[\s\S]*fiber_g,[\s\S]*sodium_mg/s);
   assert.match(service, /const legacyFoodId = input\.food\.source === 'legacy' \? input\.food\.id : null/);
-  assert.match(service, /cacheFoodLocally\(input\.food, now\)/);
+  assert.match(service, /cacheFoodLocally\(input\.food, input\.userId, now\)/);
   assert.match(service, /recordFoodCatalogUse\(input\.food\)/);
   assert.match(service, /export function getDailyNutritionSummary/);
   assert.match(service, /export function syncPendingNutritionLogs\(\)/);
   assert.match(service, /food_source: item\.food_source/);
   assert.match(service, /\.from\('meal_items'\)[\s\S]*\.upsert\(itemRows, \{ onConflict: 'id' \}\)/);
+});
+
+
+test('nutrition search UI paginates, shows zero results, hydrates details, validates barcodes, and restricts units', () => {
+  const screen = readProjectFile('app/(tabs)/nutrition.tsx');
+  assert.match(screen, /const SEARCH_PAGE_SIZE = 25/);
+  assert.match(screen, /title=\{isLoadingMore \? 'Loading more\.\.\.' : 'Load more'\}/);
+  assert.match(screen, /title="No foods found"/);
+  assert.match(screen, /hydrateFoodDetails\(food\)/);
+  assert.match(screen, /isValidFoodBarcode\(barcode\)/);
+  assert.match(screen, /searchAbortRef\.current\?\.abort\(\)/);
+  assert.match(screen, /getAllowedFoodLogUnits\(selectedFood\)/);
+  assert.doesNotMatch(screen, /value=\{unit\}[\s\S]{0,100}onChangeText=\{setUnit\}/);
+  assert.match(screen, /searchQuery\.trim\(\) \|\| barcodeQuery\.trim\(\)/);
+  assert.match(screen, /barcode: barcodeQuery\.trim\(\)/);
+});
+
+test('food cache is owner-scoped and preserves unknown nutrients instead of caching fake zeros', () => {
+  const service = readProjectFile('src/features/nutrition/nutrition-service.ts');
+  const localDb = readProjectFile('src/lib/local-db.ts');
+  assert.match(service, /where user_id = \?[\s\S]*lower\(name\) like \?/s);
+  assert.match(service, /where user_id = \? and barcode = \?/);
+  assert.match(service, /food\.calories == null[\s\S]*food\.proteinG == null[\s\S]*return;/s);
+  assert.match(localDb, /user_id text not null default 'local-dev-user'/);
+  assert.match(localDb, /on food_cache_local\(user_id, name\)/);
+  assert.match(localDb, /String\(item\.user_id \?\? ''\) === userId/);
 });
 
 test('local-db web adapter supports the nutrition query and mutation patterns used by the service', () => {
@@ -107,8 +136,24 @@ test('runtime flags make USDA the default food source while keeping other domain
   assert.match(flags, /export const HAS_REMOTE_SUPABASE_CONFIG = Boolean/);
   assert.match(flags, /export const FOOD_SOURCE = process\.env\.EXPO_PUBLIC_FOOD_SOURCE \?\? 'usda'/);
   assert.match(flags, /export const USE_USDA_FOOD_CATALOG = FOOD_SOURCE === 'usda'/);
-  assert.match(flags, /export const ALLOW_USDA_DEMO_FALLBACK = APP_ENV !== 'production'/);
+  assert.match(flags, /EXPO_PUBLIC_ALLOW_USDA_DEMO_KEY === 'true'/);
+  assert.doesNotMatch(flags, /ALLOW_USDA_DEMO_FALLBACK = APP_ENV !== 'production';/);
   assert.match(flags, /USE_SUPABASE_FOODS =[\s\S]*FOOD_SOURCE === 'supabase'[\s\S]*USE_USDA_FOOD_CATALOG/);
+});
+
+
+test('nutrition barcode UX includes a real camera scanner and keeps manual entry as fallback', () => {
+  const screen = readProjectFile('app/(tabs)/nutrition.tsx');
+  const packageJson = JSON.parse(readProjectFile('package.json'));
+  const appConfig = readProjectFile('app.config.ts');
+
+  assert.equal(packageJson.dependencies['expo-camera'], '~56.0.8');
+  assert.match(screen, /import \{ CameraView, useCameraPermissions \} from 'expo-camera'/);
+  assert.match(screen, /barcodeTypes: \['ean13', 'ean8', 'upc_a', 'upc_e', 'itf14', 'datamatrix', 'qr'\]/);
+  assert.match(screen, /title="Scan barcode"/);
+  assert.match(screen, /placeholder="UPC \/ EAN barcode"/);
+  assert.match(appConfig, /'expo-camera'/);
+  assert.match(appConfig, /barcodeScannerEnabled: true/);
 });
 
 

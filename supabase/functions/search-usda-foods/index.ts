@@ -1,4 +1,5 @@
 import {
+  getFoodDataCentralDetails,
   searchFoodDataCentral,
   searchFoodDataCentralByBarcode,
 } from '../_shared/usda-fdc.mjs';
@@ -22,27 +23,32 @@ function json(body: unknown, status = 200) {
 }
 
 Deno.serve(async (request) => {
-  if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
-  if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed.' }, 405);
-  }
+  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
 
   const apiKey = Deno.env.get('USDA_FDC_API_KEY')?.trim();
-  if (!apiKey) {
-    return json({ error: 'USDA_FDC_API_KEY is not configured on the backend.' }, 503);
-  }
+  if (!apiKey) return json({ error: 'USDA_FDC_API_KEY is not configured on the backend.' }, 503);
 
   try {
     const body = await request.json();
-    const action = body?.action === 'barcode' ? 'barcode' : 'search';
+    const action = body?.action === 'barcode' || body?.action === 'details'
+      ? body.action
+      : 'search';
+
+    if (action === 'details') {
+      const food = await getFoodDataCentralDetails({
+        fdcId: Number(body?.fdcId),
+        apiKey,
+        signal: request.signal,
+      });
+      return json({ food });
+    }
 
     if (action === 'barcode') {
       const foods = await searchFoodDataCentralByBarcode({
         barcode: String(body?.barcode ?? ''),
         apiKey,
+        signal: request.signal,
       });
       return json({ foods });
     }
@@ -52,13 +58,13 @@ Deno.serve(async (request) => {
       apiKey,
       pageSize: body?.pageSize,
       pageNumber: body?.pageNumber,
+      signal: request.signal,
     });
     return json({ foods });
   } catch (error) {
     console.error('search-usda-foods failed', error);
-    return json(
-      { error: error instanceof Error ? error.message : 'FoodData Central search failed.' },
-      502
-    );
+    const message = error instanceof Error ? error.message : 'FoodData Central request failed.';
+    const status = /\(429\)/.test(message) ? 429 : /timed out/i.test(message) ? 504 : 502;
+    return json({ error: message }, status);
   }
 });

@@ -81,6 +81,13 @@ export type FoodSource =
   | 'restaurant'
   | 'custom';
 
+export type FoodServingOption = {
+  label: string;
+  amount: number;
+  unit: string;
+  gramWeight?: number;
+};
+
 export type Food = {
   id: string;
   source: FoodSource;
@@ -93,10 +100,17 @@ export type Food = {
   servingSize?: number;
   servingUnit?: string;
   householdServingText?: string;
-  calories: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
+  nutritionBasisSize?: number;
+  nutritionBasisUnit?: string;
+  servingOptions?: FoodServingOption[];
+  detailsComplete?: boolean;
+  publicationDate?: string;
+  availableDate?: string;
+  modifiedDate?: string;
+  calories: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
   fiberG?: number;
   sugarG?: number;
   saturatedFatG?: number;

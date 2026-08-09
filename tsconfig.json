@@ -13,5 +13,5 @@
     "nativewind-env.d.ts",
     "**/*.ts",
     "**/*.tsx"
-  ]
+, "app.config.js"  ]
 }

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { Button } from '@/src/components/Button';
 import { Card } from '@/src/components/Card';
@@ -16,8 +17,12 @@ import {
   addLocalWaterLog,
   createFood,
   getDailyNutritionSummary,
+  getAllowedFoodLogUnits,
+  getDefaultFoodLogAmount,
   getFoodSourceLabel,
   getRecentFoods,
+  hydrateFoodDetails,
+  isValidFoodBarcode,
   normalizeFoodBarcode,
   searchFoodByBarcode,
   searchFoodsByName,
@@ -36,6 +41,7 @@ const mealTypes: { label: string; value: MealType }[] = [
 ];
 
 const waterPresets = [250, 500, 750];
+const SEARCH_PAGE_SIZE = 25;
 
 const emptySummary: DailyNutritionSummary = {
   entries: [],
@@ -59,8 +65,13 @@ function parseNonNegativeNumber(value: string) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-function formatMacro(value: number) {
+function formatMacro(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return '—';
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatCalories(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value) ? '—' : String(Math.round(value));
 }
 
 function progress(current: number, target: number) {
@@ -71,6 +82,10 @@ function progress(current: number, target: number) {
 export default function NutritionScreen() {
   const { session } = useAuthSession();
   const ownerId = session?.user.id ?? null;
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
+  const [scannerMessage, setScannerMessage] = useState<string | null>(null);
+  const scannerConsumedRef = useRef(false);
   const [summary, setSummary] = useState<DailyNutritionSummary>(emptySummary);
   const [isAddFoodOpen, setIsAddFoodOpen] = useState(false);
   const [mealType, setMealType] = useState<MealType>('breakfast');
@@ -79,6 +94,12 @@ export default function NutritionScreen() {
   const [recentFoods, setRecentFoods] = useState<Food[]>([]);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreFoods, setHasMoreFoods] = useState(false);
+  const [nextSearchOffset, setNextSearchOffset] = useState(SEARCH_PAGE_SIZE);
+  const [isHydratingFood, setIsHydratingFood] = useState(false);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchGenerationRef = useRef(0);
   const [barcodeQuery, setBarcodeQuery] = useState('');
   const [barcodeStatus, setBarcodeStatus] = useState<string | null>(null);
   const [isBarcodeSearching, setIsBarcodeSearching] = useState(false);
@@ -106,50 +127,60 @@ export default function NutritionScreen() {
   }, [ownerId, refreshSummary]);
 
   useEffect(() => {
-    let cancelled = false;
     const trimmed = searchQuery.trim();
+
+    searchAbortRef.current?.abort();
+    const generation = ++searchGenerationRef.current;
 
     if (trimmed.length < 2) {
       setFoodResults([]);
       setIsSearching(false);
+      setHasMoreFoods(false);
+      setNextSearchOffset(SEARCH_PAGE_SIZE);
       return undefined;
     }
 
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
     const timer = setTimeout(() => {
       setIsSearching(true);
 
-      void searchFoodsByName(searchQuery)
+      void searchFoodsByName(trimmed, {
+        limit: SEARCH_PAGE_SIZE,
+        offset: 0,
+        signal: controller.signal,
+      })
         .then((foods) => {
-          if (!cancelled) {
-            setFoodResults(foods);
-          }
+          if (generation !== searchGenerationRef.current || controller.signal.aborted) return;
+          setFoodResults(foods);
+          setHasMoreFoods(foods.filter((food) => food.source !== 'custom').length >= SEARCH_PAGE_SIZE);
+          setNextSearchOffset(SEARCH_PAGE_SIZE);
         })
         .catch((error) => {
-          if (!cancelled) {
-            reportError(error, {
-              source: 'nutrition-screen',
-              operation: 'search-foods',
-              domain: 'nutrition',
-            });
-            Alert.alert('Unable to search foods', 'Food search is temporarily unavailable.');
-          }
+          if (controller.signal.aborted) return;
+          reportError(error, {
+            source: 'nutrition-screen',
+            operation: 'search-foods',
+            domain: 'nutrition',
+          });
+          Alert.alert('Unable to search foods', 'Food search is temporarily unavailable.');
         })
         .finally(() => {
-          if (!cancelled) {
+          if (generation === searchGenerationRef.current && !controller.signal.aborted) {
             setIsSearching(false);
           }
         });
     }, 250);
 
     return () => {
-      cancelled = true;
       clearTimeout(timer);
+      controller.abort();
     };
   }, [searchQuery]);
 
   useEffect(() => {
     if (isAddFoodOpen) {
-      setRecentFoods(getRecentFoods());
+      setRecentFoods(getRecentFoods(ownerId ?? undefined));
     }
   }, [isAddFoodOpen]);
 
@@ -168,6 +199,15 @@ export default function NutritionScreen() {
     return grouped;
   }, [summary]);
 
+  const customFoodResults = useMemo(
+    () => foodResults.filter((food) => food.source === 'custom'),
+    [foodResults]
+  );
+  const catalogFoodResults = useMemo(
+    () => foodResults.filter((food) => food.source !== 'custom'),
+    [foodResults]
+  );
+
   const hasFoodEntries = summary.entries.length > 0;
   const calorieProgress = progress(summary.totals.calories, DEFAULT_DAILY_TARGETS.calories);
   const proteinProgress = progress(summary.totals.proteinG, DEFAULT_DAILY_TARGETS.proteinG);
@@ -182,6 +222,14 @@ export default function NutritionScreen() {
     setBarcodeQuery('');
     setBarcodeStatus(null);
     setIsBarcodeSearching(false);
+    setIsBarcodeScannerOpen(false);
+    setScannerMessage(null);
+    scannerConsumedRef.current = false;
+    setIsSearching(false);
+    setIsLoadingMore(false);
+    setHasMoreFoods(false);
+    setNextSearchOffset(SEARCH_PAGE_SIZE);
+    searchAbortRef.current?.abort();
     setQuantity('1');
     setUnit('serving');
     setNewFoodName('');
@@ -193,20 +241,73 @@ export default function NutritionScreen() {
     setFat('0');
   }
 
-  function chooseFood(food: Food) {
-    setSelectedFood(food);
-    setUnit(food.servingUnit ?? 'serving');
-    setQuantity(String(food.servingSize ?? 1));
+  async function chooseFood(food: Food) {
+    setIsHydratingFood(true);
+    try {
+      const hydrated = await hydrateFoodDetails(food);
+      const defaultAmount = getDefaultFoodLogAmount(hydrated);
+      setSelectedFood(hydrated);
+      setFoodResults((current) =>
+        current.map((item) => (item.id === food.id ? hydrated : item))
+      );
+      setUnit(defaultAmount.unit);
+      setQuantity(String(defaultAmount.quantity));
+    } catch (error) {
+      reportError(error, {
+        source: 'nutrition-screen',
+        operation: 'hydrate-food-details',
+        domain: 'nutrition',
+      });
+      Alert.alert(
+        'Unable to load food details',
+        'The complete USDA nutrition record is required before this food can be logged.'
+      );
+    } finally {
+      setIsHydratingFood(false);
+    }
   }
 
-  async function handleBarcodeLookup() {
-    const barcode = normalizeFoodBarcode(barcodeQuery);
+  async function handleLoadMoreFoods() {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2 || isLoadingMore || !hasMoreFoods) return;
 
-    if (barcode.length < 6 || barcode.length > 14) {
-      setBarcodeStatus('Enter a 6–14 digit UPC or EAN barcode.');
+    const generation = searchGenerationRef.current;
+    setIsLoadingMore(true);
+    try {
+      const foods = await searchFoodsByName(trimmed, {
+        limit: SEARCH_PAGE_SIZE,
+        offset: nextSearchOffset,
+      });
+      if (generation !== searchGenerationRef.current) return;
+      setFoodResults((current) => {
+        const seen = new Set(current.map((food) => food.id));
+        return [...current, ...foods.filter((food) => !seen.has(food.id))];
+      });
+      setHasMoreFoods(foods.filter((food) => food.source !== 'custom').length >= SEARCH_PAGE_SIZE);
+      setNextSearchOffset((current) => current + SEARCH_PAGE_SIZE);
+    } catch (error) {
+      reportError(error, {
+        source: 'nutrition-screen', operation: 'load-more-foods', domain: 'nutrition',
+      });
+      Alert.alert('Unable to load more foods', 'More results could not be loaded.');
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
+  async function handleBarcodeLookup(rawInput = barcodeQuery) {
+    const barcode = normalizeFoodBarcode(rawInput);
+
+    if (!barcode || !isValidFoodBarcode(barcode)) {
+      setBarcodeStatus('Enter a valid GTIN-8, UPC-A/GTIN-12, EAN-13, or GTIN-14 with a correct check digit.');
       return;
     }
 
+    searchAbortRef.current?.abort();
+    ++searchGenerationRef.current;
+    setIsSearching(false);
+    setHasMoreFoods(false);
+    setNextSearchOffset(SEARCH_PAGE_SIZE);
     setBarcodeStatus(null);
     setIsBarcodeSearching(true);
 
@@ -220,8 +321,13 @@ export default function NutritionScreen() {
         return;
       }
 
-      chooseFood(matches[0]);
-      setBarcodeStatus(`Matched ${matches[0].name}.`);
+      if (matches.length === 1) {
+        await chooseFood(matches[0]);
+        setBarcodeStatus(`Matched ${matches[0].name}.`);
+      } else {
+        setSelectedFood(null);
+        setBarcodeStatus(`${matches.length} product versions found. Choose the correct record below.`);
+      }
     } catch (error) {
       reportError(error, {
         source: 'nutrition-screen',
@@ -232,6 +338,45 @@ export default function NutritionScreen() {
     } finally {
       setIsBarcodeSearching(false);
     }
+  }
+
+  async function openBarcodeScanner() {
+    try {
+      let permission = cameraPermission;
+      if (!permission?.granted) {
+        permission = await requestCameraPermission();
+      }
+      if (!permission.granted) {
+        Alert.alert(
+          'Camera permission required',
+          'Allow camera access to scan food barcodes. Manual barcode entry remains available.'
+        );
+        return;
+      }
+      scannerConsumedRef.current = false;
+      setScannerMessage('Point the camera at a UPC, EAN, GTIN, QR, or GS1 Data Matrix code.');
+      setIsBarcodeScannerOpen(true);
+    } catch (error) {
+      reportError(error, {
+        source: 'nutrition-screen', operation: 'request-camera-permission', domain: 'nutrition',
+      });
+      Alert.alert('Unable to open scanner', 'Camera access could not be started.');
+    }
+  }
+
+  async function handleScannedBarcode(data: string) {
+    if (scannerConsumedRef.current) return;
+    const barcode = normalizeFoodBarcode(data);
+    if (!barcode || !isValidFoodBarcode(barcode)) {
+      setScannerMessage('A code was detected, but it did not contain a valid retail GTIN. Try another code.');
+      return;
+    }
+
+    scannerConsumedRef.current = true;
+    setBarcodeQuery(barcode);
+    setIsBarcodeScannerOpen(false);
+    setScannerMessage(null);
+    await handleBarcodeLookup(barcode);
   }
 
   async function handleCreateFood() {
@@ -249,6 +394,14 @@ export default function NutritionScreen() {
 
     if (!parsedServingSize) {
       Alert.alert('Invalid serving size', 'Enter a serving size greater than 0.');
+      return;
+    }
+
+    if (barcodeQuery.trim() && !isValidFoodBarcode(barcodeQuery)) {
+      Alert.alert(
+        'Invalid barcode',
+        'Use a valid GTIN-8, UPC-A/GTIN-12, EAN-13, or GTIN-14 with a correct check digit.'
+      );
       return;
     }
 
@@ -271,13 +424,12 @@ export default function NutritionScreen() {
         proteinG: parsedProtein,
         carbsG: parsedCarbs,
         fatG: parsedFat,
+        barcode: barcodeQuery.trim() ? barcodeQuery.trim() : undefined,
       });
 
       setFoodResults((current) => [food, ...current.filter((item) => item.id !== food.id)]);
-      setSelectedFood(food);
+      await chooseFood(food);
       setSearchQuery(food.name);
-      setQuantity(String(food.servingSize ?? 1));
-      setUnit(food.servingUnit ?? 'serving');
     } catch (error) {
       reportError(error, {
         source: 'nutrition-screen',
@@ -394,7 +546,7 @@ export default function NutritionScreen() {
           <Button
             title="Add food"
             onPress={() => {
-              setRecentFoods(getRecentFoods());
+              setRecentFoods(getRecentFoods(ownerId ?? undefined));
               setIsAddFoodOpen(true);
             }}
           />
@@ -543,33 +695,65 @@ export default function NutritionScreen() {
                         key={`recent-${food.id}`}
                         food={food}
                         selected={selectedFood?.id === food.id}
-                        onPress={() => chooseFood(food)}
+                        onPress={() => void chooseFood(food)}
                       />
                     ))}
                   </View>
                 ) : null}
 
-                {foodResults.length > 0 ? (
+                {customFoodResults.length > 0 ? (
                   <View className="gap-2">
                     <Text className="text-xs font-bold uppercase tracking-widest text-base-muted">
-                      Results
+                      Your foods
                     </Text>
-                    {foodResults.map((food) => (
+                    {customFoodResults.map((food) => (
                       <FoodSearchResult
-                        key={food.id}
+                        key={`custom-${food.id}`}
                         food={food}
                         selected={selectedFood?.id === food.id}
-                        onPress={() => chooseFood(food)}
+                        onPress={() => void chooseFood(food)}
                       />
                     ))}
                   </View>
+                ) : null}
+
+                {catalogFoodResults.length > 0 ? (
+                  <View className="gap-2">
+                    <Text className="text-xs font-bold uppercase tracking-widest text-base-muted">
+                      USDA results
+                    </Text>
+                    {catalogFoodResults.map((food) => (
+                      <FoodSearchResult
+                        key={`catalog-${food.id}`}
+                        food={food}
+                        selected={selectedFood?.id === food.id}
+                        onPress={() => void chooseFood(food)}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+
+                {searchQuery.trim().length >= 2 && !isSearching && foodResults.length === 0 ? (
+                  <EmptyState
+                    title="No foods found"
+                    message="Try another name, scan/enter a barcode, or create a custom food."
+                  />
+                ) : null}
+
+                {foodResults.length > 0 && hasMoreFoods ? (
+                  <Button
+                    title={isLoadingMore ? 'Loading more...' : 'Load more'}
+                    variant="ghost"
+                    onPress={() => void handleLoadMoreFoods()}
+                    disabled={isLoadingMore}
+                  />
                 ) : null}
               </Card>
 
               <Card className="gap-3">
                 <Text className="text-xl font-bold text-base-content">Barcode lookup</Text>
                 <Text className="text-sm font-body leading-6 text-base-muted">
-                  Enter a UPC or EAN for an exact product match. Leading zeros are preserved.
+                  Enter a retail GTIN for an exact branded-product match. Check digits and equivalent zero-padded forms are validated.
                 </Text>
                 <Input
                   value={barcodeQuery}
@@ -580,17 +764,29 @@ export default function NutritionScreen() {
                   keyboardType="numeric"
                   placeholder="UPC / EAN barcode"
                 />
-                <Button
-                  title={isBarcodeSearching ? 'Looking up barcode...' : 'Look up barcode'}
-                  onPress={() => void handleBarcodeLookup()}
-                  disabled={isBarcodeSearching}
-                />
+                <View className="flex-row gap-3">
+                  <View className="flex-1">
+                    <Button
+                      title="Scan barcode"
+                      variant="ghost"
+                      onPress={() => void openBarcodeScanner()}
+                      disabled={isBarcodeSearching}
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Button
+                      title={isBarcodeSearching ? 'Looking up...' : 'Look up barcode'}
+                      onPress={() => void handleBarcodeLookup()}
+                      disabled={isBarcodeSearching}
+                    />
+                  </View>
+                </View>
                 {barcodeStatus ? (
                   <Text className="text-sm font-body text-base-muted">{barcodeStatus}</Text>
                 ) : null}
               </Card>
 
-              {searchQuery.trim() ? (
+              {searchQuery.trim() || barcodeQuery.trim() ? (
                 <Card className="gap-3">
                   <Text className="text-xl font-bold text-base-content">Create new food</Text>
                   <Text className="text-sm font-body leading-6 text-base-muted">
@@ -664,7 +860,7 @@ export default function NutritionScreen() {
                       {selectedFood.brand ? ` · ${selectedFood.brand}` : ''}
                     </Text>
                     <Text className="text-sm font-body text-base-muted">
-                      {Math.round(selectedFood.calories)} kcal · P {formatMacro(selectedFood.proteinG)}g · C{' '}
+                      {formatCalories(selectedFood.calories)} kcal · P {formatMacro(selectedFood.proteinG)}g · C{' '}
                       {formatMacro(selectedFood.carbsG)}g · F {formatMacro(selectedFood.fatG)}g
                     </Text>
                     {selectedFood.fiberG != null || selectedFood.sodiumMg != null ? (
@@ -692,17 +888,26 @@ export default function NutritionScreen() {
                     placeholder="Quantity"
                     containerClassName="flex-1"
                   />
-                  <Input
-                    value={unit}
-                    onChangeText={setUnit}
-                    placeholder="Unit"
-                    containerClassName="flex-1"
-                  />
+                  <View className="flex-1 flex-row flex-wrap gap-2">
+                    {(selectedFood ? getAllowedFoodLogUnits(selectedFood) : ['serving']).map((option) => (
+                      <Pressable
+                        key={option}
+                        onPress={() => setUnit(option)}
+                        className={`rounded-pill border px-3 py-3 ${
+                          unit === option ? 'border-primary bg-primary' : 'border-base-300 bg-base-100'
+                        }`}
+                      >
+                        <Text className={unit === option ? 'font-bold text-primary-content' : 'font-bold text-base-content'}>
+                          {option}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
                 </View>
               </Card>
 
               <View className="gap-3">
-                <Button title="Log food" onPress={() => void handleLogFood()} disabled={!selectedFood} />
+                <Button title="Log food" onPress={() => void handleLogFood()} disabled={!selectedFood || isHydratingFood} />
                 <Button
                   title="Cancel"
                   variant="ghost"
@@ -714,6 +919,34 @@ export default function NutritionScreen() {
               </View>
             </View>
           </ScrollView>
+        </View>
+      </Modal>
+      <Modal
+        visible={isBarcodeScannerOpen}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setIsBarcodeScannerOpen(false)}
+      >
+        <View className="flex-1 bg-base-100">
+          <View className="flex-row items-center justify-between gap-3 px-5 pb-3 pt-6">
+            <View className="flex-1">
+              <Text className="text-xl font-bold text-base-content">Scan food barcode</Text>
+              <Text className="mt-1 text-sm font-body text-base-muted">
+                {scannerMessage ?? 'Align the barcode inside the camera view.'}
+              </Text>
+            </View>
+            <Button title="Close" variant="ghost" onPress={() => setIsBarcodeScannerOpen(false)} />
+          </View>
+          <View className="mx-5 mb-5 flex-1 overflow-hidden rounded-3xl bg-base-200">
+            <CameraView
+              style={{ flex: 1 }}
+              facing="back"
+              barcodeScannerSettings={{
+                barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'itf14', 'datamatrix', 'qr'],
+              }}
+              onBarcodeScanned={({ data }) => void handleScannedBarcode(data)}
+            />
+          </View>
         </View>
       </Modal>
     </Screen>
@@ -729,9 +962,7 @@ function FoodSearchResult({
   selected: boolean;
   onPress: () => void;
 }) {
-  const serving = food.householdServingText
-    ? food.householdServingText
-    : `${formatMacro(food.servingSize ?? 1)} ${food.servingUnit ?? 'serving'}`;
+  const basis = `${formatMacro(food.nutritionBasisSize ?? food.servingSize ?? 1)} ${food.nutritionBasisUnit ?? food.servingUnit ?? 'serving'}`;
 
   return (
     <Pressable
@@ -745,11 +976,18 @@ function FoodSearchResult({
         {getFoodSourceLabel(food)}{food.brand ? ` · ${food.brand}` : ''}
       </Text>
       <Text className="text-sm font-body text-base-muted">
-        {serving} · {Math.round(food.calories)} kcal
+        Nutrition per {basis} · {formatCalories(food.calories)} kcal
       </Text>
       <Text className="text-sm font-body text-base-muted">
         P {formatMacro(food.proteinG)}g · C {formatMacro(food.carbsG)}g · F {formatMacro(food.fatG)}g
       </Text>
+      {food.barcode || food.publicationDate ? (
+        <Text className="text-xs font-body text-base-muted">
+          {food.barcode ? `GTIN ${food.barcode}` : ''}
+          {food.barcode && food.publicationDate ? ' · ' : ''}
+          {food.publicationDate ? `Published ${food.publicationDate}` : ''}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }

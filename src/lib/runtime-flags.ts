@@ -34,7 +34,8 @@ export const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV ?? 'development';
 export const FOOD_SOURCE = process.env.EXPO_PUBLIC_FOOD_SOURCE ?? 'usda';
 
 export const USE_USDA_FOOD_CATALOG = FOOD_SOURCE === 'usda';
-export const ALLOW_USDA_DEMO_FALLBACK = APP_ENV !== 'production';
+export const ALLOW_USDA_DEMO_FALLBACK =
+  APP_ENV !== 'production' && process.env.EXPO_PUBLIC_ALLOW_USDA_DEMO_KEY === 'true';
 
 export const USE_SUPABASE_FOODS =
   USE_REMOTE_NUTRITION_SYNC || FOOD_SOURCE === 'supabase' || USE_USDA_FOOD_CATALOG;

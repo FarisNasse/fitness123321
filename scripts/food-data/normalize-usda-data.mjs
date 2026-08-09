@@ -18,7 +18,7 @@ const output = arg('--output');
 const source = arg('--source');
 
 if (!input || !output || !source || !VALID_SOURCES.has(source)) {
-  console.error('Usage: node normalize-usda-data.mjs --input source.json --output normalized.ndjson --source usda_foundation|usda_fndds|usda_branded');
+  console.error('Usage: node normalize-usda-data.mjs --input source.json --output normalized.ndjson --source usda_foundation|usda_fndds|usda_branded|usda_sr_legacy|usda_experimental');
   process.exit(2);
 }
 
