@@ -1,0 +1,366 @@
+--- /dev/null
++++ b/src/lib/use-modal-focus-trap.ts
+@@ -0,0 +1,77 @@
++import { useEffect, useRef } from 'react';
++import type { View } from 'react-native';
++import { Platform } from 'react-native';
++
++const FOCUSABLE_SELECTOR = [
++  'button:not([disabled])',
++  '[href]',
++  'input:not([disabled])',
++  'select:not([disabled])',
++  'textarea:not([disabled])',
++  '[tabindex]:not([tabindex="-1"])',
++].join(',');
++
++type FocusTarget = {
++  focus?: () => void;
++};
++
++type FocusRoot = FocusTarget & {
++  querySelectorAll: (selector: string) => ArrayLike<FocusTarget>;
++  addEventListener: (type: 'keydown', listener: (event: KeyEvent) => void) => void;
++  removeEventListener: (type: 'keydown', listener: (event: KeyEvent) => void) => void;
++};
++
++type KeyEvent = {
++  key: string;
++  shiftKey: boolean;
++  preventDefault: () => void;
++};
++
++type WebDocument = {
++  activeElement?: FocusTarget | null;
++};
++
++export function useModalFocusTrap(visible: boolean) {
++  const ref = useRef<View | null>(null);
++
++  useEffect(() => {
++    if (!visible || Platform.OS !== 'web') return;
++
++    const documentObject = (globalThis as typeof globalThis & { document?: WebDocument }).document;
++    const root = ref.current as unknown as FocusRoot | null;
++    if (!documentObject || !root) return;
++
++    const previouslyFocused = documentObject.activeElement ?? null;
++    const getFocusable = () => Array.from(root.querySelectorAll(FOCUSABLE_SELECTOR));
++    const initial = getFocusable()[0] ?? root;
++    initial.focus?.();
++
++    const handleKeyDown = (event: KeyEvent) => {
++      if (event.key !== 'Tab') return;
++      const focusable = getFocusable();
++      if (focusable.length === 0) {
++        event.preventDefault();
++        root.focus?.();
++        return;
++      }
++
++      const first = focusable[0];
++      const last = focusable[focusable.length - 1];
++      if (event.shiftKey && documentObject.activeElement === first) {
++        event.preventDefault();
++        last.focus?.();
++      } else if (!event.shiftKey && documentObject.activeElement === last) {
++        event.preventDefault();
++        first.focus?.();
++      }
++    };
++
++    root.addEventListener('keydown', handleKeyDown);
++    return () => {
++      root.removeEventListener('keydown', handleKeyDown);
++      previouslyFocused?.focus?.();
++    };
++  }, [visible]);
++
++  return ref;
++}
+--- /dev/null
++++ b/supabase/config.toml
+@@ -0,0 +1 @@
++project_id = "fitness123321"
+--- /dev/null
++++ b/supabase/functions/delete-account/deno.json
+@@ -0,0 +1,5 @@
++{
++  "compilerOptions": {
++    "strict": true
++  }
++}
+--- /dev/null
++++ b/supabase/functions/delete-account/index.ts
+@@ -0,0 +1,60 @@
++import { createClient } from 'npm:@supabase/supabase-js@2.108.1';
++
++declare const Deno: {
++  env: { get(name: string): string | undefined };
++  serve(handler: (request: Request) => Response | Promise<Response>): void;
++};
++
++const corsHeaders = {
++  'Access-Control-Allow-Origin': '*',
++  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
++  'Access-Control-Allow-Methods': 'POST, OPTIONS',
++};
++
++function json(body: unknown, status = 200) {
++  return new Response(JSON.stringify(body), {
++    status,
++    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
++  });
++}
++
++Deno.serve(async (request) => {
++  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
++  if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
++
++  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
++  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')?.trim();
++  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
++  const authorization = request.headers.get('Authorization')?.trim();
++
++  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
++    return json({ error: 'Account deletion is not configured.' }, 503);
++  }
++  if (!authorization) return json({ error: 'Authentication is required.' }, 401);
++
++  const body = await request.json().catch(() => null);
++  if (body?.confirmation !== 'DELETE') {
++    return json({ error: 'Explicit deletion confirmation is required.' }, 400);
++  }
++
++  const userClient = createClient(supabaseUrl, anonKey, {
++    global: { headers: { Authorization: authorization } },
++    auth: { persistSession: false, autoRefreshToken: false },
++  });
++  const { data: userData, error: userError } = await userClient.auth.getUser();
++  if (userError || !userData.user?.id) {
++    return json({ error: 'The access token is invalid or expired.' }, 401);
++  }
++
++  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
++    auth: { persistSession: false, autoRefreshToken: false },
++  });
++  const { error: deleteError } = await adminClient.auth.admin.deleteUser(userData.user.id);
++  if (deleteError) {
++    console.error('delete-account failed', deleteError);
++    return json({ error: 'The account could not be deleted.' }, 500);
++  }
++
++  // Every owned application table references auth.users with ON DELETE CASCADE.
++  return json({ deleted: true });
++});
+--- /dev/null
++++ b/supabase/migrations/0009_harden_sync_contracts.sql
+@@ -0,0 +1,170 @@
++-- Harden the cloud contracts used by local-first synchronization.
++-- This migration makes recency, tombstones, and date-level uniqueness explicit
++-- so refresh/retry behavior is deterministic across devices.
++
++create or replace function public.set_updated_at()
++returns trigger
++language plpgsql
++set search_path = public
++as $$
++begin
++  new.updated_at = now();
++  return new;
++end;
++$$;
++
++alter table public.workout_sessions
++  add column if not exists updated_at timestamptz not null default now();
++alter table public.workout_sets
++  add column if not exists updated_at timestamptz not null default now();
++alter table public.workout_sets
++  add column if not exists exercise_sort_order integer;
++
++alter table public.body_measurements
++  add column if not exists is_deleted boolean not null default false;
++alter table public.body_measurements
++  add column if not exists deleted_at timestamptz;
++alter table public.body_measurements
++  add column if not exists updated_at timestamptz not null default now();
++
++alter table public.meal_logs
++  add column if not exists is_deleted boolean not null default false;
++alter table public.meal_logs
++  add column if not exists deleted_at timestamptz;
++alter table public.meal_logs
++  add column if not exists updated_at timestamptz not null default now();
++
++alter table public.meal_items
++  add column if not exists is_deleted boolean not null default false;
++alter table public.meal_items
++  add column if not exists deleted_at timestamptz;
++alter table public.meal_items
++  add column if not exists updated_at timestamptz not null default now();
++
++alter table public.water_logs
++  add column if not exists is_deleted boolean not null default false;
++alter table public.water_logs
++  add column if not exists deleted_at timestamptz;
++alter table public.water_logs
++  add column if not exists updated_at timestamptz not null default now();
++
++alter table public.sleep_logs
++  add column if not exists is_deleted boolean not null default false;
++alter table public.sleep_logs
++  add column if not exists deleted_at timestamptz;
++alter table public.sleep_logs
++  add column if not exists updated_at timestamptz not null default now();
++
++alter table public.mood_logs
++  add column if not exists is_deleted boolean not null default false;
++alter table public.mood_logs
++  add column if not exists deleted_at timestamptz;
++alter table public.mood_logs
++  add column if not exists updated_at timestamptz not null default now();
++
++-- Backfill deterministic date keys before enforcing one active wellness row per day.
++update public.mood_logs
++set check_in_date = logged_at::date
++where check_in_date is null;
++
++update public.sleep_logs
++set check_in_date = sleep_start::date
++where check_in_date is null;
++
++-- Preserve older duplicates as tombstones rather than deleting history outright.
++with ranked as (
++  select id,
++         row_number() over (
++           partition by user_id, check_in_date
++           order by updated_at desc nulls last, logged_at desc, id desc
++         ) as rank
++  from public.mood_logs
++  where check_in_date is not null and is_deleted = false
++)
++update public.mood_logs m
++set is_deleted = true,
++    deleted_at = coalesce(m.deleted_at, now()),
++    updated_at = now()
++from ranked r
++where m.id = r.id and r.rank > 1;
++
++with ranked as (
++  select id,
++         row_number() over (
++           partition by user_id, check_in_date
++           order by updated_at desc nulls last, sleep_start desc, id desc
++         ) as rank
++  from public.sleep_logs
++  where check_in_date is not null and is_deleted = false
++)
++update public.sleep_logs s
++set is_deleted = true,
++    deleted_at = coalesce(s.deleted_at, now()),
++    updated_at = now()
++from ranked r
++where s.id = r.id and r.rank > 1;
++
++-- Daily targets are one row per account. Keep the newest row if legacy data has duplicates.
++with ranked as (
++  select id,
++         row_number() over (
++           partition by user_id
++           order by updated_at desc nulls last, created_at desc, id desc
++         ) as rank
++  from public.daily_targets
++)
++delete from public.daily_targets d
++using ranked r
++where d.id = r.id and r.rank > 1;
++
++create unique index if not exists uq_daily_targets_user
++on public.daily_targets(user_id);
++
++create unique index if not exists uq_mood_logs_active_user_date
++on public.mood_logs(user_id, check_in_date)
++where is_deleted = false and check_in_date is not null;
++
++create unique index if not exists uq_sleep_logs_active_user_date
++on public.sleep_logs(user_id, check_in_date)
++where is_deleted = false and check_in_date is not null;
++
++create index if not exists idx_workout_sessions_user_updated
++on public.workout_sessions(user_id, updated_at desc);
++create index if not exists idx_workout_sets_session_updated
++on public.workout_sets(session_id, updated_at desc);
++create index if not exists idx_meal_logs_user_updated
++on public.meal_logs(user_id, updated_at desc);
++create index if not exists idx_water_logs_user_updated
++on public.water_logs(user_id, updated_at desc);
++create index if not exists idx_mood_logs_user_updated
++on public.mood_logs(user_id, updated_at desc);
++create index if not exists idx_sleep_logs_user_updated
++on public.sleep_logs(user_id, updated_at desc);
++create index if not exists idx_body_measurements_user_updated
++on public.body_measurements(user_id, updated_at desc);
++
++-- Use a single trigger function so every server-side mutation advances recency.
++do $$
++declare
++  table_name text;
++begin
++  foreach table_name in array array[
++    'workout_sessions',
++    'workout_sets',
++    'body_measurements',
++    'meal_logs',
++    'meal_items',
++    'water_logs',
++    'sleep_logs',
++    'mood_logs',
++    'daily_targets'
++  ] loop
++    execute format('drop trigger if exists set_%I_updated_at on public.%I', table_name, table_name);
++    execute format(
++      'create trigger set_%I_updated_at before update on public.%I for each row execute function public.set_updated_at()',
++      table_name,
++      table_name
++    );
++  end loop;
++end
++$$;
+--- /dev/null
++++ b/tests/accessibility-pass.test.mjs
+@@ -0,0 +1,35 @@
++import assert from 'node:assert/strict';
++import test from 'node:test';
++
++import { readProjectFile } from './helpers/project.mjs';
++
++test('critical shared controls expose labels, states, and minimum touch targets', () => {
++  const button = readProjectFile('src/components/Button.tsx');
++  const input = readProjectFile('src/components/Input.tsx');
++  const segmented = readProjectFile('src/components/SegmentedControl.tsx');
++  const mood = readProjectFile('src/components/MoodSelector.tsx');
++  const onboarding = readProjectFile('app/(onboarding)/index.tsx');
++
++  assert.match(button, /accessibilityRole=/);
++  assert.match(button, /min-h-11/);
++  assert.match(input, /accessibilityLabel=/);
++  assert.match(segmented, /accessibilityState=\{\{ selected/);
++  assert.match(segmented, /min-h-11/);
++  assert.match(mood, /accessibilityState=\{\{ selected/);
++  assert.match(onboarding, /accessibilityState=\{\{ selected/);
++});
++
++test('critical dialogs opt into modal semantics and web focus trapping', () => {
++  const hook = readProjectFile('src/lib/use-modal-focus-trap.ts');
++  const nutrition = readProjectFile('app/(tabs)/nutrition.tsx');
++  const progress = readProjectFile('app/(tabs)/progress.tsx');
++  const library = readProjectFile('src/features/workouts/ExerciseLibrary.tsx');
++  const sheet = readProjectFile('src/features/workouts/live/components/sheets/BaseSheet.tsx');
++
++  assert.match(hook, /Shift|shiftKey/);
++  assert.match(hook, /previouslyFocused/);
++  for (const source of [nutrition, progress, library, sheet]) {
++    assert.match(source, /useModalFocusTrap/);
++    assert.match(source, /accessibilityViewIsModal/);
++  }
++});
