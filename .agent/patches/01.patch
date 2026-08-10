@@ -1,0 +1,336 @@
+--- /dev/null
++++ b/.github/workflows/e2e-android.yml
+@@ -0,0 +1,45 @@
++name: Android E2E smoke
++
++on:
++  workflow_dispatch:
++    inputs:
++      apk_url:
++        description: Direct URL for an auth-preview APK produced from the commit under test
++        required: true
++        type: string
++
++permissions:
++  contents: read
++
++jobs:
++  maestro-cloud:
++    name: Critical Android journey
++    runs-on: ubuntu-latest
++    timeout-minutes: 30
++
++    steps:
++      - name: Check out repository
++        uses: actions/checkout@v4
++
++      - name: Download auth-preview APK
++        run: curl --fail --location --retry 3 --output "$RUNNER_TEMP/app.apk" "${{ inputs.apk_url }}"
++
++      - name: Run Maestro Cloud smoke suite
++        id: maestro
++        uses: mobile-dev-inc/action-maestro-cloud@v3.0.1
++        with:
++          api-key: ${{ secrets.MAESTRO_CLOUD_API_KEY }}
++          project-id: ${{ secrets.MAESTRO_CLOUD_PROJECT_ID }}
++          app-file: ${{ runner.temp }}/app.apk
++          workspace: .maestro
++          device-model: pixel_7
++          device-os: android-34
++          env: |
++            E2E_EMAIL=${{ secrets.E2E_USER_EMAIL }}
++            E2E_PASSWORD=${{ secrets.E2E_USER_PASSWORD }}
++
++      - name: Record Maestro evidence URL
++        if: always()
++        run: |
++          echo "### Maestro Cloud" >> "$GITHUB_STEP_SUMMARY"
++          echo "${MAESTRO_CLOUD_CONSOLE_URL:-No console URL returned}" >> "$GITHUB_STEP_SUMMARY"
+--- /dev/null
++++ b/.github/workflows/release-gate.yml
+@@ -0,0 +1,84 @@
++name: Release candidate gate
++
++on:
++  workflow_dispatch:
++    inputs:
++      evidence_file:
++        description: Committed JSON evidence file for this exact commit
++        required: true
++        type: string
++
++permissions:
++  contents: read
++  issues: read
++
++jobs:
++  automated-release-checks:
++    name: Locked install, quality, Expo, and bundles
++    runs-on: ubuntu-latest
++    timeout-minutes: 30
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version-file: .nvmrc
++          cache: npm
++      - name: Verify pinned npm
++        run: test "$(npm --version)" = "10.9.8"
++      - name: Install locked dependencies
++        run: npm ci --no-audit --no-fund
++      - name: Run quality suite
++        run: npm run test:all
++      - name: Validate Expo dependency graph
++        run: npm run check:expo
++      - name: Validate EAS preview configuration
++        run: npm run check:preview && npm run check:eas-link
++      - name: Export Android bundle
++        run: npm run bundle:android
++      - name: Export iOS bundle
++        run: npm run bundle:ios
++
++  migration-contract:
++    name: Fresh Supabase contract
++    runs-on: ubuntu-latest
++    timeout-minutes: 20
++    steps:
++      - uses: actions/checkout@v4
++      - uses: supabase/setup-cli@v2
++        with:
++          version: 2.101.0
++      - name: Start Supabase and rebuild migrations
++        run: |
++          supabase start -x studio,imgproxy,realtime,storage-api,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
++          supabase db reset --local --no-seed
++      - name: Export local credentials
++        shell: bash
++        run: |
++          supabase status -o env > "$RUNNER_TEMP/supabase.env"
++          set -a
++          . "$RUNNER_TEMP/supabase.env"
++          set +a
++          echo "SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
++          echo "SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
++          echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
++      - run: node --test tests/integration/supabase-sync.integration.test.mjs
++      - if: always()
++        run: supabase stop --no-backup || true
++
++  evidence:
++    name: Manual evidence and release blockers
++    runs-on: ubuntu-latest
++    needs: [automated-release-checks, migration-contract]
++    steps:
++      - uses: actions/checkout@v4
++      - name: Verify no explicit P0/P1 release blocker is open
++        env:
++          GH_TOKEN: ${{ github.token }}
++        run: |
++          count=$(gh issue list --state open --label release-blocker --limit 100 --json number,labels \
++            --jq '[.[] | select(any(.labels[]; .name == "priority:P0" or .name == "priority:P1"))] | length')
++          test "$count" = "0"
++      - name: Validate release evidence
++        env:
++          RELEASE_EVIDENCE: ${{ inputs.evidence_file }}
++        run: node scripts/verify-release-candidate.mjs "$RELEASE_EVIDENCE"
+--- /dev/null
++++ b/.github/workflows/supabase-integration.yml
+@@ -0,0 +1,69 @@
++name: Supabase integration
++
++on:
++  pull_request:
++    branches: [main, master]
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++concurrency:
++  group: supabase-integration-${{ github.ref }}
++  cancel-in-progress: true
++
++jobs:
++  sync-contract:
++    name: Fresh database sync contract
++    runs-on: ubuntu-latest
++    timeout-minutes: 20
++
++    steps:
++      - name: Check out repository
++        uses: actions/checkout@v4
++
++      - name: Set up Supabase CLI
++        uses: supabase/setup-cli@v2
++        with:
++          version: 2.101.0
++
++      - name: Start local Supabase services
++        run: >-
++          supabase start
++          -x studio,imgproxy,realtime,storage-api,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
++
++      - name: Rebuild database from committed migrations
++        run: supabase db reset --local --no-seed
++
++      - name: Export local service credentials
++        shell: bash
++        run: |
++          supabase status -o env > "$RUNNER_TEMP/supabase.env"
++          set -a
++          . "$RUNNER_TEMP/supabase.env"
++          set +a
++          echo "SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
++          echo "SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
++          echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
++
++      - name: Run behavioral sync integration suite
++        run: node --test tests/integration/supabase-sync.integration.test.mjs
++
++      - name: Capture migration diagnostics
++        if: failure()
++        run: |
++          mkdir -p "$RUNNER_TEMP/supabase-diagnostics"
++          supabase status > "$RUNNER_TEMP/supabase-diagnostics/status.txt" 2>&1 || true
++          supabase migration list --local > "$RUNNER_TEMP/supabase-diagnostics/migrations.txt" 2>&1 || true
++
++      - name: Upload migration diagnostics
++        if: failure()
++        uses: actions/upload-artifact@v4
++        with:
++          name: supabase-integration-diagnostics
++          path: ${{ runner.temp }}/supabase-diagnostics
++          retention-days: 14
++
++      - name: Stop local Supabase
++        if: always()
++        run: supabase stop --no-backup || true
+--- /dev/null
++++ b/.maestro/critical-smoke.yaml
+@@ -0,0 +1,89 @@
++appId: com.farisnasse.allinonefitness
++name: Critical fitness journey
++tags:
++  - release-smoke
++---
++- launchApp:
++    clearState: true
++- assertVisible: "Welcome back"
++- tapOn: "Email"
++- inputText: ${E2E_EMAIL}
++- tapOn: "Password"
++- inputText: ${E2E_PASSWORD}
++- tapOn: "Sign in"
++
++- runFlow:
++    when:
++      visible: "Set your starting point"
++    commands:
++      - tapOn: "Build muscle"
++      - tapOn: "intermediate"
++      - tapOn: "Finish onboarding"
++
++- assertVisible: "Today"
++
++# Workout persistence and offline queue path.
++- tapOn: "Train"
++- tapOn: "Start workout"
++- assertVisible: "Quick workout"
++- setAirplaneMode: enabled
++- tapOn: "Add first exercise"
++- tapOn: "Search exercise, muscle, or equipment"
++- inputText: "Barbell Bench Press"
++- tapOn: "Barbell Bench Press"
++- tapOn: "Use this exercise"
++- tapOn: "Log set 1"
++- assertVisible: ".*1 set logged.*"
++- setAirplaneMode: disabled
++- stopApp
++- launchApp
++- tapOn: "Train"
++- tapOn: "Resume workout"
++- assertVisible: ".*1 set logged.*"
++- tapOn: "Finish workout"
++- tapOn: "Complete workout"
++
++# Nutrition and water.
++- tapOn: "Eat"
++- tapOn: "Add 250 milliliters of water"
++- assertVisible: "250 ml logged today"
++- tapOn: "Add food"
++- tapOn: "Search food name..."
++- inputText: "E2E Test Food"
++- scrollUntilVisible:
++    element:
++      text: "Create new food"
++    direction: DOWN
++- tapOn: "Create new food"
++- scrollUntilVisible:
++    element:
++      text: "Log food"
++    direction: DOWN
++- tapOn: "Log food"
++
++# Wellness and measurement logging.
++- tapOn: "Rest"
++- tapOn: "Manual steps"
++- eraseText
++- inputText: "5432"
++- tapOn: ".*today's check-in"
++- assertVisible: "Saved today"
++
++- tapOn: "Growth"
++- tapOn: "Log measurement"
++- tapOn: "Weight (lb)"
++- inputText: "170"
++- tapOn: "Save measurement"
++- assertVisible: ".*170.*lb.*"
++
++# Cloud restoration after sign-out/in.
++- tapOn: "More"
++- tapOn: "Sign out"
++- assertVisible: "Welcome back"
++- tapOn: "Email"
++- inputText: ${E2E_EMAIL}
++- tapOn: "Password"
++- inputText: ${E2E_PASSWORD}
++- tapOn: "Sign in"
++- tapOn: "Eat"
++- assertVisible: ".*250 ml logged today.*"
+--- a/README.md
++++ b/README.md
+@@ -408,3 +408,34 @@
+ The app includes a root recovery screen, optional Sentry crash reporting, shared network state, and coordinated local-first sync status across workouts, nutrition, wellness, and progress. Provider failures are logged with diagnostic context while user-facing screens show stable product copy. Offline mode remains fully usable for on-device logging.
+ 
+ See [`docs/runtime-protection.md`](docs/runtime-protection.md) for environment configuration, release metadata, source-map setup, and manual verification steps.
++
++## Cloud restoration and sync contracts
++
++Authenticated cloud mode is two-way for workouts, nutrition/water, wellness, and body measurements. Local writes remain immediate and are queued for upload; refresh/sign-in also hydrates bounded remote history back into the local mirror. Pending/failed local edits win over remote refresh until they are synchronized, while already-synced conflicts use the newest meaningful `updated_at` timestamp. Deletions synchronize as tombstones so a stale device cannot recreate a deleted row simply by replaying old data.
++
++Local schema upgrades use `PRAGMA user_version` (or the equivalent web-store schema version) and migration steps rather than depending only on tolerant `ALTER TABLE` calls. Cloud migration `0009_harden_sync_contracts.sql` adds the recency, uniqueness, indexes, sort-order, and tombstone fields required by the merge rules.
++
++A fresh Supabase behavioral check is committed in `tests/integration/supabase-sync.integration.test.mjs` and `.github/workflows/supabase-integration.yml`. It rebuilds the database from migrations, creates two users, exercises ownership/RLS, edits/tombstones/retries, duplicate replay, wellness/daily-target uniqueness, recency triggers, and account-delete cascades.
++
++## Account data controls
++
++The **More** tab provides a portable JSON export and permanent account deletion for authenticated builds. The export includes workouts/sets/targets, meal logs/items/water, cached personal/recent foods, wellness check-ins, body measurements, and daily targets. Permanent deletion is performed by the authenticated `delete-account` Supabase Edge Function using a server-only service-role key; after the server confirms deletion, the app clears that account's local records and local auth session.
++
++Deploy the function to each cloud environment before enabling production account deletion:
++
++```bash
++supabase functions deploy delete-account
++```
++
++Never expose `SUPABASE_SERVICE_ROLE_KEY` through an Expo public environment variable or client bundle.
++
++## Accessibility, E2E, and release gates
++
++Release operations are versioned with the product:
++
++- `docs/accessibility-checklist.md` covers VoiceOver, TalkBack, and web keyboard/focus verification.
++- `.maestro/critical-smoke.yaml` and `.github/workflows/e2e-android.yml` exercise the critical Android journey, including restart persistence, offline/online replay, every core logging domain, and sign-out/sign-in restoration.
++- `docs/e2e-runbook.md` documents Android automation and the required iOS manual pass.
++- `docs/release-checklist.md` and `scripts/verify-release-candidate.mjs` define the release evidence contract used by `.github/workflows/release-gate.yml`.
++- `docs/privacy-policy.md`, `docs/terms-of-use.md`, and `docs/support.md` are repository pre-release versions that must be replaced/published as final canonical production documents before store launch.
++- `docs/brand-release-readiness.md` records the current working identity and the required dated trademark/store/domain availability review. Source code does not constitute legal/name clearance.
