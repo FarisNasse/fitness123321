@@ -1,0 +1,225 @@
+--- a/src/lib/local-db.ts
++++ b/src/lib/local-db.ts
+@@ -1787,8 +2344,13 @@
+       ) {
+         const [userId] = params;
+ 
++        const excludeDeleted = queryExcludesDeleted(normalized);
+         return store.mood_logs_local
+-          .filter((checkIn) => String(checkIn.user_id) === String(userId))
++          .filter(
++            (checkIn) =>
++              String(checkIn.user_id) === String(userId) &&
++              (!excludeDeleted || !isDeletedRecord(checkIn))
++          )
+           .sort((a, b) => {
+             const dateDifference = String(b.check_in_date).localeCompare(
+               String(a.check_in_date)
+@@ -2083,6 +2645,154 @@
+   `);
+ }
+ 
++export const LOCAL_DB_SCHEMA_VERSION = 3;
++
++function getLocalDbSchemaVersion() {
++  if (Platform.OS === 'web') {
++    return Number(readWebStore().schema_version ?? 0);
++  }
++
++  return Number(db.getAllSync<{ user_version: number }>('pragma user_version;')[0]?.user_version ?? 0);
++}
++
++function setLocalDbSchemaVersion(version: number) {
++  if (Platform.OS === 'web') {
++    const store = readWebStore();
++    store.schema_version = version;
++    writeWebStore(store);
++    return;
++  }
++
++  db.execSync(`pragma user_version = ${version};`);
++}
++
++function migrateLocalDbV1() {
++  migrateExerciseTargetsToOwnerScope();
++  addMissingLocalColumn('workout_sessions_local', 'is_deleted integer not null default 0');
++  addMissingLocalColumn('workout_sessions_local', 'deleted_at text');
++  addMissingLocalColumn('workout_sets_local', 'is_deleted integer not null default 0');
++  addMissingLocalColumn('workout_sets_local', 'deleted_at text');
++  addMissingLocalColumn('meal_items_local', 'food_source text');
++  addMissingLocalColumn('meal_items_local', 'source_food_id text');
++  addMissingLocalColumn('meal_items_local', 'fdc_id integer');
++  addMissingLocalColumn('meal_items_local', 'fiber_g real');
++  addMissingLocalColumn('meal_items_local', 'sugar_g real');
++  addMissingLocalColumn('meal_items_local', 'saturated_fat_g real');
++  addMissingLocalColumn('meal_items_local', 'sodium_mg real');
++  addMissingLocalColumn(
++    'food_cache_local',
++    "user_id text not null default 'local-dev-user'"
++  );
++  addMissingLocalColumn('food_cache_local', 'nutrition_basis_size real');
++  addMissingLocalColumn('food_cache_local', 'nutrition_basis_unit text');
++  addMissingLocalColumn('food_cache_local', 'details_complete integer not null default 1');
++  addMissingLocalColumn('food_cache_local', 'publication_date text');
++  addMissingLocalColumn('mood_logs_local', 'check_in_date text');
++  addMissingLocalColumn('mood_logs_local', 'sleep_start text');
++  addMissingLocalColumn('mood_logs_local', 'sleep_end text');
++  addMissingLocalColumn('mood_logs_local', 'steps integer not null default 0');
++}
++
++function migrateLocalDbV2() {
++  addMissingLocalColumn('meal_logs_local', 'is_deleted integer not null default 0');
++  addMissingLocalColumn('meal_logs_local', 'deleted_at text');
++  addMissingLocalColumn('meal_items_local', 'is_deleted integer not null default 0');
++  addMissingLocalColumn('meal_items_local', 'deleted_at text');
++  addMissingLocalColumn('water_logs_local', 'is_deleted integer not null default 0');
++  addMissingLocalColumn('water_logs_local', 'deleted_at text');
++  addMissingLocalColumn('mood_logs_local', 'sleep_server_id text');
++  addMissingLocalColumn('mood_logs_local', 'is_deleted integer not null default 0');
++  addMissingLocalColumn('mood_logs_local', 'deleted_at text');
++  addMissingLocalColumn('body_measurements_local', 'is_deleted integer not null default 0');
++  addMissingLocalColumn('body_measurements_local', 'deleted_at text');
++}
++
++function migrateLocalDbV3() {
++  if (Platform.OS === 'web') {
++    const store = readWebStore();
++    const seenWellness = new Map<string, Record<string, unknown>>();
++
++    for (const row of [...store.mood_logs_local].sort((a, b) =>
++      Date.parse(String(b.updated_at ?? 0)) - Date.parse(String(a.updated_at ?? 0)))) {
++      const key = `${String(row.user_id)}:${String(row.check_in_date)}`;
++      if (!seenWellness.has(key)) seenWellness.set(key, row);
++    }
++    store.mood_logs_local = Array.from(seenWellness.values());
++    writeWebStore(store);
++    return;
++  }
++
++  db.execSync(`
++    update workout_sessions_local
++    set is_deleted = 1
++    where deleted_at is not null
++      and coalesce(is_deleted, 0) = 0;
++
++    update workout_sets_local
++    set is_deleted = 1
++    where deleted_at is not null
++      and coalesce(is_deleted, 0) = 0;
++
++    delete from mood_logs_local
++    where rowid in (
++      select rowid
++      from (
++        select rowid,
++               row_number() over (
++                 partition by user_id, check_in_date
++                 order by updated_at desc, rowid desc
++               ) as duplicate_rank
++        from mood_logs_local
++      )
++      where duplicate_rank > 1
++    );
++
++    create index if not exists idx_exercise_targets_owner_exercise
++    on exercise_targets_local(user_id, exercise_id);
++
++    create unique index if not exists idx_mood_logs_user_date
++    on mood_logs_local(user_id, check_in_date);
++
++    create index if not exists idx_workout_sessions_owner_updated
++    on workout_sessions_local(user_id, updated_at desc);
++
++    create index if not exists idx_workout_sessions_owner_active_started
++    on workout_sessions_local(user_id, is_deleted, started_at desc);
++
++    create index if not exists idx_meal_logs_owner_updated
++    on meal_logs_local(user_id, updated_at desc);
++
++    create index if not exists idx_water_logs_owner_updated
++    on water_logs_local(user_id, updated_at desc);
++
++    create index if not exists idx_wellness_owner_updated
++    on mood_logs_local(user_id, updated_at desc);
++  `);
++}
++
++const LOCAL_DB_MIGRATIONS = [
++  { version: 1, migrate: migrateLocalDbV1 },
++  { version: 2, migrate: migrateLocalDbV2 },
++  { version: 3, migrate: migrateLocalDbV3 },
++] as const;
++
++function runLocalDbMigrations() {
++  let currentVersion = getLocalDbSchemaVersion();
++
++  if (currentVersion > LOCAL_DB_SCHEMA_VERSION) {
++    throw new Error(
++      `Local database schema ${currentVersion} is newer than supported schema ${LOCAL_DB_SCHEMA_VERSION}.`
++    );
++  }
++
++  for (const migration of LOCAL_DB_MIGRATIONS) {
++    if (migration.version <= currentVersion) continue;
++    migration.migrate();
++    setLocalDbSchemaVersion(migration.version);
++    currentVersion = migration.version;
++  }
++}
++
+ export function initializeLocalDb() {
+   db.execSync(`
+     create table if not exists workout_sessions_local (
+@@ -2145,6 +2855,8 @@
+       user_id text not null,
+       logged_at text not null,
+       meal_type text not null,
++      is_deleted integer not null default 0,
++      deleted_at text,
+       sync_status text not null default 'pending',
+       updated_at text not null
+     );
+@@ -2168,6 +2880,8 @@
+       sugar_g real,
+       saturated_fat_g real,
+       sodium_mg real,
++      is_deleted integer not null default 0,
++      deleted_at text,
+       sync_status text not null default 'pending',
+       updated_at text not null
+     );
+@@ -2207,6 +2921,8 @@
+       user_id text not null,
+       logged_at text not null,
+       amount_ml integer not null,
++      is_deleted integer not null default 0,
++      deleted_at text,
+       sync_status text not null default 'pending',
+       updated_at text not null
+     );
+@@ -2224,6 +2940,8 @@
+       arm_cm real,
+       thigh_cm real,
+       notes text,
++      is_deleted integer not null default 0,
++      deleted_at text,
+       sync_status text not null default 'pending',
+       updated_at text not null
+     );
+@@ -2231,6 +2949,7 @@
+     create table if not exists mood_logs_local (
+       local_id text primary key,
+       server_id text,
++      sleep_server_id text,
+       user_id text not null,
+       check_in_date text not null,
+       logged_at text not null,
+@@ -2241,6 +2960,8 @@
+       energy_score integer,
+       steps integer not null default 0,
+       notes text,
++      is_deleted integer not null default 0,
++      deleted_at text,
+       sync_status text not null default 'pending',
+       updated_at text not null
+     );
