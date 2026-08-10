@@ -1,0 +1,390 @@
+--- a/src/features/workouts/workout-service.ts
++++ b/src/features/workouts/workout-service.ts
+@@ -995,7 +1306,8 @@
+   supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase'],
+   set: LocalWorkoutSet,
+   remoteSessionId: string,
+-  fallbackDeletedAt?: string | null
++  fallbackDeletedAt?: string | null,
++  exerciseSortOrder?: number | null
+ ) {
+   const remoteSetId = set.server_id ?? set.local_id;
+   const deletedAt = set.deleted_at ?? fallbackDeletedAt ?? new Date().toISOString();
+@@ -1010,6 +1322,7 @@
+         reps: set.reps,
+         weight: set.weight,
+         completed: Boolean(set.completed),
++        exercise_sort_order: exerciseSortOrder ?? null,
+         is_deleted: true,
+         deleted_at: deletedAt,
+       },
+@@ -1035,6 +1348,7 @@
+   const remoteSessionId = session.server_id ?? session.local_id;
+   const deletedAt = session.deleted_at ?? new Date().toISOString();
+   const setsToFinalize = getSetsBySessionForSync(session.user_id, session.local_id);
++  const exerciseSortOrder = getExerciseSortOrderMap(session.user_id, session.local_id);
+ 
+   const { data, error } = await supabase
+     .from('workout_sessions')
+@@ -1071,7 +1385,8 @@
+       supabase,
+       set,
+       syncedSessionId,
+-      deletedAt
++      deletedAt,
++      exerciseSortOrder.get(set.exercise_id) ?? null
+     );
+     if (!didDelete) failedSetCount += 1;
+   }
+@@ -1201,6 +1516,7 @@
+         continue;
+       }
+ 
++      const exerciseSortOrder = getExerciseSortOrderMap(session.user_id, session.local_id);
+       const setsToSync = getSetsBySessionForSync(session.user_id, session.local_id).filter(
+         (set) => set.sync_status === 'pending' || set.sync_status === 'failed'
+       );
+@@ -1216,7 +1532,9 @@
+         const didDelete = await syncDeletedWorkoutSet(
+           supabase,
+           set,
+-          serverSessionId
++          serverSessionId,
++          null,
++          exerciseSortOrder.get(set.exercise_id) ?? null
+         );
+         if (!didDelete) failedSetCount += 1;
+       }
+@@ -1230,6 +1548,7 @@
+           reps: set.reps,
+           weight: set.weight,
+           completed: Boolean(set.completed),
++          exercise_sort_order: exerciseSortOrder.get(set.exercise_id) ?? null,
+           is_deleted: false,
+           deleted_at: null,
+         }));
+@@ -1280,6 +1599,8 @@
+       markWorkoutSessionFailed(session.local_id);
+     }
+   }
++
++  await refreshWorkoutSessionsFromRemoteWithClient(userId, supabase);
+ }
+ 
+ async function drainWorkoutSyncQueue() {
+--- a/src/lib/local-db.ts
++++ b/src/lib/local-db.ts
+@@ -70,6 +70,8 @@
+   user_id: string;
+   logged_at: string;
+   meal_type: LocalMealType;
++  is_deleted: number;
++  deleted_at: string | null;
+   sync_status: 'pending' | 'synced' | 'failed';
+   updated_at: string;
+ };
+@@ -93,6 +95,8 @@
+   sugar_g: number | null;
+   saturated_fat_g: number | null;
+   sodium_mg: number | null;
++  is_deleted: number;
++  deleted_at: string | null;
+   sync_status: 'pending' | 'synced' | 'failed';
+   updated_at: string;
+ };
+@@ -132,6 +136,8 @@
+   user_id: string;
+   logged_at: string;
+   amount_ml: number;
++  is_deleted: number;
++  deleted_at: string | null;
+   sync_status: 'pending' | 'synced' | 'failed';
+   updated_at: string;
+ };
+@@ -149,6 +155,8 @@
+   arm_cm: number | null;
+   thigh_cm: number | null;
+   notes: string | null;
++  is_deleted: number;
++  deleted_at: string | null;
+   sync_status: 'pending' | 'synced' | 'failed';
+   updated_at: string;
+ };
+@@ -156,6 +164,7 @@
+ export type LocalWellnessCheckIn = {
+   local_id: string;
+   server_id: string | null;
++  sleep_server_id: string | null;
+   user_id: string;
+   check_in_date: string;
+   logged_at: string;
+@@ -166,11 +175,14 @@
+   energy_score: number;
+   steps: number;
+   notes: string | null;
++  is_deleted: number;
++  deleted_at: string | null;
+   sync_status: 'pending' | 'synced' | 'failed';
+   updated_at: string;
+ };
+ 
+ type WebStore = {
++  schema_version: number;
+   workout_sessions_local: Record<string, unknown>[];
+   workout_session_exercises_local: Record<string, unknown>[];
+   exercise_targets_local: Record<string, unknown>[];
+@@ -205,6 +217,7 @@
+ 
+ function createEmptyWebStore(): WebStore {
+   return {
++    schema_version: 0,
+     workout_sessions_local: [],
+     workout_session_exercises_local: [],
+     exercise_targets_local: [],
+@@ -241,6 +254,32 @@
+       ...target,
+       user_id: target.user_id || LOCAL_DEV_USER_ID,
+     }));
++    parsed.meal_logs_local = parsed.meal_logs_local.map((row) => ({
++      is_deleted: 0,
++      deleted_at: null,
++      ...row,
++    }));
++    parsed.meal_items_local = parsed.meal_items_local.map((row) => ({
++      is_deleted: 0,
++      deleted_at: null,
++      ...row,
++    }));
++    parsed.water_logs_local = parsed.water_logs_local.map((row) => ({
++      is_deleted: 0,
++      deleted_at: null,
++      ...row,
++    }));
++    parsed.mood_logs_local = parsed.mood_logs_local.map((row) => ({
++      sleep_server_id: null,
++      is_deleted: 0,
++      deleted_at: null,
++      ...row,
++    }));
++    parsed.body_measurements_local = parsed.body_measurements_local.map((row) => ({
++      is_deleted: 0,
++      deleted_at: null,
++      ...row,
++    }));
+     parsed.food_cache_local = parsed.food_cache_local.map((food) => ({
+       ...food,
+       user_id: food.user_id || LOCAL_DEV_USER_ID,
+@@ -272,6 +311,20 @@
+   return sql.replace(/\s+/g, ' ').trim().toLowerCase();
+ }
+ 
++function upsertWebRow(
++  rows: Record<string, unknown>[],
++  row: Record<string, unknown>,
++  key = 'local_id'
++) {
++  const existing = rows.find((item) => String(item[key]) === String(row[key]));
++
++  if (existing) {
++    Object.assign(existing, row);
++  } else {
++    rows.push(row);
++  }
++}
++
+ function isDeletedRecord(record: Record<string, unknown>) {
+   return (
+     Boolean(record.deleted_at) ||
+@@ -298,6 +351,157 @@
+     runSync(sql, params = []) {
+       const normalized = normalizeSql(sql);
+       const store = readWebStore();
++
++      if (normalized.startsWith('replace into workout_sessions_local')) {
++        const [localId, serverId, userId, name, startedAt, completedAt, durationSeconds, notes, isDeleted, deletedAt, updatedAt] = params;
++        upsertWebRow(store.workout_sessions_local, {
++          local_id: localId,
++          server_id: serverId,
++          user_id: userId,
++          name,
++          started_at: startedAt,
++          completed_at: completedAt,
++          duration_seconds: durationSeconds,
++          notes,
++          is_deleted: Number(isDeleted ?? 0),
++          deleted_at: deletedAt,
++          sync_status: 'synced',
++          updated_at: updatedAt,
++        });
++        writeWebStore(store);
++        return;
++      }
++
++      if (normalized.startsWith('replace into workout_sets_local')) {
++        const [localId, serverId, sessionLocalId, exerciseId, setNumber, reps, weight, completed, isDeleted, deletedAt, updatedAt] = params;
++        upsertWebRow(store.workout_sets_local, {
++          local_id: localId,
++          server_id: serverId,
++          session_local_id: sessionLocalId,
++          exercise_id: exerciseId,
++          set_number: setNumber,
++          reps,
++          weight,
++          completed: Number(completed ?? 0),
++          is_deleted: Number(isDeleted ?? 0),
++          deleted_at: deletedAt,
++          sync_status: 'synced',
++          updated_at: updatedAt,
++        });
++        writeWebStore(store);
++        return;
++      }
++
++      if (normalized.startsWith('replace into workout_session_exercises_local')) {
++        const [localId, sessionLocalId, exerciseId, sortOrder, createdAt, updatedAt] = params;
++        const conflicting = store.workout_session_exercises_local.find(
++          (item) => item.session_local_id === sessionLocalId && item.exercise_id === exerciseId
++        );
++        if (conflicting && conflicting.local_id !== localId) {
++          store.workout_session_exercises_local = store.workout_session_exercises_local.filter(
++            (item) => item !== conflicting
++          );
++        }
++        upsertWebRow(store.workout_session_exercises_local, {
++          local_id: localId,
++          session_local_id: sessionLocalId,
++          exercise_id: exerciseId,
++          sort_order: Number(sortOrder ?? 0),
++          created_at: createdAt,
++          updated_at: updatedAt,
++        });
++        writeWebStore(store);
++        return;
++      }
++
++      if (normalized.startsWith('replace into meal_logs_local')) {
++        const [localId, serverId, userId, loggedAt, mealType, isDeleted, deletedAt, updatedAt] = params;
++        upsertWebRow(store.meal_logs_local, {
++          local_id: localId,
++          server_id: serverId,
++          user_id: userId,
++          logged_at: loggedAt,
++          meal_type: mealType,
++          is_deleted: Number(isDeleted ?? 0),
++          deleted_at: deletedAt,
++          sync_status: 'synced',
++          updated_at: updatedAt,
++        });
++        writeWebStore(store);
++        return;
++      }
++
++      if (normalized.startsWith('replace into meal_items_local')) {
++        const [localId, serverId, mealLogLocalId, foodId, foodSource, sourceFoodId, fdcId, foodName, quantity, unit, calories, proteinG, carbsG, fatG, fiberG, sugarG, saturatedFatG, sodiumMg, isDeleted, deletedAt, updatedAt] = params;
++        upsertWebRow(store.meal_items_local, {
++          local_id: localId,
++          server_id: serverId,
++          meal_log_local_id: mealLogLocalId,
++          food_id: foodId,
++          food_source: foodSource,
++          source_food_id: sourceFoodId,
++          fdc_id: fdcId,
++          food_name: foodName,
++          quantity,
++          unit,
++          calories,
++          protein_g: proteinG,
++          carbs_g: carbsG,
++          fat_g: fatG,
++          fiber_g: fiberG,
++          sugar_g: sugarG,
++          saturated_fat_g: saturatedFatG,
++          sodium_mg: sodiumMg,
++          is_deleted: Number(isDeleted ?? 0),
++          deleted_at: deletedAt,
++          sync_status: 'synced',
++          updated_at: updatedAt,
++        });
++        writeWebStore(store);
++        return;
++      }
++
++      if (normalized.startsWith('replace into water_logs_local')) {
++        const [localId, serverId, userId, loggedAt, amountMl, isDeleted, deletedAt, updatedAt] = params;
++        upsertWebRow(store.water_logs_local, {
++          local_id: localId,
++          server_id: serverId,
++          user_id: userId,
++          logged_at: loggedAt,
++          amount_ml: amountMl,
++          is_deleted: Number(isDeleted ?? 0),
++          deleted_at: deletedAt,
++          sync_status: 'synced',
++          updated_at: updatedAt,
++        });
++        writeWebStore(store);
++        return;
++      }
++
++      if (normalized.startsWith('replace into mood_logs_local')) {
++        const [localId, serverId, sleepServerId, userId, checkInDate, loggedAt, sleepStart, sleepEnd, moodScore, stressScore, energyScore, steps, notes, isDeleted, deletedAt, updatedAt] = params;
++        upsertWebRow(store.mood_logs_local, {
++          local_id: localId,
++          server_id: serverId,
++          sleep_server_id: sleepServerId,
++          user_id: userId,
++          check_in_date: checkInDate,
++          logged_at: loggedAt,
++          sleep_start: sleepStart,
++          sleep_end: sleepEnd,
++          mood_score: moodScore,
++          stress_score: stressScore,
++          energy_score: energyScore,
++          steps,
++          notes,
++          is_deleted: Number(isDeleted ?? 0),
++          deleted_at: deletedAt,
++          sync_status: 'synced',
++          updated_at: updatedAt,
++        });
++        writeWebStore(store);
++        return;
++      }
+ 
+       if (normalized.startsWith('insert into workout_sessions_local')) {
+         const [localId, userId, name, startedAt, updatedAt] = params;
+@@ -422,6 +626,8 @@
+           user_id: userId,
+           logged_at: loggedAt,
+           meal_type: mealType,
++          is_deleted: 0,
++          deleted_at: null,
+           sync_status: 'pending',
+           updated_at: updatedAt,
+         });
+@@ -471,6 +677,8 @@
+           sugar_g: sugarG,
+           saturated_fat_g: saturatedFatG,
+           sodium_mg: sodiumMg,
++          is_deleted: 0,
++          deleted_at: null,
+           sync_status: 'pending',
+           updated_at: updatedAt,
+         });
+@@ -561,6 +769,8 @@
+           user_id: userId,
+           logged_at: loggedAt,
+           amount_ml: amountMl,
++          is_deleted: 0,
++          deleted_at: null,
+           sync_status: 'pending',
+           updated_at: updatedAt,
+         });
+@@ -587,6 +797,7 @@
+         store.mood_logs_local.push({
+           local_id: localId,
+           server_id: null,
++          sleep_server_id: null,
+           user_id: userId,
+           check_in_date: checkInDate,
+           logged_at: loggedAt,
