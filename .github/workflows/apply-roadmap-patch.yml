@@ -1,0 +1,41 @@
+name: Apply verified roadmap patch
+
+on:
+  push:
+    branches: [agent/complete-open-roadmap]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[agent-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out assembly branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/complete-open-roadmap
+          fetch-depth: 0
+
+      - name: Apply verified patch set
+        shell: bash
+        run: |
+          set -euo pipefail
+          for patch in $(find .agent/patches -type f -name '*.patch' | sort); do
+            echo "Applying $patch"
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          rm -rf .agent/patches
+          rm -f .github/workflows/apply-roadmap-patch.yml
+
+      - name: Commit assembled implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Complete remaining roadmap implementation [agent-applied]"
+          git push origin HEAD:agent/complete-open-roadmap
