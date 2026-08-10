@@ -1,0 +1,341 @@
+--- a/src/features/workouts/workout-service.ts
++++ b/src/features/workouts/workout-service.ts
+@@ -14,6 +14,7 @@
+ import { reportError } from '@/src/lib/error-reporting';
+ import { LOCAL_DEV_USER_ID, USE_REMOTE_WORKOUT_SYNC } from '@/src/lib/runtime-flags';
+ import { markSyncPending } from '@/src/lib/sync-events';
++import { latestSyncTimestamp, shouldApplyRemoteRow } from '@/src/lib/sync-conflict.mjs';
+ import {
+   buildProgressionRecommendation,
+   buildProgressionSummaryLines,
+@@ -25,6 +26,38 @@
+ export type LocalWorkoutSessionExerciseRow = LocalWorkoutSessionExercise;
+ export type ExerciseTargetLocalRow = ExerciseTargetLocal;
+ export type WorkoutSyncUiStatus = 'pending' | 'syncing' | 'synced' | 'failed';
++
++type RemoteWorkoutSessionRow = {
++  id: string;
++  user_id: string;
++  name: string;
++  started_at: string;
++  completed_at: string | null;
++  duration_seconds: number | null;
++  notes: string | null;
++  is_deleted: boolean | null;
++  deleted_at: string | null;
++  updated_at: string | null;
++};
++
++type RemoteWorkoutSetRow = {
++  id: string;
++  session_id: string;
++  exercise_id: string;
++  set_number: number;
++  reps: number | null;
++  weight: number | string | null;
++  completed: boolean | null;
++  is_deleted: boolean | null;
++  deleted_at: string | null;
++  updated_at: string | null;
++  created_at: string | null;
++  exercise_sort_order: number | null;
++};
++
++const REMOTE_WORKOUT_HISTORY_LIMIT = 100;
++const REMOTE_WORKOUT_SET_PAGE_SIZE = 500;
++const REMOTE_WORKOUT_SET_MAX_PAGES = 10;
+ export type SmartDefaultSource = 'history' | 'target' | 'fallback';
+ 
+ export type SmartExerciseSetDefault = {
+@@ -427,6 +460,22 @@
+   );
+ }
+ 
++export function getActiveWorkoutSession(userId: string) {
++  return db.getAllSync<LocalWorkoutSessionRow>(
++    `
++    select *
++    from workout_sessions_local
++    where user_id = ?
++      and completed_at is null
++      and coalesce(is_deleted, 0) = 0
++      and deleted_at is null
++    order by started_at desc
++    limit 1
++    `,
++    [userId]
++  )[0] ?? null;
++}
++
+ export function getRecentLocalWorkoutSessions(userId: string, limit = 5) {
+   return db.getAllSync<LocalWorkoutSessionRow>(
+     `
+@@ -921,6 +970,268 @@
+   markSyncPending('workouts');
+ }
+ 
++function findLocalWorkoutSessionByRemoteId(userId: string, remoteId: string) {
++  const byLocalId = db.getAllSync<LocalWorkoutSessionRow>(
++    `select * from workout_sessions_local where user_id = ? and local_id = ? limit 1`,
++    [userId, remoteId]
++  )[0];
++
++  if (byLocalId) return byLocalId;
++
++  return db.getAllSync<LocalWorkoutSessionRow>(
++    `select * from workout_sessions_local where user_id = ? and server_id = ? limit 1`,
++    [userId, remoteId]
++  )[0] ?? null;
++}
++
++function findLocalWorkoutSetByRemoteId(userId: string, remoteId: string) {
++  const byLocalId = db.getAllSync<LocalWorkoutSet>(
++    `
++    select ws.*
++    from workout_sets_local ws
++    join workout_sessions_local s on s.local_id = ws.session_local_id
++    where s.user_id = ? and ws.local_id = ?
++    limit 1
++    `,
++    [userId, remoteId]
++  )[0];
++
++  if (byLocalId) return byLocalId;
++
++  return db.getAllSync<LocalWorkoutSet>(
++    `
++    select ws.*
++    from workout_sets_local ws
++    join workout_sessions_local s on s.local_id = ws.session_local_id
++    where s.user_id = ? and ws.server_id = ?
++    limit 1
++    `,
++    [userId, remoteId]
++  )[0] ?? null;
++}
++
++function isPendingLocalRow(row: { sync_status: string } | null | undefined) {
++  return row?.sync_status === 'pending' || row?.sync_status === 'failed';
++}
++
++function importRemoteWorkoutSession(row: RemoteWorkoutSessionRow, existing: LocalWorkoutSessionRow | null) {
++  if (isPendingLocalRow(existing)) return existing?.local_id ?? null;
++
++  const updatedAt = latestSyncTimestamp(row.updated_at, row.deleted_at, row.completed_at, row.started_at);
++  if (!shouldApplyRemoteRow(existing, updatedAt)) return existing?.local_id ?? null;
++
++  const localId = existing?.local_id ?? String(row.id);
++  db.runSync(
++    `
++    replace into workout_sessions_local (
++      local_id, server_id, user_id, name, started_at, completed_at,
++      duration_seconds, notes, is_deleted, deleted_at, sync_status, updated_at
++    )
++    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
++    `,
++    [
++      localId,
++      String(row.id),
++      row.user_id,
++      row.name || 'Workout',
++      row.started_at,
++      row.completed_at,
++      row.duration_seconds,
++      row.notes,
++      row.is_deleted ? 1 : 0,
++      row.deleted_at,
++      updatedAt,
++    ]
++  );
++  return localId;
++}
++
++function importRemoteWorkoutSet(
++  userId: string,
++  sessionLocalId: string,
++  row: RemoteWorkoutSetRow
++) {
++  const existing = findLocalWorkoutSetByRemoteId(userId, String(row.id));
++  if (isPendingLocalRow(existing)) return;
++
++  const updatedAt = latestSyncTimestamp(row.updated_at, row.deleted_at, row.created_at);
++  if (!shouldApplyRemoteRow(existing, updatedAt)) return;
++
++  db.runSync(
++    `
++    replace into workout_sets_local (
++      local_id, server_id, session_local_id, exercise_id, set_number, reps,
++      weight, completed, is_deleted, deleted_at, sync_status, updated_at
++    )
++    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
++    `,
++    [
++      existing?.local_id ?? String(row.id),
++      String(row.id),
++      sessionLocalId,
++      row.exercise_id,
++      Number(row.set_number ?? 0),
++      row.reps,
++      row.weight == null ? null : Number(row.weight),
++      row.completed ? 1 : 0,
++      row.is_deleted ? 1 : 0,
++      row.deleted_at,
++      updatedAt,
++    ]
++  );
++}
++
++function restoreRemoteWorkoutExerciseOrder(
++  userId: string,
++  sessionLocalId: string,
++  rows: RemoteWorkoutSetRow[]
++) {
++  const activeRows = rows.filter((row) => !row.is_deleted && !row.deleted_at);
++  const existingByExercise = new Map(
++    getExercisesBySession(userId, sessionLocalId).map((row) => [row.exercise_id, row])
++  );
++  const byExercise = new Map<string, { order: number; createdAt: string }>();
++  let fallbackOrder = 1;
++
++  for (const row of activeRows) {
++    if (byExercise.has(row.exercise_id)) continue;
++    const explicitOrder = Number(row.exercise_sort_order);
++    byExercise.set(row.exercise_id, {
++      order: Number.isFinite(explicitOrder) && explicitOrder > 0 ? explicitOrder : fallbackOrder,
++      createdAt: row.created_at ?? new Date().toISOString(),
++    });
++    fallbackOrder += 1;
++  }
++
++  for (const [exerciseId, meta] of [...byExercise.entries()].sort(
++    (a, b) => a[1].order - b[1].order
++  )) {
++    const existing = existingByExercise.get(exerciseId);
++    const updatedAt = new Date().toISOString();
++    db.runSync(
++      `
++      replace into workout_session_exercises_local (
++        local_id, session_local_id, exercise_id, sort_order, created_at, updated_at
++      ) values (?, ?, ?, ?, ?, ?)
++      `,
++      [
++        existing?.local_id ?? `${sessionLocalId}:${exerciseId}`,
++        sessionLocalId,
++        exerciseId,
++        meta.order,
++        existing?.created_at ?? meta.createdAt,
++        updatedAt,
++      ]
++    );
++  }
++}
++
++async function fetchRemoteWorkoutSets(
++  supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase'],
++  sessionIds: string[]
++) {
++  const allRows: RemoteWorkoutSetRow[] = [];
++
++  for (let page = 0; page < REMOTE_WORKOUT_SET_MAX_PAGES; page += 1) {
++    const from = page * REMOTE_WORKOUT_SET_PAGE_SIZE;
++    const to = from + REMOTE_WORKOUT_SET_PAGE_SIZE - 1;
++    const { data, error } = await supabase
++      .from('workout_sets')
++      .select(
++        'id, session_id, exercise_id, set_number, reps, weight, completed, is_deleted, deleted_at, updated_at, created_at, exercise_sort_order'
++      )
++      .in('session_id', sessionIds)
++      .order('created_at', { ascending: true })
++      .range(from, to);
++
++    if (error) throw error;
++    const rows = (data ?? []) as RemoteWorkoutSetRow[];
++    allRows.push(...rows);
++    if (rows.length < REMOTE_WORKOUT_SET_PAGE_SIZE) break;
++  }
++
++  return allRows;
++}
++
++async function refreshWorkoutSessionsFromRemoteWithClient(
++  userId: string,
++  supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase']
++) {
++  const { data, error } = await supabase
++    .from('workout_sessions')
++    .select(
++      'id, user_id, name, started_at, completed_at, duration_seconds, notes, is_deleted, deleted_at, updated_at'
++    )
++    .eq('user_id', userId)
++    .order('started_at', { ascending: false })
++    .range(0, REMOTE_WORKOUT_HISTORY_LIMIT - 1);
++
++  if (error) throw error;
++
++  const remoteSessions = (data ?? []) as RemoteWorkoutSessionRow[];
++  const sessionLocalIds = new Map<string, string>();
++
++  for (const row of remoteSessions) {
++    const existing = findLocalWorkoutSessionByRemoteId(userId, String(row.id));
++    const localId = importRemoteWorkoutSession(row, existing);
++    if (localId) sessionLocalIds.set(String(row.id), localId);
++  }
++
++  if (remoteSessions.length === 0) return;
++
++  const remoteSets = await fetchRemoteWorkoutSets(
++    supabase,
++    remoteSessions.map((session) => String(session.id))
++  );
++  const setsByRemoteSession = new Map<string, RemoteWorkoutSetRow[]>();
++
++  for (const row of remoteSets) {
++    const localSessionId = sessionLocalIds.get(String(row.session_id));
++    if (!localSessionId) continue;
++    importRemoteWorkoutSet(userId, localSessionId, row);
++    const group = setsByRemoteSession.get(String(row.session_id)) ?? [];
++    group.push(row);
++    setsByRemoteSession.set(String(row.session_id), group);
++  }
++
++  for (const [remoteSessionId, rows] of setsByRemoteSession) {
++    const localSessionId = sessionLocalIds.get(remoteSessionId);
++    if (!localSessionId) continue;
++    const localSession = findLocalWorkoutSessionByRemoteId(userId, remoteSessionId);
++    if (isPendingLocalRow(localSession)) continue;
++    restoreRemoteWorkoutExerciseOrder(userId, localSessionId, rows);
++  }
++}
++
++export async function refreshWorkoutSessionsFromRemote(userId: string) {
++  if (!USE_REMOTE_WORKOUT_SYNC) return;
++
++  const { supabase } = await import('@/src/lib/supabase');
++  const { data, error } = await supabase.auth.getUser();
++
++  if (error || data.user?.id !== userId) {
++    if (error) {
++      reportError(error, {
++        source: 'workout-service',
++        operation: 'resolve-refresh-owner',
++        domain: 'workouts',
++      });
++    }
++    throw new Error('Workouts can only be loaded for the signed-in user.');
++  }
++
++  await refreshWorkoutSessionsFromRemoteWithClient(userId, supabase);
++}
++
++function getExerciseSortOrderMap(userId: string, sessionLocalId: string) {
++  return new Map(
++    getLocalWorkoutSessionExercises(userId, sessionLocalId).map((exercise) => [
++      exercise.exercise_id,
++      exercise.sort_order,
++    ])
++  );
++}
++
+ function saveWorkoutSessionServerId(sessionLocalId: string, serverId: string) {
+   db.runSync(
+     `
