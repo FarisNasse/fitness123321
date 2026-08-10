@@ -1,0 +1,215 @@
+--- a/src/lib/local-db.ts
++++ b/src/lib/local-db.ts
+@@ -597,10 +808,36 @@
+           energy_score: energyScore,
+           steps,
+           notes: null,
++          is_deleted: 0,
++          deleted_at: null,
+           sync_status: 'pending',
+           updated_at: updatedAt,
+         });
+ 
++        writeWebStore(store);
++        return;
++      }
++
++      if (normalized.startsWith('replace into body_measurements_local')) {
++        const [localId, serverId, userId, measuredAt, weightKg, bodyFatPercent, waistCm, hipsCm, chestCm, armCm, thighCm, notes, isDeleted, deletedAt, updatedAt] = params;
++        upsertWebRow(store.body_measurements_local, {
++          local_id: localId,
++          server_id: serverId,
++          user_id: userId,
++          measured_at: measuredAt,
++          weight_kg: weightKg,
++          body_fat_percent: bodyFatPercent,
++          waist_cm: waistCm,
++          hips_cm: hipsCm,
++          chest_cm: chestCm,
++          arm_cm: armCm,
++          thigh_cm: thighCm,
++          notes,
++          is_deleted: Number(isDeleted ?? 0),
++          deleted_at: deletedAt,
++          sync_status: 'synced',
++          updated_at: updatedAt,
++        });
+         writeWebStore(store);
+         return;
+       }
+@@ -637,6 +874,8 @@
+           arm_cm: armCm,
+           thigh_cm: thighCm,
+           notes,
++          is_deleted: 0,
++          deleted_at: null,
+           sync_status: hasExplicitServerId ? 'synced' : 'pending',
+           updated_at: updatedAt,
+         });
+@@ -690,6 +929,24 @@
+ 
+       if (
+         normalized.startsWith('update body_measurements_local') &&
++        normalized.includes('set is_deleted = 1')
++      ) {
++        const [deletedAt, updatedAt, userId, localId] = params;
++        const measurement = store.body_measurements_local.find(
++          (item) => String(item.local_id) === String(localId) && String(item.user_id) === String(userId)
++        );
++        if (measurement && !isDeletedRecord(measurement)) {
++          measurement.is_deleted = 1;
++          measurement.deleted_at = deletedAt;
++          measurement.sync_status = 'pending';
++          measurement.updated_at = updatedAt;
++        }
++        writeWebStore(store);
++        return;
++      }
++
++      if (
++        normalized.startsWith('update body_measurements_local') &&
+         normalized.includes("set sync_status = 'failed'")
+       ) {
+         const [localId] = params;
+@@ -970,6 +1227,132 @@
+           set.updated_at = updatedAt;
+         }
+ 
++        writeWebStore(store);
++        return;
++      }
++
++      if (
++        normalized.startsWith('update meal_items_local') &&
++        normalized.includes('set quantity = ?')
++      ) {
++        const [
++          quantity,
++          calories,
++          proteinG,
++          carbsG,
++          fatG,
++          fiberG,
++          sugarG,
++          saturatedFatG,
++          sodiumMg,
++          updatedAt,
++          localId,
++        ] = params;
++        const item = store.meal_items_local.find((row) => row.local_id === localId);
++        if (item) {
++          Object.assign(item, {
++            quantity,
++            calories,
++            protein_g: proteinG,
++            carbs_g: carbsG,
++            fat_g: fatG,
++            fiber_g: fiberG,
++            sugar_g: sugarG,
++            saturated_fat_g: saturatedFatG,
++            sodium_mg: sodiumMg,
++            is_deleted: 0,
++            deleted_at: null,
++            sync_status: 'pending',
++            updated_at: updatedAt,
++          });
++        }
++        writeWebStore(store);
++        return;
++      }
++
++      if (
++        normalized.startsWith('update meal_items_local') &&
++        normalized.includes('set is_deleted = 1')
++      ) {
++        const [deletedAt, updatedAt, localId] = params;
++        const item = store.meal_items_local.find((row) => row.local_id === localId);
++        if (item) {
++          item.is_deleted = 1;
++          item.deleted_at = deletedAt;
++          item.sync_status = 'pending';
++          item.updated_at = updatedAt;
++        }
++        writeWebStore(store);
++        return;
++      }
++
++      if (
++        normalized.startsWith('update meal_logs_local') &&
++        normalized.includes("set sync_status = 'pending'") &&
++        normalized.includes('updated_at = ?')
++      ) {
++        const [updatedAt, localId, userId] = params;
++        const mealLog = store.meal_logs_local.find(
++          (row) => row.local_id === localId && String(row.user_id) === String(userId)
++        );
++        if (mealLog) {
++          mealLog.sync_status = 'pending';
++          mealLog.updated_at = updatedAt;
++        }
++        writeWebStore(store);
++        return;
++      }
++
++      if (
++        normalized.startsWith('update meal_logs_local') &&
++        normalized.includes('set is_deleted = 1')
++      ) {
++        const [deletedAt, updatedAt, localId, userId] = params;
++        const mealLog = store.meal_logs_local.find(
++          (row) => row.local_id === localId && String(row.user_id) === String(userId)
++        );
++        if (mealLog) {
++          mealLog.is_deleted = 1;
++          mealLog.deleted_at = deletedAt;
++          mealLog.sync_status = 'pending';
++          mealLog.updated_at = updatedAt;
++        }
++        writeWebStore(store);
++        return;
++      }
++
++      if (
++        normalized.startsWith('update water_logs_local') &&
++        normalized.includes('set is_deleted = 1')
++      ) {
++        const [deletedAt, updatedAt, userId, localId] = params;
++        const waterLog = store.water_logs_local.find(
++          (row) => row.local_id === localId && String(row.user_id) === String(userId)
++        );
++        if (waterLog) {
++          waterLog.is_deleted = 1;
++          waterLog.deleted_at = deletedAt;
++          waterLog.sync_status = 'pending';
++          waterLog.updated_at = updatedAt;
++        }
++        writeWebStore(store);
++        return;
++      }
++
++      if (
++        normalized.startsWith('update mood_logs_local') &&
++        normalized.includes('set is_deleted = 1')
++      ) {
++        const [deletedAt, updatedAt, localId, userId] = params;
++        const checkIn = store.mood_logs_local.find(
++          (row) => row.local_id === localId && String(row.user_id) === String(userId)
++        );
++        if (checkIn) {
++          checkIn.is_deleted = 1;
++          checkIn.deleted_at = deletedAt;
++          checkIn.sync_status = 'pending';
++          checkIn.updated_at = updatedAt;
++        }
+         writeWebStore(store);
+         return;
+       }
+@@ -1126,6 +1509,8 @@
+           checkIn.stress_score = stressScore;
+           checkIn.energy_score = energyScore;
+           checkIn.steps = steps;
++          checkIn.is_deleted = 0;
++          checkIn.deleted_at = null;
+           checkIn.sync_status = 'pending';
+           checkIn.updated_at = updatedAt;
+         }
