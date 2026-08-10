@@ -1,0 +1,200 @@
+--- /dev/null
++++ b/docs/brand-release-readiness.md
+@@ -0,0 +1,29 @@
++# Brand and product identity release gate
++
++## Current implementation identity
++
++The working product identity is **All-In-One Fitness** with native identifier `com.farisnasse.allinonefitness`, URL scheme `fitnessapp`, and the committed icon/splash asset family under `assets/`. In-app first-run copy describes one product spanning workouts, meals, recovery, and progress.
++
++**Value proposition:** Plan training, log nutrition, check recovery, and track progress in one private-first fitness log.
++
++## Naming gate before store launch
++
++The working name is descriptive and must not be treated as cleared merely because it exists in source code. Before production store submission, record a dated human review of:
++
++- USPTO trademark search and any relevant common-law conflicts.
++- Apple App Store and Google Play name conflicts.
++- Desired domain and primary social-handle availability.
++- Final legal/product decision on whether to retain the working name or rename.
++
++If the final name changes, update the Expo `name`/`slug`, in-app naming, icon/splash text if any, privacy/terms wording, store metadata, and—only if intentionally changing the native app identity before first production release—the package/bundle identifier. Do not change an already-published native identifier as a cosmetic rename.
++
++## Asset and store checklist
++
++- [ ] Verify icon and adaptive/monochrome icon legibility at launcher notification/small sizes.
++- [ ] Verify splash rendering on supported Android/iOS aspect ratios.
++- [ ] Capture store screenshots from privacy-safe demo data only.
++- [ ] Include Today, Train, Eat, Rest, Growth, and a representative logging flow.
++- [ ] Remove real emails, names, measurements, barcodes, or account identifiers from marketing captures.
++- [ ] Use the value proposition and terminology consistently in store copy and first-run screens.
++
++This document intentionally does **not** claim trademark or store-name clearance. That conclusion requires a dated availability/legal review before launch.
+--- /dev/null
++++ b/docs/e2e-runbook.md
+@@ -0,0 +1,25 @@
++# Device E2E runbook
++
++The Android release smoke path is defined in `.maestro/critical-smoke.yaml`. It covers clean-state authentication, optional onboarding, workout logging and restart persistence, an Android airplane-mode offline/online replay, nutrition and water logging, wellness, body measurement, sign-out/sign-in restoration, and failure evidence in Maestro Cloud.
++
++## Android automation
++
++1. Create an `auth-preview` APK from the exact commit being evaluated.
++2. Configure repository secrets `MAESTRO_CLOUD_API_KEY`, `MAESTRO_CLOUD_PROJECT_ID`, `E2E_USER_EMAIL`, and `E2E_USER_PASSWORD`. Use a dedicated disposable test account, never a personal account.
++3. Run the **Android E2E smoke** workflow with the APK's direct download URL.
++4. Preserve the workflow URL and Maestro Cloud console URL in release evidence. Maestro Cloud is expected to retain the run log and supported screenshots/video for a failed journey.
++5. Reset/delete the dedicated test account if the environment is not disposable.
++
++## iOS manual smoke
++
++Run on a simulator or device using the same commit and an authenticated preview build. iOS does not provide the Android airplane-mode control used by the automated flow, so perform the offline/reconnect step manually.
++
++- [ ] Clean install and sign in/register.
++- [ ] Complete onboarding if shown.
++- [ ] Log and complete a workout.
++- [ ] Log a food and water entry.
++- [ ] Save wellness and body measurement data.
++- [ ] Force-close/relaunch and verify local persistence.
++- [ ] Disconnect networking, make one supported local-first change, reconnect, and verify synchronization.
++- [ ] Sign out/in and verify remote restoration without duplicate rows.
++- [ ] Record screenshots/logs for any failure and attach them to release evidence.
+--- /dev/null
++++ b/docs/privacy-policy.md
+@@ -0,0 +1,9 @@
++# Privacy policy — pre-release repository version
++
++All-In-One Fitness stores workout, nutrition, water, wellness, body-measurement, target, and account data needed to provide its tracking features. Local-first records are stored on the device and, when cloud synchronization is enabled, are synchronized to the authenticated account's Supabase-backed storage.
++
++The app does not require advertising data or sell fitness records. Service providers used to operate the application may process data only as needed to provide authentication, cloud storage, crash/error reporting, build/distribution, or other explicitly enabled product infrastructure.
++
++Users can export supported account data from **More → Export my data** and can request permanent deletion from **More → Delete account permanently**. Successful deletion removes the authentication account and owned cloud records covered by the database cascade policy, then clears the account's local application data on that device.
++
++Before public launch, replace this repository version with the final policy reviewed for the actual production services, jurisdiction, retention practices, contact address, and store disclosures, and publish the canonical URL required by the stores.
+--- /dev/null
++++ b/docs/release-candidate.example.json
+@@ -0,0 +1,33 @@
++{
++  "status": "pass",
++  "commitSha": "REPLACE_WITH_FULL_COMMIT_SHA",
++  "automated": {
++    "tests": "pass",
++    "expo": "pass",
++    "supabaseIntegration": "pass",
++    "androidE2E": "pass",
++    "androidE2eUrl": "https://REPLACE_WITH_MAESTRO_OR_WORKFLOW_URL"
++  },
++  "devices": {
++    "android": { "result": "pass", "device": "REPLACE", "os": "REPLACE" },
++    "ios": { "result": "pass", "device": "REPLACE", "os": "REPLACE" }
++  },
++  "accessibility": {
++    "talkBack": "pass",
++    "voiceOver": "pass",
++    "keyboardWeb": "pass"
++  },
++  "accountLifecycle": {
++    "export": "pass",
++    "deletion": "pass"
++  },
++  "releaseBlockingIssues": 0,
++  "legal": {
++    "privacyPolicy": "docs/privacy-policy.md",
++    "terms": "docs/terms-of-use.md",
++    "support": "docs/support.md",
++    "brandAvailabilityReview": "REPLACE_WITH_DATED_REVIEW_REFERENCE"
++  },
++  "releaseNotes": "REPLACE_WITH_RELEASE_NOTES_REFERENCE",
++  "rollbackPlan": "REPLACE_WITH_ROLLBACK_PLAN"
++}
+--- /dev/null
++++ b/docs/release-checklist.md
+@@ -0,0 +1,27 @@
++# Release candidate checklist
++
++A candidate is not releasable because a build exists. It must satisfy the automated gates and have committed evidence for the manual gates.
++
++## Automated gates
++
++- [ ] Immutable `npm ci` using the pinned Node/npm pair.
++- [ ] Lockfile portability, unit/source tests, TypeScript, ESLint, exercise checks, and local-runtime checks (`npm run test:all`).
++- [ ] Expo dependency validation and doctor (`npm run check:expo`).
++- [ ] Public Expo config and EAS-link validation (`npm run check:preview` and `npm run check:eas-link`).
++- [ ] Android and iOS JS export/bundle checks (`npm run bundle:android`, `npm run bundle:ios`).
++- [ ] Fresh Supabase migration rebuild and behavioral integration test (`.github/workflows/supabase-integration.yml`).
++- [ ] Android device E2E smoke against an auth-preview APK (`.github/workflows/e2e-android.yml`).
++
++## Manual gates captured in evidence
++
++- [ ] Preview installed/tested on a real Android device.
++- [ ] Preview installed/tested on an iOS simulator or device.
++- [ ] VoiceOver and TalkBack critical-flow checklist passed.
++- [ ] Crash-free critical smoke pass recorded.
++- [ ] Data export and account deletion verified against the release backend.
++- [ ] No open issue explicitly classified as a P0/P1 `release-blocker` remains.
++- [ ] Final privacy policy, terms, and support locations are recorded.
++- [ ] Final naming/store/trademark review is recorded.
++- [ ] Release notes and rollback plan are attached.
++
++Use `docs/release-candidate.example.json` as the machine-checkable evidence shape. The **Release candidate gate** workflow rejects omitted/failed fields.
+--- a/docs/release-evidence-template.md
++++ b/docs/release-evidence-template.md
+@@ -47,3 +47,29 @@
+ **PASS / FAIL / BLOCKED**
+ 
+ Notes, defects, and follow-up issue links:
++
++## Cross-device and account lifecycle
++
++- [ ] Fresh Supabase migration/integration workflow passed for this commit.
++- [ ] Android Maestro critical smoke passed; workflow and Maestro Cloud URLs recorded.
++- [ ] Offline-to-online replay completed without duplicates.
++- [ ] Sign-out/sign-in restored cloud-backed workout, nutrition/water, wellness, and measurement data.
++- [ ] Portable data export reviewed for every supported user-data domain.
++- [ ] Permanent account deletion removed authentication and owned cloud rows and cleared local account data.
++
++## Accessibility
++
++- [ ] TalkBack critical-flow checklist passed.
++- [ ] VoiceOver critical-flow checklist passed.
++- [ ] Web keyboard/modal-focus checklist passed.
++- [ ] Status and selection remain understandable without color alone.
++
++## Release operations
++
++- [ ] No open P0/P1 issue labeled `release-blocker`.
++- [ ] Final privacy policy URL/location recorded.
++- [ ] Final terms URL/location recorded.
++- [ ] Final public support URL/location recorded.
++- [ ] Dated final brand/trademark/store/domain availability review recorded.
++- [ ] Release notes attached.
++- [ ] Rollback plan attached.
+--- /dev/null
++++ b/docs/support.md
+@@ -0,0 +1,5 @@
++# Support
++
++For pre-release testing, report reproducible defects through this repository's GitHub Issues with the app version/commit, platform/OS, steps to reproduce, expected result, actual result, and privacy-safe logs or screenshots.
++
++Before public store launch, replace this developer channel with the final public support email/site and record the canonical support URL in release evidence and store metadata. Never post passwords, access tokens, medical records, or other sensitive account data in an issue.
+--- /dev/null
++++ b/docs/terms-of-use.md
+@@ -0,0 +1,7 @@
++# Terms of use — pre-release repository version
++
++All-In-One Fitness is a fitness logging and organization tool. It does not provide medical diagnosis, emergency services, or a guarantee that a suggested target or logged value is appropriate for a particular person.
++
++Users are responsible for the accuracy of information they enter, safeguarding account credentials, and using training or nutrition information within their own capabilities. The software is provided subject to applicable law and the final production terms that will identify the operating entity, governing law, warranty/liability terms, acceptable use, and contact process.
++
++Before public launch, publish reviewed production terms at a stable URL and update store metadata and in-app/support references to that canonical version.
+--- a/package.json
++++ b/package.json
+@@ -33,7 +33,8 @@
+     "check:lockfile": "node scripts/check-lockfile-registry.mjs",
+     "food:normalize": "node scripts/food-data/normalize-usda-data.mjs",
+     "food:validate": "node scripts/food-data/validate-food-catalog.mjs",
+-    "food:import": "node scripts/food-data/import-food-catalog.mjs"
++    "food:import": "node scripts/food-data/import-food-catalog.mjs",
++    "check:release-evidence": "node scripts/verify-release-candidate.mjs"
+   },
+   "dependencies": {
+     "@expo-google-fonts/inter": "0.4.2",
