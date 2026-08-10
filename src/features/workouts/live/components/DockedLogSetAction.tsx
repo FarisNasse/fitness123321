@@ -39,6 +39,10 @@ export function DockedLogSetAction({
       <Pressable
         disabled={disabled}
         onPress={controller.addSet}
+        accessibilityRole="button"
+        accessibilityLabel={controller.currentSetDraft.logButtonTitle}
+        accessibilityHint={controller.currentSetDraft.logButtonDetail}
+        accessibilityState={{ disabled }}
         style={({ pressed }) => ({
           alignItems: 'center',
           backgroundColor: disabled ? colors.base300 : colors.primary,

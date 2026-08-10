@@ -19,7 +19,10 @@ export function MoodSelector({ value, onChange }: MoodSelectorProps) {
           <Pressable
             key={mood}
             onPress={() => onChange(moodValue)}
+            accessibilityRole="button"
             accessibilityLabel={mood}
+            accessibilityState={{ selected }}
+            accessibilityHint={`Set mood to ${moodValue} of 5`}
             className={`h-12 w-12 items-center justify-center rounded-pill border ${
               selected
                 ? 'border-primary bg-primary/20'

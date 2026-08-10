@@ -9,6 +9,7 @@ import {
   type LocalWaterLog,
 } from '@/src/lib/local-db';
 import { markSyncPending } from '@/src/lib/sync-events';
+import { latestSyncTimestamp, shouldApplyRemoteRow } from '@/src/lib/sync-conflict.mjs';
 import {
   ALLOW_USDA_DEMO_FALLBACK,
   HAS_REMOTE_SUPABASE_CONFIG,
@@ -36,6 +37,53 @@ import {
 export type LocalMealLogRow = LocalMealLog;
 export type LocalMealItemRow = LocalMealItem;
 export type LocalWaterLogRow = LocalWaterLog;
+
+type RemoteMealLogRow = {
+  id: string;
+  user_id: string;
+  logged_at: string;
+  meal_type: MealType;
+  is_deleted: boolean | null;
+  deleted_at: string | null;
+  updated_at: string | null;
+};
+
+type RemoteMealItemRow = {
+  id: string;
+  meal_log_id: string;
+  food_id: string | null;
+  food_source: string | null;
+  source_food_id: string | null;
+  fdc_id: number | null;
+  food_name: string;
+  quantity: number | string;
+  unit: string | null;
+  calories: number | string;
+  protein_g: number | string;
+  carbs_g: number | string;
+  fat_g: number | string;
+  fiber_g: number | string | null;
+  sugar_g: number | string | null;
+  saturated_fat_g: number | string | null;
+  sodium_mg: number | string | null;
+  is_deleted: boolean | null;
+  deleted_at: string | null;
+  updated_at: string | null;
+};
+
+type RemoteWaterLogRow = {
+  id: string;
+  user_id: string;
+  logged_at: string;
+  amount_ml: number;
+  is_deleted: boolean | null;
+  deleted_at: string | null;
+  updated_at: string | null;
+};
+
+const REMOTE_NUTRITION_HISTORY_LIMIT = 500;
+const REMOTE_MEAL_ITEM_PAGE_SIZE = 500;
+const REMOTE_MEAL_ITEM_MAX_PAGES = 10;
 
 export type DailyMealEntry = LocalMealItemRow & {
   meal_type: MealType;
@@ -567,8 +615,8 @@ export function subscribeToNutritionLogChanges(userId: string, listener: () => v
   };
 }
 
-function notifyNutritionLogChanged(userId: string) {
-  markSyncPending('nutrition');
+function notifyNutritionLogChanged(userId: string, markPending = true) {
+  if (markPending) markSyncPending('nutrition');
 
   for (const registration of nutritionLogListeners) {
     if (registration.userId === userId) {
@@ -1274,6 +1322,145 @@ export function addLocalMealItem(input: {
   return { mealLogLocalId, mealItemLocalId };
 }
 
+export function updateLocalMealItemQuantity(input: {
+  userId: string;
+  mealItemLocalId: string;
+  quantity: number;
+}) {
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    throw new Error('Food quantity must be greater than zero.');
+  }
+
+  const item = db.getAllSync<LocalMealItemRow>(
+    `
+    select mi.*
+    from meal_items_local mi
+    join meal_logs_local ml on ml.local_id = mi.meal_log_local_id
+    where ml.user_id = ?
+      and mi.local_id = ?
+      and coalesce(ml.is_deleted, 0) = 0
+      and ml.deleted_at is null
+      and coalesce(mi.is_deleted, 0) = 0
+      and mi.deleted_at is null
+    limit 1
+    `,
+    [input.userId, input.mealItemLocalId]
+  )[0];
+
+  if (!item) return false;
+
+  const previousQuantity = Number(item.quantity);
+  if (!Number.isFinite(previousQuantity) || previousQuantity <= 0) {
+    throw new Error('The existing food quantity is invalid.');
+  }
+
+  const ratio = input.quantity / previousQuantity;
+  const scale = (value: number | string | null | undefined) => {
+    if (value == null) return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? roundMacro(numeric * ratio) : null;
+  };
+  const now = new Date().toISOString();
+
+  db.runSync(
+    `
+    update meal_items_local
+    set quantity = ?,
+        calories = ?,
+        protein_g = ?,
+        carbs_g = ?,
+        fat_g = ?,
+        fiber_g = ?,
+        sugar_g = ?,
+        saturated_fat_g = ?,
+        sodium_mg = ?,
+        is_deleted = 0,
+        deleted_at = null,
+        sync_status = 'pending',
+        updated_at = ?
+    where local_id = ?
+    `,
+    [
+      input.quantity,
+      scale(item.calories),
+      scale(item.protein_g),
+      scale(item.carbs_g),
+      scale(item.fat_g),
+      scale(item.fiber_g),
+      scale(item.sugar_g),
+      scale(item.saturated_fat_g),
+      scale(item.sodium_mg),
+      now,
+      item.local_id,
+    ]
+  );
+
+  db.runSync(
+    `update meal_logs_local set sync_status = 'pending', updated_at = ? where local_id = ? and user_id = ?`,
+    [now, item.meal_log_local_id, input.userId]
+  );
+  notifyNutritionLogChanged(input.userId);
+  return true;
+}
+
+export function deleteLocalMealItem(userId: string, mealItemLocalId: string) {
+  const item = db.getAllSync<LocalMealItemRow>(
+    `
+    select mi.*
+    from meal_items_local mi
+    join meal_logs_local ml on ml.local_id = mi.meal_log_local_id
+    where ml.user_id = ?
+      and mi.local_id = ?
+      and coalesce(mi.is_deleted, 0) = 0
+      and mi.deleted_at is null
+    limit 1
+    `,
+    [userId, mealItemLocalId]
+  )[0];
+  if (!item) return false;
+
+  const now = new Date().toISOString();
+  db.runSync(
+    `
+    update meal_items_local
+    set is_deleted = 1, deleted_at = ?, sync_status = 'pending', updated_at = ?
+    where local_id = ?
+    `,
+    [now, now, item.local_id]
+  );
+
+  const activeSibling = db.getAllSync<{ local_id: string }>(
+    `
+    select local_id
+    from meal_items_local
+    where meal_log_local_id = ?
+      and coalesce(is_deleted, 0) = 0
+      and deleted_at is null
+    limit 1
+    `,
+    [item.meal_log_local_id]
+  )[0];
+
+  if (activeSibling) {
+    db.runSync(
+      `update meal_logs_local set sync_status = 'pending', updated_at = ? where local_id = ? and user_id = ?`,
+      [now, item.meal_log_local_id, userId]
+    );
+  } else {
+    db.runSync(
+      `
+      update meal_logs_local
+      set is_deleted = 1, deleted_at = ?, sync_status = 'pending', updated_at = ?
+      where local_id = ? and user_id = ?
+      `,
+      [now, now, item.meal_log_local_id, userId]
+    );
+  }
+
+  notifyNutritionLogChanged(userId);
+  return true;
+}
+
 export function addLocalWaterLog(input: {
   userId: string;
   amountMl: number;
@@ -1303,7 +1490,49 @@ export function addLocalWaterLog(input: {
   return localId;
 }
 
+export function deleteLocalWaterLog(userId: string, localId: string) {
+  const existing = db.getAllSync<LocalWaterLogRow>(
+    `
+    select * from water_logs_local
+    where user_id = ? and local_id = ? and coalesce(is_deleted, 0) = 0 and deleted_at is null
+    limit 1
+    `,
+    [userId, localId]
+  )[0];
+  if (!existing) return false;
+
+  const now = new Date().toISOString();
+  db.runSync(
+    `
+    update water_logs_local
+    set is_deleted = 1, deleted_at = ?, sync_status = 'pending', updated_at = ?
+    where user_id = ? and local_id = ?
+    `,
+    [now, now, userId, localId]
+  );
+  notifyNutritionLogChanged(userId);
+  return true;
+}
+
 export function getMealItemsByMealLog(userId: string, mealLogLocalId: string) {
+  return db.getAllSync<LocalMealItemRow>(
+    `
+    select mi.*
+    from meal_items_local mi
+    join meal_logs_local ml on ml.local_id = mi.meal_log_local_id
+    where ml.user_id = ?
+      and mi.meal_log_local_id = ?
+      and coalesce(ml.is_deleted, 0) = 0
+      and ml.deleted_at is null
+      and coalesce(mi.is_deleted, 0) = 0
+      and mi.deleted_at is null
+    order by mi.updated_at asc
+    `,
+    [userId, mealLogLocalId]
+  );
+}
+
+function getMealItemsByMealLogForSync(userId: string, mealLogLocalId: string) {
   return db.getAllSync<LocalMealItemRow>(
     `
     select mi.*
@@ -1329,6 +1558,8 @@ export function getDailyNutritionSummary(
     where user_id = ?
       and logged_at >= ?
       and logged_at < ?
+      and coalesce(is_deleted, 0) = 0
+      and deleted_at is null
     order by logged_at asc
     `,
     [userId, startIso, endIso]
@@ -1343,6 +1574,8 @@ export function getDailyNutritionSummary(
         select *
         from meal_items_local
         where meal_log_local_id in (${placeholders})
+          and coalesce(is_deleted, 0) = 0
+          and deleted_at is null
         order by updated_at asc
         `,
         mealLogIds
@@ -1370,6 +1603,8 @@ export function getDailyNutritionSummary(
     where user_id = ?
       and logged_at >= ?
       and logged_at < ?
+      and coalesce(is_deleted, 0) = 0
+      and deleted_at is null
     order by logged_at asc
     `,
     [userId, startIso, endIso]
@@ -1402,6 +1637,224 @@ export function getDailyNutritionSummary(
       waterMl: totals.waterMl,
     },
   };
+}
+
+function findLocalMealLogByRemoteId(userId: string, remoteId: string) {
+  const byLocalId = db.getAllSync<LocalMealLogRow>(
+    `select * from meal_logs_local where user_id = ? and local_id = ? limit 1`,
+    [userId, remoteId]
+  )[0];
+  if (byLocalId) return byLocalId;
+  return db.getAllSync<LocalMealLogRow>(
+    `select * from meal_logs_local where user_id = ? and server_id = ? limit 1`,
+    [userId, remoteId]
+  )[0] ?? null;
+}
+
+function findLocalMealItemByRemoteId(userId: string, remoteId: string) {
+  const byLocalId = db.getAllSync<LocalMealItemRow>(
+    `
+    select mi.* from meal_items_local mi
+    join meal_logs_local ml on ml.local_id = mi.meal_log_local_id
+    where ml.user_id = ? and mi.local_id = ? limit 1
+    `,
+    [userId, remoteId]
+  )[0];
+  if (byLocalId) return byLocalId;
+  return db.getAllSync<LocalMealItemRow>(
+    `
+    select mi.* from meal_items_local mi
+    join meal_logs_local ml on ml.local_id = mi.meal_log_local_id
+    where ml.user_id = ? and mi.server_id = ? limit 1
+    `,
+    [userId, remoteId]
+  )[0] ?? null;
+}
+
+function findLocalWaterLogByRemoteId(userId: string, remoteId: string) {
+  const byLocalId = db.getAllSync<LocalWaterLogRow>(
+    `select * from water_logs_local where user_id = ? and local_id = ? limit 1`,
+    [userId, remoteId]
+  )[0];
+  if (byLocalId) return byLocalId;
+  return db.getAllSync<LocalWaterLogRow>(
+    `select * from water_logs_local where user_id = ? and server_id = ? limit 1`,
+    [userId, remoteId]
+  )[0] ?? null;
+}
+
+function importRemoteMealLog(row: RemoteMealLogRow, existing: LocalMealLogRow | null) {
+  const updatedAt = latestSyncTimestamp(row.updated_at, row.deleted_at, row.logged_at);
+  if (!shouldApplyRemoteRow(existing, updatedAt)) return existing?.local_id ?? null;
+  const localId = existing?.local_id ?? String(row.id);
+  db.runSync(
+    `
+    replace into meal_logs_local (
+      local_id, server_id, user_id, logged_at, meal_type, is_deleted, deleted_at,
+      sync_status, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+    `,
+    [
+      localId,
+      String(row.id),
+      row.user_id,
+      row.logged_at,
+      row.meal_type,
+      row.is_deleted ? 1 : 0,
+      row.deleted_at,
+      updatedAt,
+    ]
+  );
+  return localId;
+}
+
+function importRemoteMealItem(
+  userId: string,
+  mealLogLocalId: string,
+  row: RemoteMealItemRow
+) {
+  const existing = findLocalMealItemByRemoteId(userId, String(row.id));
+  const updatedAt = latestSyncTimestamp(row.updated_at, row.deleted_at);
+  if (!shouldApplyRemoteRow(existing, updatedAt)) return;
+  const numberOrZero = (value: number | string | null | undefined) => Number(value ?? 0);
+  const nullableNumber = (value: number | string | null | undefined) =>
+    value == null ? null : Number(value);
+  db.runSync(
+    `
+    replace into meal_items_local (
+      local_id, server_id, meal_log_local_id, food_id, food_source, source_food_id,
+      fdc_id, food_name, quantity, unit, calories, protein_g, carbs_g, fat_g,
+      fiber_g, sugar_g, saturated_fat_g, sodium_mg, is_deleted, deleted_at,
+      sync_status, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+    `,
+    [
+      existing?.local_id ?? String(row.id),
+      String(row.id),
+      mealLogLocalId,
+      row.food_id,
+      row.food_source,
+      row.source_food_id,
+      row.fdc_id,
+      row.food_name,
+      numberOrZero(row.quantity),
+      row.unit,
+      numberOrZero(row.calories),
+      numberOrZero(row.protein_g),
+      numberOrZero(row.carbs_g),
+      numberOrZero(row.fat_g),
+      nullableNumber(row.fiber_g),
+      nullableNumber(row.sugar_g),
+      nullableNumber(row.saturated_fat_g),
+      nullableNumber(row.sodium_mg),
+      row.is_deleted ? 1 : 0,
+      row.deleted_at,
+      updatedAt,
+    ]
+  );
+}
+
+function importRemoteWaterLog(row: RemoteWaterLogRow, existing: LocalWaterLogRow | null) {
+  const updatedAt = latestSyncTimestamp(row.updated_at, row.deleted_at, row.logged_at);
+  if (!shouldApplyRemoteRow(existing, updatedAt)) return;
+  db.runSync(
+    `
+    replace into water_logs_local (
+      local_id, server_id, user_id, logged_at, amount_ml, is_deleted, deleted_at,
+      sync_status, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, 'synced', ?)
+    `,
+    [
+      existing?.local_id ?? String(row.id),
+      String(row.id),
+      row.user_id,
+      row.logged_at,
+      Number(row.amount_ml),
+      row.is_deleted ? 1 : 0,
+      row.deleted_at,
+      updatedAt,
+    ]
+  );
+}
+
+async function fetchRemoteMealItems(
+  supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase'],
+  mealLogIds: string[]
+) {
+  const rows: RemoteMealItemRow[] = [];
+  if (mealLogIds.length === 0) return rows;
+  for (let page = 0; page < REMOTE_MEAL_ITEM_MAX_PAGES; page += 1) {
+    const from = page * REMOTE_MEAL_ITEM_PAGE_SIZE;
+    const to = from + REMOTE_MEAL_ITEM_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from('meal_items')
+      .select(
+        'id, meal_log_id, food_id, food_source, source_food_id, fdc_id, food_name, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, saturated_fat_g, sodium_mg, is_deleted, deleted_at, updated_at'
+      )
+      .in('meal_log_id', mealLogIds)
+      .range(from, to);
+    if (error) throw error;
+    const pageRows = (data ?? []) as RemoteMealItemRow[];
+    rows.push(...pageRows);
+    if (pageRows.length < REMOTE_MEAL_ITEM_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+async function refreshNutritionLogsFromRemoteWithClient(
+  userId: string,
+  supabase: Awaited<typeof import('@/src/lib/supabase')>['supabase']
+) {
+  const [{ data: mealData, error: mealError }, { data: waterData, error: waterError }] =
+    await Promise.all([
+      supabase
+        .from('meal_logs')
+        .select('id, user_id, logged_at, meal_type, is_deleted, deleted_at, updated_at')
+        .eq('user_id', userId)
+        .order('logged_at', { ascending: false })
+        .range(0, REMOTE_NUTRITION_HISTORY_LIMIT - 1),
+      supabase
+        .from('water_logs')
+        .select('id, user_id, logged_at, amount_ml, is_deleted, deleted_at, updated_at')
+        .eq('user_id', userId)
+        .order('logged_at', { ascending: false })
+        .range(0, REMOTE_NUTRITION_HISTORY_LIMIT - 1),
+    ]);
+  if (mealError) throw mealError;
+  if (waterError) throw waterError;
+
+  const remoteMeals = (mealData ?? []) as RemoteMealLogRow[];
+  const localMealIds = new Map<string, string>();
+  for (const row of remoteMeals) {
+    const existing = findLocalMealLogByRemoteId(userId, String(row.id));
+    const localId = importRemoteMealLog(row, existing);
+    if (localId) localMealIds.set(String(row.id), localId);
+  }
+
+  const remoteItems = await fetchRemoteMealItems(
+    supabase,
+    remoteMeals.map((row) => String(row.id))
+  );
+  for (const row of remoteItems) {
+    const localMealId = localMealIds.get(String(row.meal_log_id));
+    if (localMealId) importRemoteMealItem(userId, localMealId, row);
+  }
+
+  for (const row of (waterData ?? []) as RemoteWaterLogRow[]) {
+    importRemoteWaterLog(row, findLocalWaterLogByRemoteId(userId, String(row.id)));
+  }
+  notifyNutritionLogChanged(userId, false);
+}
+
+export async function refreshNutritionLogsFromRemote(userId: string) {
+  if (!USE_REMOTE_NUTRITION_SYNC) return;
+  const { supabase } = await import('@/src/lib/supabase');
+  const { data, error } = await supabase.auth.getUser();
+  if (error || data.user?.id !== userId) {
+    if (error) reportError(error, { source: 'nutrition-service', operation: 'resolve-refresh-owner', domain: 'nutrition' });
+    throw new Error('Nutrition logs can only be loaded for the signed-in user.');
+  }
+  await refreshNutritionLogsFromRemoteWithClient(userId, supabase);
 }
 
 function saveMealLogServerId(mealLogLocalId: string, serverId: string) {
@@ -1524,6 +1977,8 @@ async function syncPendingMealLogs(
         .update({
           logged_at: mealLog.logged_at,
           meal_type: mealLog.meal_type,
+          is_deleted: Boolean(mealLog.is_deleted),
+          deleted_at: mealLog.deleted_at,
         })
         .eq('id', serverMealLogId)
         .select('id')
@@ -1549,6 +2004,8 @@ async function syncPendingMealLogs(
             user_id: mealLog.user_id,
             logged_at: mealLog.logged_at,
             meal_type: mealLog.meal_type,
+            is_deleted: Boolean(mealLog.is_deleted),
+            deleted_at: mealLog.deleted_at,
           },
           { onConflict: 'id' }
         )
@@ -1564,7 +2021,7 @@ async function syncPendingMealLogs(
       saveMealLogServerId(mealLog.local_id, serverMealLogId);
     }
 
-    const itemsToSync = getMealItemsByMealLog(mealLog.user_id, mealLog.local_id).filter(
+    const itemsToSync = getMealItemsByMealLogForSync(mealLog.user_id, mealLog.local_id).filter(
       (item) => item.sync_status === 'pending' || item.sync_status === 'failed'
     );
 
@@ -1575,7 +2032,7 @@ async function syncPendingMealLogs(
 
     const itemRows = itemsToSync.map((item) => {
       const baseRow = {
-        id: item.local_id,
+        id: item.server_id ?? item.local_id,
         meal_log_id: serverMealLogId,
         food_id: item.food_id,
         food_name: item.food_name,
@@ -1585,6 +2042,8 @@ async function syncPendingMealLogs(
         protein_g: item.protein_g,
         carbs_g: item.carbs_g,
         fat_g: item.fat_g,
+        is_deleted: Boolean(item.is_deleted),
+        deleted_at: item.deleted_at,
       };
 
       if (!USE_USDA_FOOD_CATALOG) return baseRow;
@@ -1622,8 +2081,9 @@ async function syncPendingMealLogs(
     let failedItemCount = 0;
 
     for (const item of itemsToSync) {
-      if (syncedItemIds.has(item.local_id)) {
-        markMealItemSynced(item.local_id, item.local_id);
+      const expectedRemoteId = item.server_id ?? item.local_id;
+      if (syncedItemIds.has(expectedRemoteId)) {
+        markMealItemSynced(item.local_id, expectedRemoteId);
       } else {
         markMealItemFailed(item.local_id);
         failedItemCount += 1;
@@ -1659,10 +2119,12 @@ async function syncPendingWaterLogs(
       .from('water_logs')
       .upsert(
         {
-          id: waterLog.local_id,
+          id: waterLog.server_id ?? waterLog.local_id,
           user_id: waterLog.user_id,
           logged_at: waterLog.logged_at,
           amount_ml: waterLog.amount_ml,
+          is_deleted: Boolean(waterLog.is_deleted),
+          deleted_at: waterLog.deleted_at,
         },
         { onConflict: 'id' }
       )
@@ -1704,6 +2166,7 @@ async function syncPendingNutritionLogsImpl() {
 
   await syncPendingMealLogs(supabase, data.user.id);
   await syncPendingWaterLogs(supabase, data.user.id);
+  await refreshNutritionLogsFromRemoteWithClient(data.user.id, supabase);
 }
 
 async function drainNutritionSyncQueue() {

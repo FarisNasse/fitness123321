@@ -16,6 +16,8 @@ import {
   addLocalMealItem,
   addLocalWaterLog,
   createFood,
+  deleteLocalMealItem,
+  deleteLocalWaterLog,
   getDailyNutritionSummary,
   getAllowedFoodLogUnits,
   getDefaultFoodLogAmount,
@@ -28,9 +30,11 @@ import {
   searchFoodsByName,
   subscribeToNutritionLogChanges,
   syncPendingNutritionLogs,
+  updateLocalMealItemQuantity,
   type DailyNutritionSummary,
 } from '@/src/features/nutrition/nutrition-service';
 import { reportError } from '@/src/lib/error-reporting';
+import { useModalFocusTrap } from '@/src/lib/use-modal-focus-trap';
 import type { Food, MealType } from '@/src/types/models';
 
 const mealTypes: { label: string; value: MealType }[] = [
@@ -42,6 +46,15 @@ const mealTypes: { label: string; value: MealType }[] = [
 
 const waterPresets = [250, 500, 750];
 const SEARCH_PAGE_SIZE = 25;
+
+function getQuantityStep(unit: string | null | undefined) {
+  const normalized = (unit ?? '').trim().toLowerCase();
+  if (normalized === 'g' || normalized === 'gram' || normalized === 'grams') return 10;
+  if (normalized === 'ml' || normalized === 'milliliter' || normalized === 'milliliters') return 25;
+  if (normalized === 'lb' || normalized === 'pound' || normalized === 'pounds') return 0.1;
+  if (normalized === 'oz' || normalized === 'ounce' || normalized === 'ounces') return 0.25;
+  return 0.25;
+}
 
 const emptySummary: DailyNutritionSummary = {
   entries: [],
@@ -112,6 +125,8 @@ export default function NutritionScreen() {
   const [protein, setProtein] = useState('0');
   const [carbs, setCarbs] = useState('0');
   const [fat, setFat] = useState('0');
+  const addFoodModalRef = useModalFocusTrap(isAddFoodOpen);
+  const barcodeModalRef = useModalFocusTrap(isBarcodeScannerOpen);
 
   const refreshSummary = useCallback(() => {
     setSummary(ownerId ? getDailyNutritionSummary(ownerId) : emptySummary);
@@ -508,6 +523,79 @@ export default function NutritionScreen() {
     }
   }
 
+  function queueNutritionSync(operation: string) {
+    void syncPendingNutritionLogs().catch((error) => {
+      reportError(error, { source: 'nutrition-screen', operation, domain: 'nutrition' });
+    });
+  }
+
+  function handleAdjustFoodQuantity(entry: DailyNutritionSummary['entries'][number], delta: number) {
+    try {
+      if (!ownerId) throw new Error('A signed-in nutrition owner is required.');
+      const nextQuantity = Math.max(0.01, Number(entry.quantity) + delta);
+      updateLocalMealItemQuantity({
+        userId: ownerId,
+        mealItemLocalId: entry.local_id,
+        quantity: Number(nextQuantity.toFixed(2)),
+      });
+      refreshSummary();
+      queueNutritionSync('sync-after-food-correction');
+    } catch (error) {
+      reportError(error, { source: 'nutrition-screen', operation: 'correct-food-log', domain: 'nutrition' });
+      Alert.alert('Unable to update food', 'The food quantity could not be updated.');
+    }
+  }
+
+  function handleDeleteFood(entry: DailyNutritionSummary['entries'][number]) {
+    if (!ownerId) return;
+    Alert.alert(
+      'Delete food entry?',
+      `Remove ${entry.food_name} from today's log?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            try {
+              if (!deleteLocalMealItem(ownerId, entry.local_id)) return;
+              refreshSummary();
+              queueNutritionSync('sync-after-food-delete');
+            } catch (error) {
+              reportError(error, { source: 'nutrition-screen', operation: 'delete-food-log', domain: 'nutrition' });
+              Alert.alert('Unable to delete food', 'The food entry could not be deleted.');
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function handleDeleteWater(localId: string, amountMl: number) {
+    if (!ownerId) return;
+    Alert.alert(
+      'Delete water entry?',
+      `Remove ${amountMl} ml from today's water log?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            try {
+              if (!deleteLocalWaterLog(ownerId, localId)) return;
+              refreshSummary();
+              queueNutritionSync('sync-after-water-delete');
+            } catch (error) {
+              reportError(error, { source: 'nutrition-screen', operation: 'delete-water-log', domain: 'nutrition' });
+              Alert.alert('Unable to delete water', 'The water entry could not be deleted.');
+            }
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <Screen>
       <View className="gap-5">
@@ -562,12 +650,33 @@ export default function NutritionScreen() {
               <Pressable
                 key={amountMl}
                 onPress={() => void handleQuickAddWater(amountMl)}
-                className="rounded-pill border border-info bg-info/20 px-4 py-3 active:opacity-75"
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${amountMl} milliliters of water`}
+                className="min-h-11 rounded-pill border border-info bg-info/20 px-4 py-3 active:opacity-75"
               >
                 <Text className="text-sm font-bold text-info">+{amountMl} ml</Text>
               </Pressable>
             ))}
           </View>
+          {summary.waterLogs.length > 0 ? (
+            <View className="gap-2 border-t border-base-300 pt-3">
+              {summary.waterLogs.map((waterLog) => (
+                <View key={waterLog.local_id} className="flex-row items-center justify-between gap-3">
+                  <Text className="flex-1 text-sm font-body text-base-muted">
+                    {Number(waterLog.amount_ml)} ml
+                  </Text>
+                  <Pressable
+                    onPress={() => handleDeleteWater(waterLog.local_id, Number(waterLog.amount_ml))}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${Number(waterLog.amount_ml)} milliliter water entry`}
+                    className="min-h-11 justify-center rounded-pill border border-error/40 px-3"
+                  >
+                    <Text className="text-sm font-bold text-error">Delete</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </Card>
 
         <Card className="gap-4">
@@ -608,6 +717,32 @@ export default function NutritionScreen() {
                           {formatMacro(Number(entry.carbs_g))}g / F{' '}
                           {formatMacro(Number(entry.fat_g))}g
                         </Text>
+                        <View className="flex-row flex-wrap gap-2 pt-2">
+                          <Pressable
+                            onPress={() => handleAdjustFoodQuantity(entry, -getQuantityStep(entry.unit))}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Decrease ${entry.food_name} quantity`}
+                            className="min-h-11 min-w-11 items-center justify-center rounded-pill border border-base-300 px-3"
+                          >
+                            <Text className="text-base font-bold text-base-content">−</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleAdjustFoodQuantity(entry, getQuantityStep(entry.unit))}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Increase ${entry.food_name} quantity`}
+                            className="min-h-11 min-w-11 items-center justify-center rounded-pill border border-base-300 px-3"
+                          >
+                            <Text className="text-base font-bold text-base-content">+</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleDeleteFood(entry)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Delete ${entry.food_name} entry`}
+                            className="min-h-11 justify-center rounded-pill border border-error/40 px-3"
+                          >
+                            <Text className="text-sm font-bold text-error">Delete</Text>
+                          </Pressable>
+                        </View>
                       </View>
                     ))}
                   </View>
@@ -623,7 +758,7 @@ export default function NutritionScreen() {
         visible={isAddFoodOpen}
         onRequestClose={() => setIsAddFoodOpen(false)}
       >
-        <View className="flex-1 bg-base-100">
+        <View ref={addFoodModalRef} tabIndex={-1} className="flex-1 bg-base-100" accessibilityViewIsModal>
           <ScrollView
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="px-5 pt-5 pb-12"
@@ -646,7 +781,10 @@ export default function NutritionScreen() {
                       <Pressable
                         key={meal.value}
                         onPress={() => setMealType(meal.value)}
-                        className={`rounded-pill border px-4 py-3 ${
+                        accessibilityRole="button"
+                        accessibilityLabel={`${meal.label} meal`}
+                        accessibilityState={{ selected: isSelected }}
+                        className={`min-h-11 rounded-pill border px-4 py-3 ${
                           isSelected
                             ? 'border-primary bg-primary'
                             : 'border-base-300 bg-base-100'
@@ -927,7 +1065,7 @@ export default function NutritionScreen() {
         presentationStyle="fullScreen"
         onRequestClose={() => setIsBarcodeScannerOpen(false)}
       >
-        <View className="flex-1 bg-base-100">
+        <View ref={barcodeModalRef} tabIndex={-1} className="flex-1 bg-base-100" accessibilityViewIsModal>
           <View className="flex-row items-center justify-between gap-3 px-5 pb-3 pt-6">
             <View className="flex-1">
               <Text className="text-xl font-bold text-base-content">Scan food barcode</Text>
@@ -967,7 +1105,10 @@ function FoodSearchResult({
   return (
     <Pressable
       onPress={onPress}
-      className={`gap-1 rounded-card border p-3 ${
+      accessibilityRole="button"
+      accessibilityLabel={`${food.name}, ${formatCalories(food.calories)} calories`}
+      accessibilityState={{ selected }}
+      className={`min-h-11 gap-1 rounded-card border p-3 ${
         selected ? 'border-primary bg-primary/10' : 'border-base-300 bg-base-100'
       }`}
     >

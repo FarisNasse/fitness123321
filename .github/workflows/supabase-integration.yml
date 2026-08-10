@@ -1,0 +1,69 @@
+name: Supabase integration
+
+on:
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync-contract:
+    name: Fresh database sync contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+
+      - name: Start local Supabase services
+        run: >-
+          supabase start
+          -x studio,imgproxy,realtime,storage-api,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
+
+      - name: Rebuild database from committed migrations
+        run: supabase db reset --local --no-seed
+
+      - name: Export local service credentials
+        shell: bash
+        run: |
+          supabase status -o env > "$RUNNER_TEMP/supabase.env"
+          set -a
+          . "$RUNNER_TEMP/supabase.env"
+          set +a
+          echo "SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+          echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
+
+      - name: Run behavioral sync integration suite
+        run: node --test tests/integration/supabase-sync.integration.test.mjs
+
+      - name: Capture migration diagnostics
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/supabase-diagnostics"
+          supabase status > "$RUNNER_TEMP/supabase-diagnostics/status.txt" 2>&1 || true
+          supabase migration list --local > "$RUNNER_TEMP/supabase-diagnostics/migrations.txt" 2>&1 || true
+
+      - name: Upload migration diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-integration-diagnostics
+          path: ${{ runner.temp }}/supabase-diagnostics
+          retention-days: 14
+
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup || true

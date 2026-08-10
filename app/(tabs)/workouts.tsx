@@ -12,6 +12,7 @@ import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import { WorkoutHistoryCard } from '@/src/components/WorkoutHistoryCard';
 import {
   createLocalWorkoutSession,
+  getActiveWorkoutSession,
   getCompletedWorkoutSessions,
   getLocalWorkoutSets,
   getWorkoutSyncStatusLabel,
@@ -28,6 +29,7 @@ export default function WorkoutsScreen() {
   const { session } = useAuthSession();
   const ownerId = session?.user.id ?? null;
   const [recentSessions, setRecentSessions] = useState<LocalWorkoutSessionRow[]>([]);
+  const [activeSession, setActiveSession] = useState<LocalWorkoutSessionRow | null>(null);
   const [recentSessionsError, setRecentSessionsError] = useState<string | null>(null);
   const [isLoadingRecentSessions, setIsLoadingRecentSessions] = useState(true);
   const [syncingSessionIds, setSyncingSessionIds] = useState<Set<string>>(
@@ -42,12 +44,15 @@ export default function WorkoutsScreen() {
     try {
       if (!ownerId) {
         setRecentSessions([]);
+        setActiveSession(null);
         return;
       }
 
       setRecentSessions(getCompletedWorkoutSessions(ownerId, 4));
+      setActiveSession(getActiveWorkoutSession(ownerId));
     } catch (error) {
       setRecentSessions([]);
+      setActiveSession(null);
       reportError(error, {
         source: 'workouts-screen',
         operation: 'load-history',
@@ -174,7 +179,19 @@ export default function WorkoutsScreen() {
         <Card variant="highlighted" className="gap-4">
           <Text className="text-2xl font-black text-base-content">Quick actions</Text>
           <View className="gap-3">
-            <Button title="Start workout" onPress={startWorkout} size="lg" />
+            {activeSession ? (
+              <Button
+                title="Resume workout"
+                onPress={() => router.push(`/workout/session/${activeSession.local_id}`)}
+                size="lg"
+              />
+            ) : null}
+            <Button
+              title="Start workout"
+              onPress={startWorkout}
+              size="lg"
+              variant={activeSession ? "outline" : "primary"}
+            />
             <Button
               title="Browse exercises"
               onPress={browseExercises}
@@ -196,7 +213,12 @@ export default function WorkoutsScreen() {
           <SectionHeader
             title="Recent workouts"
             action={
-              <Pressable onPress={refreshRecentSessions}>
+              <Pressable
+                onPress={refreshRecentSessions}
+                accessibilityRole="button"
+                accessibilityLabel="Refresh workout history"
+                hitSlop={10}
+              >
                 <Text className="text-sm font-bold text-primary">Refresh</Text>
               </Pressable>
             }

@@ -2,20 +2,26 @@ import type { ReactNode } from 'react';
 import { Modal, Pressable } from 'react-native';
 
 import { colors } from '@/src/lib/theme';
+import { useModalFocusTrap } from '@/src/lib/use-modal-focus-trap';
 
 export function BaseSheet({
   visible,
   onClose,
   children,
+  accessibilityLabel = 'Dialog',
 }: {
   visible: boolean;
   onClose: () => void;
   children: ReactNode;
+  accessibilityLabel?: string;
 }) {
+  const modalRef = useModalFocusTrap(visible);
+
   return (
     <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
       <Pressable
         onPress={onClose}
+        accessible={false}
         style={{
           backgroundColor: 'rgba(15, 23, 42, 0.45)',
           flex: 1,
@@ -23,7 +29,13 @@ export function BaseSheet({
         }}
       >
         <Pressable
+          ref={modalRef}
+          tabIndex={-1}
           onPress={(event) => event.stopPropagation()}
+         
+          accessibilityLabel={accessibilityLabel}
+          accessibilityViewIsModal
+          accessible={false}
           style={{
             backgroundColor: colors.base200,
             borderColor: colors.base300,

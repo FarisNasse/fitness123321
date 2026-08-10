@@ -27,6 +27,8 @@ export function Input({
       <TextInput
         placeholderTextColor={colors.baseMuted}
         {...props}
+        accessibilityLabel={props.accessibilityLabel ?? label ?? props.placeholder}
+        accessibilityHint={props.accessibilityHint ?? hint}
         className={`
           rounded-input border bg-base-100 px-4 py-3 text-base font-body text-base-content
           ${error ? 'border-error' : 'border-base-300'}

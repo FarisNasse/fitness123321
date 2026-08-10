@@ -15,14 +15,18 @@ export function SegmentedControl({ label, value, onChange }: SegmentedControlPro
       </View>
       <View className="flex-row gap-2">
         {[1, 2, 3, 4, 5].map((item) => {
-          const selected = item <= value;
+          const filled = item <= value;
+          const selected = item === value;
 
           return (
             <Pressable
               key={item}
               onPress={() => onChange(item)}
-              className={`h-4 flex-1 rounded-pill ${
-                selected ? 'bg-primary' : 'bg-base-300'
+              accessibilityRole="button"
+              accessibilityLabel={`${label} ${item} of 5`}
+              accessibilityState={{ selected }}
+              className={`min-h-11 flex-1 rounded-pill ${
+                filled ? 'bg-primary' : 'bg-base-300'
               }`}
             />
           );

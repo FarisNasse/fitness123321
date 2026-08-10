@@ -17,6 +17,7 @@ import {
 import { fetchExercises } from '@/src/features/workouts/exercise-service';
 import { reportError } from '@/src/lib/error-reporting';
 import { colors } from '@/src/lib/theme';
+import { useModalFocusTrap } from '@/src/lib/use-modal-focus-trap';
 import type { Exercise } from '@/src/types/models';
 
 type FilterKey = 'muscleGroup' | 'equipment' | 'movementType' | 'difficulty';
@@ -160,6 +161,8 @@ export function ExerciseLibrary({
   const [searchQuery, setSearchQuery] = useState('');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
+  const filterModalRef = useModalFocusTrap(isFilterSheetOpen);
+  const detailModalRef = useModalFocusTrap(Boolean(selectedExercise));
 
   const {
     data: exercises = [],
@@ -422,6 +425,10 @@ export function ExerciseLibrary({
       >
         <Pressable onPress={() => setIsFilterSheetOpen(false)} style={styles.modalBackdrop}>
           <Pressable
+            ref={filterModalRef}
+            tabIndex={-1}
+           
+            accessibilityViewIsModal
             onPress={(event: GestureResponderEvent) => event.stopPropagation()}
             className="gap-4 rounded-t-card border border-base-300 bg-base-200 p-5 pb-7"
             style={[styles.modalSheet, styles.filterSheet]}
@@ -490,6 +497,10 @@ export function ExerciseLibrary({
       >
         <Pressable onPress={() => setSelectedExercise(null)} style={styles.modalBackdrop}>
           <Pressable
+            ref={detailModalRef}
+            tabIndex={-1}
+           
+            accessibilityViewIsModal
             onPress={(event: GestureResponderEvent) => event.stopPropagation()}
             className="gap-4 rounded-t-card border border-base-300 bg-base-200 p-5 pb-8"
             style={styles.modalSheet}

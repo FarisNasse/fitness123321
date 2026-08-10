@@ -8,7 +8,7 @@ import { BaseSheet, sheetInputStyle } from './BaseSheet';
 
 export function TargetSettingsSheet({ controller }: { controller: LiveWorkoutController }) {
   return (
-    <BaseSheet visible={controller.activeSheet === 'targets'} onClose={controller.closeSheet}>
+    <BaseSheet accessibilityLabel="Exercise targets" visible={controller.activeSheet === 'targets'} onClose={controller.closeSheet}>
       <View style={{ gap: 18 }}>
         <Text style={{ color: colors.baseContent, fontSize: 22, fontWeight: '900' }}>
           {controller.selectedExercise?.name ?? 'Exercise'} targets
@@ -74,6 +74,7 @@ function TargetInput({
         {label}
       </Text>
       <TextInput
+        accessibilityLabel={label}
         keyboardType="decimal-pad"
         value={value}
         onChangeText={onChangeText}

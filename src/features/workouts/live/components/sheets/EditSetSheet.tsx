@@ -8,7 +8,7 @@ import { BaseSheet, sheetInputStyle } from './BaseSheet';
 
 export function EditSetSheet({ controller }: { controller: LiveWorkoutController }) {
   return (
-    <BaseSheet visible={controller.activeSheet === 'edit-set'} onClose={controller.closeSheet}>
+    <BaseSheet accessibilityLabel="Edit set" visible={controller.activeSheet === 'edit-set'} onClose={controller.closeSheet}>
       <View style={{ gap: 20 }}>
         <Text style={{ color: colors.baseContent, fontSize: 22, fontWeight: '900' }}>
           Edit set {controller.editingSet?.set_number}
@@ -18,6 +18,7 @@ export function EditSetSheet({ controller }: { controller: LiveWorkoutController
           <View style={{ flex: 1, minWidth: 96 }}>
             <Text style={{ color: colors.baseContent, fontWeight: '800', marginBottom: 6 }}>Reps</Text>
             <TextInput
+              accessibilityLabel="Reps"
               keyboardType="number-pad"
               value={controller.editInputs.reps}
               onChangeText={(value) => controller.updateEditInput('reps', value)}
@@ -28,6 +29,7 @@ export function EditSetSheet({ controller }: { controller: LiveWorkoutController
           <View style={{ flex: 1, minWidth: 96 }}>
             <Text style={{ color: colors.baseContent, fontWeight: '800', marginBottom: 6 }}>Weight</Text>
             <TextInput
+              accessibilityLabel="Weight"
               keyboardType="decimal-pad"
               value={controller.editInputs.weight}
               onChangeText={(value) => controller.updateEditInput('weight', value)}

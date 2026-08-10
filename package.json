@@ -33,7 +33,8 @@
     "check:lockfile": "node scripts/check-lockfile-registry.mjs",
     "food:normalize": "node scripts/food-data/normalize-usda-data.mjs",
     "food:validate": "node scripts/food-data/validate-food-catalog.mjs",
-    "food:import": "node scripts/food-data/import-food-catalog.mjs"
+    "food:import": "node scripts/food-data/import-food-catalog.mjs",
+    "check:release-evidence": "node scripts/verify-release-candidate.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "0.4.2",

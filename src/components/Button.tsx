@@ -65,8 +65,11 @@ export function Button({
     <Pressable
       {...props}
       disabled={isDisabled}
+      accessibilityRole={props.accessibilityRole ?? 'button'}
+      accessibilityLabel={props.accessibilityLabel ?? title}
+      accessibilityState={{ disabled: Boolean(isDisabled), ...props.accessibilityState }}
       className={`
-        rounded-pill items-center justify-center flex-row gap-2
+        min-h-11 rounded-pill items-center justify-center flex-row gap-2
         ${variantClasses[variant]}
         ${sizeClasses[size]}
         ${isDisabled ? 'opacity-40' : 'active:opacity-75'}

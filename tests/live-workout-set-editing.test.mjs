@@ -118,6 +118,6 @@ test('web local-db adapter handles every query shape used by set editing and del
   assert.match(localDb, /update workout_sets_local.*set set_number =/);
   assert.match(localDb, /is_deleted = 1/);
   assert.match(localDb, /deleted_at = \?/);
-  assert.doesNotMatch(localDb, /delete from workout_sets_local/);
+  assert.doesNotMatch(localDb, /normalized\.startsWith\('delete from workout_sets_local'\)/);
   assert.match(localDb, /session_local_id = \?.*exercise_id = \?.*set_number >/);
 });

@@ -8,7 +8,7 @@ test('body measurements use a durable local mirror with all optional fields', ()
   const compact = normalizeWhitespace(localDb);
 
   assert.match(localDb, /export type LocalBodyMeasurement/);
-  assert.match(compact, /create table if not exists body_measurements_local \( local_id text primary key, server_id text, user_id text not null, measured_at text not null, weight_kg real not null, body_fat_percent real, waist_cm real, hips_cm real, chest_cm real, arm_cm real, thigh_cm real, notes text, sync_status text not null default 'pending', updated_at text not null \)/);
+  assert.match(compact, /create table if not exists body_measurements_local \( local_id text primary key, server_id text, user_id text not null, measured_at text not null, weight_kg real not null, body_fat_percent real, waist_cm real, hips_cm real, chest_cm real, arm_cm real, thigh_cm real, notes text, is_deleted integer not null default 0, deleted_at text, sync_status text not null default 'pending', updated_at text not null \)/);
   assert.match(localDb, /idx_body_measurements_user_measured/);
   assert.match(localDb, /body_measurements_local: \[\]/);
   assert.match(localDb, /insert into body_measurements_local/);

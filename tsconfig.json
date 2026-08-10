@@ -9,6 +9,9 @@
       ]
     }
   },
+  "exclude": [
+    "supabase/functions/**/*"
+  ],
   "include": [
     "nativewind-env.d.ts",
     "**/*.ts",

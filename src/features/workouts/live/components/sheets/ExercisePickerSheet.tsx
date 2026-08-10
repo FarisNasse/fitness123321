@@ -5,7 +5,7 @@ import { BaseSheet } from './BaseSheet';
 
 export function ExercisePickerSheet({ controller }: { controller: LiveWorkoutController }) {
   return (
-    <BaseSheet visible={controller.activeSheet === 'exercise-picker'} onClose={controller.closeSheet}>
+    <BaseSheet accessibilityLabel="Choose exercise" visible={controller.activeSheet === 'exercise-picker'} onClose={controller.closeSheet}>
       <ExerciseLibrary onSelect={controller.chooseExercise} selectButtonTitle="Use this exercise" />
     </BaseSheet>
   );

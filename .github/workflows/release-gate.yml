@@ -1,0 +1,84 @@
+name: Release candidate gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_file:
+        description: Committed JSON evidence file for this exact commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  automated-release-checks:
+    name: Locked install, quality, Expo, and bundles
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Verify pinned npm
+        run: test "$(npm --version)" = "10.9.8"
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run quality suite
+        run: npm run test:all
+      - name: Validate Expo dependency graph
+        run: npm run check:expo
+      - name: Validate EAS preview configuration
+        run: npm run check:preview && npm run check:eas-link
+      - name: Export Android bundle
+        run: npm run bundle:android
+      - name: Export iOS bundle
+        run: npm run bundle:ios
+
+  migration-contract:
+    name: Fresh Supabase contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+      - name: Start Supabase and rebuild migrations
+        run: |
+          supabase start -x studio,imgproxy,realtime,storage-api,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
+          supabase db reset --local --no-seed
+      - name: Export local credentials
+        shell: bash
+        run: |
+          supabase status -o env > "$RUNNER_TEMP/supabase.env"
+          set -a
+          . "$RUNNER_TEMP/supabase.env"
+          set +a
+          echo "SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+          echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
+      - run: node --test tests/integration/supabase-sync.integration.test.mjs
+      - if: always()
+        run: supabase stop --no-backup || true
+
+  evidence:
+    name: Manual evidence and release blockers
+    runs-on: ubuntu-latest
+    needs: [automated-release-checks, migration-contract]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify no explicit P0/P1 release blocker is open
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count=$(gh issue list --state open --label release-blocker --limit 100 --json number,labels \
+            --jq '[.[] | select(any(.labels[]; .name == "priority:P0" or .name == "priority:P1"))] | length')
+          test "$count" = "0"
+      - name: Validate release evidence
+        env:
+          RELEASE_EVIDENCE: ${{ inputs.evidence_file }}
+        run: node scripts/verify-release-candidate.mjs "$RELEASE_EVIDENCE"
