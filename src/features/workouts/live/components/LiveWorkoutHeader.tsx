@@ -70,6 +70,8 @@ function RestTimerStrip({ restSeconds, onSkip }: { restSeconds: number | null; o
       </Text>
       <Pressable
         onPress={onSkip}
+        accessibilityRole="button"
+        accessibilityLabel="Skip rest timer"
         style={({ pressed }) => ({
           backgroundColor: pressed ? colors.base300 : colors.base100,
           borderColor: colors.base300,

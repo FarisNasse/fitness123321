@@ -47,3 +47,29 @@ required value, and commit it only after installing and testing the binary. The
 **PASS / FAIL / BLOCKED**
 
 Notes, defects, and follow-up issue links:
+
+## Cross-device and account lifecycle
+
+- [ ] Fresh Supabase migration/integration workflow passed for this commit.
+- [ ] Android Maestro critical smoke passed; workflow and Maestro Cloud URLs recorded.
+- [ ] Offline-to-online replay completed without duplicates.
+- [ ] Sign-out/sign-in restored cloud-backed workout, nutrition/water, wellness, and measurement data.
+- [ ] Portable data export reviewed for every supported user-data domain.
+- [ ] Permanent account deletion removed authentication and owned cloud rows and cleared local account data.
+
+## Accessibility
+
+- [ ] TalkBack critical-flow checklist passed.
+- [ ] VoiceOver critical-flow checklist passed.
+- [ ] Web keyboard/modal-focus checklist passed.
+- [ ] Status and selection remain understandable without color alone.
+
+## Release operations
+
+- [ ] No open P0/P1 issue labeled `release-blocker`.
+- [ ] Final privacy policy URL/location recorded.
+- [ ] Final terms URL/location recorded.
+- [ ] Final public support URL/location recorded.
+- [ ] Dated final brand/trademark/store/domain availability review recorded.
+- [ ] Release notes attached.
+- [ ] Rollback plan attached.

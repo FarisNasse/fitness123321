@@ -9,7 +9,7 @@ import { BaseSheet } from './BaseSheet';
 
 export function FinishWorkoutSheet({ controller }: { controller: LiveWorkoutController }) {
   return (
-    <BaseSheet visible={controller.activeSheet === 'finish'} onClose={controller.closeSheet}>
+    <BaseSheet accessibilityLabel="Finish workout" visible={controller.activeSheet === 'finish'} onClose={controller.closeSheet}>
       <View style={{ gap: 18 }}>
         <View style={{ gap: 6 }}>
           <Text style={{ color: colors.baseContent, fontSize: 24, fontWeight: '900' }}>
@@ -48,6 +48,9 @@ export function FinishWorkoutSheet({ controller }: { controller: LiveWorkoutCont
                 <Pressable
                   key={feedback}
                   onPress={() => controller.setEffortFeedback(selected ? null : feedback)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${label} workout effort`}
+                  accessibilityState={{ selected }}
                   style={{
                     alignItems: 'center',
                     backgroundColor: selected ? colors.primary : colors.base100,

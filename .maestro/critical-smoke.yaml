@@ -1,0 +1,89 @@
+appId: com.farisnasse.allinonefitness
+name: Critical fitness journey
+tags:
+  - release-smoke
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Welcome back"
+- tapOn: "Email"
+- inputText: ${E2E_EMAIL}
+- tapOn: "Password"
+- inputText: ${E2E_PASSWORD}
+- tapOn: "Sign in"
+
+- runFlow:
+    when:
+      visible: "Set your starting point"
+    commands:
+      - tapOn: "Build muscle"
+      - tapOn: "intermediate"
+      - tapOn: "Finish onboarding"
+
+- assertVisible: "Today"
+
+# Workout persistence and offline queue path.
+- tapOn: "Train"
+- tapOn: "Start workout"
+- assertVisible: "Quick workout"
+- setAirplaneMode: enabled
+- tapOn: "Add first exercise"
+- tapOn: "Search exercise, muscle, or equipment"
+- inputText: "Barbell Bench Press"
+- tapOn: "Barbell Bench Press"
+- tapOn: "Use this exercise"
+- tapOn: "Log set 1"
+- assertVisible: ".*1 set logged.*"
+- setAirplaneMode: disabled
+- stopApp
+- launchApp
+- tapOn: "Train"
+- tapOn: "Resume workout"
+- assertVisible: ".*1 set logged.*"
+- tapOn: "Finish workout"
+- tapOn: "Complete workout"
+
+# Nutrition and water.
+- tapOn: "Eat"
+- tapOn: "Add 250 milliliters of water"
+- assertVisible: "250 ml logged today"
+- tapOn: "Add food"
+- tapOn: "Search food name..."
+- inputText: "E2E Test Food"
+- scrollUntilVisible:
+    element:
+      text: "Create new food"
+    direction: DOWN
+- tapOn: "Create new food"
+- scrollUntilVisible:
+    element:
+      text: "Log food"
+    direction: DOWN
+- tapOn: "Log food"
+
+# Wellness and measurement logging.
+- tapOn: "Rest"
+- tapOn: "Manual steps"
+- eraseText
+- inputText: "5432"
+- tapOn: ".*today's check-in"
+- assertVisible: "Saved today"
+
+- tapOn: "Growth"
+- tapOn: "Log measurement"
+- tapOn: "Weight (lb)"
+- inputText: "170"
+- tapOn: "Save measurement"
+- assertVisible: ".*170.*lb.*"
+
+# Cloud restoration after sign-out/in.
+- tapOn: "More"
+- tapOn: "Sign out"
+- assertVisible: "Welcome back"
+- tapOn: "Email"
+- inputText: ${E2E_EMAIL}
+- tapOn: "Password"
+- inputText: ${E2E_PASSWORD}
+- tapOn: "Sign in"
+- tapOn: "Eat"
+- assertVisible: ".*250 ml logged today.*"

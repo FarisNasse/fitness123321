@@ -1,0 +1,33 @@
+{
+  "status": "pass",
+  "commitSha": "REPLACE_WITH_FULL_COMMIT_SHA",
+  "automated": {
+    "tests": "pass",
+    "expo": "pass",
+    "supabaseIntegration": "pass",
+    "androidE2E": "pass",
+    "androidE2eUrl": "https://REPLACE_WITH_MAESTRO_OR_WORKFLOW_URL"
+  },
+  "devices": {
+    "android": { "result": "pass", "device": "REPLACE", "os": "REPLACE" },
+    "ios": { "result": "pass", "device": "REPLACE", "os": "REPLACE" }
+  },
+  "accessibility": {
+    "talkBack": "pass",
+    "voiceOver": "pass",
+    "keyboardWeb": "pass"
+  },
+  "accountLifecycle": {
+    "export": "pass",
+    "deletion": "pass"
+  },
+  "releaseBlockingIssues": 0,
+  "legal": {
+    "privacyPolicy": "docs/privacy-policy.md",
+    "terms": "docs/terms-of-use.md",
+    "support": "docs/support.md",
+    "brandAvailabilityReview": "REPLACE_WITH_DATED_REVIEW_REFERENCE"
+  },
+  "releaseNotes": "REPLACE_WITH_RELEASE_NOTES_REFERENCE",
+  "rollbackPlan": "REPLACE_WITH_ROLLBACK_PLAN"
+}

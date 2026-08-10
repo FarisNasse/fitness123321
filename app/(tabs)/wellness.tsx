@@ -13,6 +13,7 @@ import { SegmentedControl } from '@/src/components/SegmentedControl';
 import { useAuthSession } from '@/src/features/auth/auth-session-context';
 import {
   buildSleepWindow,
+  deleteDailyWellnessCheckIn,
   formatTimeInput,
   getDailyWellnessCheckIn,
   getLatestWellnessCheckIn,
@@ -87,6 +88,42 @@ export default function WellnessScreen() {
       return 0;
     }
   }, [bedtime, wakeTime]);
+
+  function handleDeleteToday() {
+    if (!ownerId || !hasSavedToday) return;
+
+    Alert.alert(
+      "Delete today's check-in?",
+      'This removes today’s sleep, mood, stress, energy, and steps entry on all synced devices.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            try {
+              if (!deleteDailyWellnessCheckIn(ownerId)) return;
+              setHasSavedToday(false);
+              void syncPendingWellnessCheckIns().catch((error) => {
+                reportError(error, {
+                  source: 'wellness-screen',
+                  operation: 'sync-after-delete',
+                  domain: 'wellness',
+                });
+              });
+            } catch (error) {
+              reportError(error, {
+                source: 'wellness-screen',
+                operation: 'delete-check-in',
+                domain: 'wellness',
+              });
+              Alert.alert('Unable to delete check-in', 'Today’s check-in could not be deleted.');
+            }
+          },
+        },
+      ]
+    );
+  }
 
   async function handleSave() {
     const parsedSteps = Number(steps.trim());
@@ -177,6 +214,14 @@ export default function WellnessScreen() {
             onPress={handleSave}
             loading={isSaving}
           />
+          {hasSavedToday ? (
+            <Button
+              title="Delete today's check-in"
+              variant="ghost"
+              onPress={handleDeleteToday}
+              disabled={isSaving}
+            />
+          ) : null}
         </Card>
 
         <Card className="gap-3">

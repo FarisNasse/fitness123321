@@ -26,6 +26,9 @@ export function ExerciseSwitcher({ controller }: { controller: LiveWorkoutContro
             <Pressable
               key={exercise.id}
               onPress={() => void controller.selectExerciseForLogging(exercise)}
+              accessibilityRole="button"
+              accessibilityLabel={`${controller.exerciseProgressLabel(exercise)} exercise`}
+              accessibilityState={{ selected: active }}
               style={({ pressed }) => ({
                 alignItems: 'center',
                 backgroundColor: active ? colors.primary : pressed ? colors.base300 : colors.base200,

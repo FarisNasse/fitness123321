@@ -109,14 +109,34 @@ test('local-db web adapter supports the nutrition query and mutation patterns us
   assert.match(localDb, /update meal_logs_local.*set server_id = null/);
   assert.match(localDb, /update meal_items_local.*set sync_status = 'failed'/);
   assert.match(localDb, /update meal_items_local.*set server_id = \?/);
+  assert.match(localDb, /update meal_items_local.*set quantity = \?/);
+  assert.match(localDb, /update meal_items_local.*set is_deleted = 1/);
+  assert.match(localDb, /update meal_logs_local.*set is_deleted = 1/);
   assert.match(localDb, /update water_logs_local.*set sync_status = 'failed'/);
   assert.match(localDb, /update water_logs_local.*set server_id = \?/);
+  assert.match(localDb, /update water_logs_local.*set is_deleted = 1/);
   assert.match(localDb, /from meal_logs_local.*sync_status/);
   assert.match(localDb, /from meal_logs_local.*logged_at >= \?.*logged_at < \?/);
   assert.match(localDb, /from meal_items_local.*meal_log_local_id in/);
   assert.match(localDb, /from meal_items_local.*meal_log_local_id = \?/);
   assert.match(localDb, /from water_logs_local.*sync_status/);
   assert.match(localDb, /from water_logs_local.*logged_at >= \?.*logged_at < \?/);
+});
+
+
+test('nutrition correction and deletion controls create syncable local changes', () => {
+  const service = readProjectFile('src/features/nutrition/nutrition-service.ts');
+  const screen = readProjectFile('app/(tabs)/nutrition.tsx');
+
+  assert.match(service, /export function updateLocalMealItemQuantity/);
+  assert.match(service, /set quantity = \?[\s\S]*sync_status = 'pending'/);
+  assert.match(service, /export function deleteLocalMealItem/);
+  assert.match(service, /set is_deleted = 1, deleted_at = \?, sync_status = 'pending'/);
+  assert.match(service, /export function deleteLocalWaterLog/);
+  assert.match(screen, /handleAdjustFoodQuantity/);
+  assert.match(screen, /handleDeleteFood/);
+  assert.match(screen, /handleDeleteWater/);
+  assert.match(screen, /accessibilityLabel=\{`Delete \$\{entry\.food_name\} entry`\}/);
 });
 
 test('shared sync state coordinates the nutrition queue on connectivity and app activation', () => {
@@ -196,7 +216,7 @@ test('nutrition service exposes daily target defaults, Supabase daily_targets fe
   assert.match(service, /return mapDailyTargets\(data as DailyTargetsRow \| null\)/);
   assert.match(service, /const nutritionLogListeners = new Set<NutritionLogListener>\(\)/);
   assert.match(service, /export function subscribeToNutritionLogChanges\(userId: string, listener: \(\) => void\)/);
-  assert.match(service, /function notifyNutritionLogChanged\(userId: string\)/);
+  assert.match(service, /function notifyNutritionLogChanged\(userId: string, markPending = true\)/);
   assert.match(service, /insert into meal_items_local[\s\S]*notifyNutritionLogChanged\(input\.userId\);/);
   assert.match(service, /insert into water_logs_local[\s\S]*notifyNutritionLogChanged\(input\.userId\);/);
 });

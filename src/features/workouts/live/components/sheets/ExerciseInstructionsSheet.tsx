@@ -8,7 +8,7 @@ import { BaseSheet } from './BaseSheet';
 
 export function ExerciseInstructionsSheet({ controller }: { controller: LiveWorkoutController }) {
   return (
-    <BaseSheet visible={controller.activeSheet === 'instructions'} onClose={controller.closeSheet}>
+    <BaseSheet accessibilityLabel="Exercise instructions" visible={controller.activeSheet === 'instructions'} onClose={controller.closeSheet}>
       <View style={{ gap: 14 }}>
         <Text style={{ color: colors.baseContent, fontSize: 22, fontWeight: '900' }}>
           {controller.selectedExercise?.name ?? 'Exercise'} instructions

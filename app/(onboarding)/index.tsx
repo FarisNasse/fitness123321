@@ -152,7 +152,10 @@ function Option({
   return (
     <Pressable
       onPress={onPress}
-      className={`rounded-input border p-4 active:opacity-75 ${
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      className={`min-h-11 rounded-input border p-4 active:opacity-75 ${
         selected
           ? 'border-primary bg-primary/10'
           : 'border-base-300 bg-base-100'

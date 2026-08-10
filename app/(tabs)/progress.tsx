@@ -32,6 +32,7 @@ import {
   type LocalWorkoutSessionRow,
 } from '@/src/features/workouts/workout-service';
 import { reportError } from '@/src/lib/error-reporting';
+import { useModalFocusTrap } from '@/src/lib/use-modal-focus-trap';
 
 type PersonalRecord = {
   exercise: string;
@@ -151,6 +152,7 @@ export default function ProgressScreen() {
   const [arm, setArm] = useState('');
   const [thigh, setThigh] = useState('');
   const exercises = useMemo(() => getSeededExercises(), []);
+  const measurementModalRef = useModalFocusTrap(isMeasurementOpen);
 
   const loadLocalMeasurements = useCallback(async () => {
     setMeasurements(ownerId ? getBodyMeasurementHistory(ownerId) : []);
@@ -456,7 +458,7 @@ export default function ProgressScreen() {
         visible={isMeasurementOpen}
         onRequestClose={() => setIsMeasurementOpen(false)}
       >
-        <View className="flex-1 bg-base-100">
+        <View ref={measurementModalRef} tabIndex={-1} accessibilityRole="dialog" className="flex-1 bg-base-100" accessibilityViewIsModal>
           <ScrollView
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="px-5 pt-5 pb-12"

@@ -408,3 +408,34 @@ This is intentionally a buildable foundation rather than a complete app. The nex
 The app includes a root recovery screen, optional Sentry crash reporting, shared network state, and coordinated local-first sync status across workouts, nutrition, wellness, and progress. Provider failures are logged with diagnostic context while user-facing screens show stable product copy. Offline mode remains fully usable for on-device logging.
 
 See [`docs/runtime-protection.md`](docs/runtime-protection.md) for environment configuration, release metadata, source-map setup, and manual verification steps.
+
+## Cloud restoration and sync contracts
+
+Authenticated cloud mode is two-way for workouts, nutrition/water, wellness, and body measurements. Local writes remain immediate and are queued for upload; refresh/sign-in also hydrates bounded remote history back into the local mirror. Pending/failed local edits win over remote refresh until they are synchronized, while already-synced conflicts use the newest meaningful `updated_at` timestamp. Deletions synchronize as tombstones so a stale device cannot recreate a deleted row simply by replaying old data.
+
+Local schema upgrades use `PRAGMA user_version` (or the equivalent web-store schema version) and migration steps rather than depending only on tolerant `ALTER TABLE` calls. Cloud migration `0009_harden_sync_contracts.sql` adds the recency, uniqueness, indexes, sort-order, and tombstone fields required by the merge rules.
+
+A fresh Supabase behavioral check is committed in `tests/integration/supabase-sync.integration.test.mjs` and `.github/workflows/supabase-integration.yml`. It rebuilds the database from migrations, creates two users, exercises ownership/RLS, edits/tombstones/retries, duplicate replay, wellness/daily-target uniqueness, recency triggers, and account-delete cascades.
+
+## Account data controls
+
+The **More** tab provides a portable JSON export and permanent account deletion for authenticated builds. The export includes workouts/sets/targets, meal logs/items/water, cached personal/recent foods, wellness check-ins, body measurements, and daily targets. Permanent deletion is performed by the authenticated `delete-account` Supabase Edge Function using a server-only service-role key; after the server confirms deletion, the app clears that account's local records and local auth session.
+
+Deploy the function to each cloud environment before enabling production account deletion:
+
+```bash
+supabase functions deploy delete-account
+```
+
+Never expose `SUPABASE_SERVICE_ROLE_KEY` through an Expo public environment variable or client bundle.
+
+## Accessibility, E2E, and release gates
+
+Release operations are versioned with the product:
+
+- `docs/accessibility-checklist.md` covers VoiceOver, TalkBack, and web keyboard/focus verification.
+- `.maestro/critical-smoke.yaml` and `.github/workflows/e2e-android.yml` exercise the critical Android journey, including restart persistence, offline/online replay, every core logging domain, and sign-out/sign-in restoration.
+- `docs/e2e-runbook.md` documents Android automation and the required iOS manual pass.
+- `docs/release-checklist.md` and `scripts/verify-release-candidate.mjs` define the release evidence contract used by `.github/workflows/release-gate.yml`.
+- `docs/privacy-policy.md`, `docs/terms-of-use.md`, and `docs/support.md` are repository pre-release versions that must be replaced/published as final canonical production documents before store launch.
+- `docs/brand-release-readiness.md` records the current working identity and the required dated trademark/store/domain availability review. Source code does not constitute legal/name clearance.

@@ -70,6 +70,8 @@ export type LocalMealLog = {
   user_id: string;
   logged_at: string;
   meal_type: LocalMealType;
+  is_deleted: number;
+  deleted_at: string | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
 };
@@ -93,6 +95,8 @@ export type LocalMealItem = {
   sugar_g: number | null;
   saturated_fat_g: number | null;
   sodium_mg: number | null;
+  is_deleted: number;
+  deleted_at: string | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
 };
@@ -132,6 +136,8 @@ export type LocalWaterLog = {
   user_id: string;
   logged_at: string;
   amount_ml: number;
+  is_deleted: number;
+  deleted_at: string | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
 };
@@ -149,6 +155,8 @@ export type LocalBodyMeasurement = {
   arm_cm: number | null;
   thigh_cm: number | null;
   notes: string | null;
+  is_deleted: number;
+  deleted_at: string | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
 };
@@ -156,6 +164,7 @@ export type LocalBodyMeasurement = {
 export type LocalWellnessCheckIn = {
   local_id: string;
   server_id: string | null;
+  sleep_server_id: string | null;
   user_id: string;
   check_in_date: string;
   logged_at: string;
@@ -166,11 +175,14 @@ export type LocalWellnessCheckIn = {
   energy_score: number;
   steps: number;
   notes: string | null;
+  is_deleted: number;
+  deleted_at: string | null;
   sync_status: 'pending' | 'synced' | 'failed';
   updated_at: string;
 };
 
 type WebStore = {
+  schema_version: number;
   workout_sessions_local: Record<string, unknown>[];
   workout_session_exercises_local: Record<string, unknown>[];
   exercise_targets_local: Record<string, unknown>[];
@@ -205,6 +217,7 @@ function createNativeDbAdapter(): DbAdapter {
 
 function createEmptyWebStore(): WebStore {
   return {
+    schema_version: 0,
     workout_sessions_local: [],
     workout_session_exercises_local: [],
     exercise_targets_local: [],
@@ -241,6 +254,32 @@ function readWebStore(): WebStore {
       ...target,
       user_id: target.user_id || LOCAL_DEV_USER_ID,
     }));
+    parsed.meal_logs_local = parsed.meal_logs_local.map((row) => ({
+      is_deleted: 0,
+      deleted_at: null,
+      ...row,
+    }));
+    parsed.meal_items_local = parsed.meal_items_local.map((row) => ({
+      is_deleted: 0,
+      deleted_at: null,
+      ...row,
+    }));
+    parsed.water_logs_local = parsed.water_logs_local.map((row) => ({
+      is_deleted: 0,
+      deleted_at: null,
+      ...row,
+    }));
+    parsed.mood_logs_local = parsed.mood_logs_local.map((row) => ({
+      sleep_server_id: null,
+      is_deleted: 0,
+      deleted_at: null,
+      ...row,
+    }));
+    parsed.body_measurements_local = parsed.body_measurements_local.map((row) => ({
+      is_deleted: 0,
+      deleted_at: null,
+      ...row,
+    }));
     parsed.food_cache_local = parsed.food_cache_local.map((food) => ({
       ...food,
       user_id: food.user_id || LOCAL_DEV_USER_ID,
@@ -272,6 +311,20 @@ function normalizeSql(sql: string) {
   return sql.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+function upsertWebRow(
+  rows: Record<string, unknown>[],
+  row: Record<string, unknown>,
+  key = 'local_id'
+) {
+  const existing = rows.find((item) => String(item[key]) === String(row[key]));
+
+  if (existing) {
+    Object.assign(existing, row);
+  } else {
+    rows.push(row);
+  }
+}
+
 function isDeletedRecord(record: Record<string, unknown>) {
   return (
     Boolean(record.deleted_at) ||
@@ -298,6 +351,157 @@ function createWebDbAdapter(): DbAdapter {
     runSync(sql, params = []) {
       const normalized = normalizeSql(sql);
       const store = readWebStore();
+
+      if (normalized.startsWith('replace into workout_sessions_local')) {
+        const [localId, serverId, userId, name, startedAt, completedAt, durationSeconds, notes, isDeleted, deletedAt, updatedAt] = params;
+        upsertWebRow(store.workout_sessions_local, {
+          local_id: localId,
+          server_id: serverId,
+          user_id: userId,
+          name,
+          started_at: startedAt,
+          completed_at: completedAt,
+          duration_seconds: durationSeconds,
+          notes,
+          is_deleted: Number(isDeleted ?? 0),
+          deleted_at: deletedAt,
+          sync_status: 'synced',
+          updated_at: updatedAt,
+        });
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('replace into workout_sets_local')) {
+        const [localId, serverId, sessionLocalId, exerciseId, setNumber, reps, weight, completed, isDeleted, deletedAt, updatedAt] = params;
+        upsertWebRow(store.workout_sets_local, {
+          local_id: localId,
+          server_id: serverId,
+          session_local_id: sessionLocalId,
+          exercise_id: exerciseId,
+          set_number: setNumber,
+          reps,
+          weight,
+          completed: Number(completed ?? 0),
+          is_deleted: Number(isDeleted ?? 0),
+          deleted_at: deletedAt,
+          sync_status: 'synced',
+          updated_at: updatedAt,
+        });
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('replace into workout_session_exercises_local')) {
+        const [localId, sessionLocalId, exerciseId, sortOrder, createdAt, updatedAt] = params;
+        const conflicting = store.workout_session_exercises_local.find(
+          (item) => item.session_local_id === sessionLocalId && item.exercise_id === exerciseId
+        );
+        if (conflicting && conflicting.local_id !== localId) {
+          store.workout_session_exercises_local = store.workout_session_exercises_local.filter(
+            (item) => item !== conflicting
+          );
+        }
+        upsertWebRow(store.workout_session_exercises_local, {
+          local_id: localId,
+          session_local_id: sessionLocalId,
+          exercise_id: exerciseId,
+          sort_order: Number(sortOrder ?? 0),
+          created_at: createdAt,
+          updated_at: updatedAt,
+        });
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('replace into meal_logs_local')) {
+        const [localId, serverId, userId, loggedAt, mealType, isDeleted, deletedAt, updatedAt] = params;
+        upsertWebRow(store.meal_logs_local, {
+          local_id: localId,
+          server_id: serverId,
+          user_id: userId,
+          logged_at: loggedAt,
+          meal_type: mealType,
+          is_deleted: Number(isDeleted ?? 0),
+          deleted_at: deletedAt,
+          sync_status: 'synced',
+          updated_at: updatedAt,
+        });
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('replace into meal_items_local')) {
+        const [localId, serverId, mealLogLocalId, foodId, foodSource, sourceFoodId, fdcId, foodName, quantity, unit, calories, proteinG, carbsG, fatG, fiberG, sugarG, saturatedFatG, sodiumMg, isDeleted, deletedAt, updatedAt] = params;
+        upsertWebRow(store.meal_items_local, {
+          local_id: localId,
+          server_id: serverId,
+          meal_log_local_id: mealLogLocalId,
+          food_id: foodId,
+          food_source: foodSource,
+          source_food_id: sourceFoodId,
+          fdc_id: fdcId,
+          food_name: foodName,
+          quantity,
+          unit,
+          calories,
+          protein_g: proteinG,
+          carbs_g: carbsG,
+          fat_g: fatG,
+          fiber_g: fiberG,
+          sugar_g: sugarG,
+          saturated_fat_g: saturatedFatG,
+          sodium_mg: sodiumMg,
+          is_deleted: Number(isDeleted ?? 0),
+          deleted_at: deletedAt,
+          sync_status: 'synced',
+          updated_at: updatedAt,
+        });
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('replace into water_logs_local')) {
+        const [localId, serverId, userId, loggedAt, amountMl, isDeleted, deletedAt, updatedAt] = params;
+        upsertWebRow(store.water_logs_local, {
+          local_id: localId,
+          server_id: serverId,
+          user_id: userId,
+          logged_at: loggedAt,
+          amount_ml: amountMl,
+          is_deleted: Number(isDeleted ?? 0),
+          deleted_at: deletedAt,
+          sync_status: 'synced',
+          updated_at: updatedAt,
+        });
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('replace into mood_logs_local')) {
+        const [localId, serverId, sleepServerId, userId, checkInDate, loggedAt, sleepStart, sleepEnd, moodScore, stressScore, energyScore, steps, notes, isDeleted, deletedAt, updatedAt] = params;
+        upsertWebRow(store.mood_logs_local, {
+          local_id: localId,
+          server_id: serverId,
+          sleep_server_id: sleepServerId,
+          user_id: userId,
+          check_in_date: checkInDate,
+          logged_at: loggedAt,
+          sleep_start: sleepStart,
+          sleep_end: sleepEnd,
+          mood_score: moodScore,
+          stress_score: stressScore,
+          energy_score: energyScore,
+          steps,
+          notes,
+          is_deleted: Number(isDeleted ?? 0),
+          deleted_at: deletedAt,
+          sync_status: 'synced',
+          updated_at: updatedAt,
+        });
+        writeWebStore(store);
+        return;
+      }
 
       if (normalized.startsWith('insert into workout_sessions_local')) {
         const [localId, userId, name, startedAt, updatedAt] = params;
@@ -422,6 +626,8 @@ function createWebDbAdapter(): DbAdapter {
           user_id: userId,
           logged_at: loggedAt,
           meal_type: mealType,
+          is_deleted: 0,
+          deleted_at: null,
           sync_status: 'pending',
           updated_at: updatedAt,
         });
@@ -471,6 +677,8 @@ function createWebDbAdapter(): DbAdapter {
           sugar_g: sugarG,
           saturated_fat_g: saturatedFatG,
           sodium_mg: sodiumMg,
+          is_deleted: 0,
+          deleted_at: null,
           sync_status: 'pending',
           updated_at: updatedAt,
         });
@@ -561,6 +769,8 @@ function createWebDbAdapter(): DbAdapter {
           user_id: userId,
           logged_at: loggedAt,
           amount_ml: amountMl,
+          is_deleted: 0,
+          deleted_at: null,
           sync_status: 'pending',
           updated_at: updatedAt,
         });
@@ -587,6 +797,7 @@ function createWebDbAdapter(): DbAdapter {
         store.mood_logs_local.push({
           local_id: localId,
           server_id: null,
+          sleep_server_id: null,
           user_id: userId,
           check_in_date: checkInDate,
           logged_at: loggedAt,
@@ -597,10 +808,36 @@ function createWebDbAdapter(): DbAdapter {
           energy_score: energyScore,
           steps,
           notes: null,
+          is_deleted: 0,
+          deleted_at: null,
           sync_status: 'pending',
           updated_at: updatedAt,
         });
 
+        writeWebStore(store);
+        return;
+      }
+
+      if (normalized.startsWith('replace into body_measurements_local')) {
+        const [localId, serverId, userId, measuredAt, weightKg, bodyFatPercent, waistCm, hipsCm, chestCm, armCm, thighCm, notes, isDeleted, deletedAt, updatedAt] = params;
+        upsertWebRow(store.body_measurements_local, {
+          local_id: localId,
+          server_id: serverId,
+          user_id: userId,
+          measured_at: measuredAt,
+          weight_kg: weightKg,
+          body_fat_percent: bodyFatPercent,
+          waist_cm: waistCm,
+          hips_cm: hipsCm,
+          chest_cm: chestCm,
+          arm_cm: armCm,
+          thigh_cm: thighCm,
+          notes,
+          is_deleted: Number(isDeleted ?? 0),
+          deleted_at: deletedAt,
+          sync_status: 'synced',
+          updated_at: updatedAt,
+        });
         writeWebStore(store);
         return;
       }
@@ -637,6 +874,8 @@ function createWebDbAdapter(): DbAdapter {
           arm_cm: armCm,
           thigh_cm: thighCm,
           notes,
+          is_deleted: 0,
+          deleted_at: null,
           sync_status: hasExplicitServerId ? 'synced' : 'pending',
           updated_at: updatedAt,
         });
@@ -684,6 +923,24 @@ function createWebDbAdapter(): DbAdapter {
           });
         }
 
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update body_measurements_local') &&
+        normalized.includes('set is_deleted = 1')
+      ) {
+        const [deletedAt, updatedAt, userId, localId] = params;
+        const measurement = store.body_measurements_local.find(
+          (item) => String(item.local_id) === String(localId) && String(item.user_id) === String(userId)
+        );
+        if (measurement && !isDeletedRecord(measurement)) {
+          measurement.is_deleted = 1;
+          measurement.deleted_at = deletedAt;
+          measurement.sync_status = 'pending';
+          measurement.updated_at = updatedAt;
+        }
         writeWebStore(store);
         return;
       }
@@ -975,6 +1232,132 @@ function createWebDbAdapter(): DbAdapter {
       }
 
       if (
+        normalized.startsWith('update meal_items_local') &&
+        normalized.includes('set quantity = ?')
+      ) {
+        const [
+          quantity,
+          calories,
+          proteinG,
+          carbsG,
+          fatG,
+          fiberG,
+          sugarG,
+          saturatedFatG,
+          sodiumMg,
+          updatedAt,
+          localId,
+        ] = params;
+        const item = store.meal_items_local.find((row) => row.local_id === localId);
+        if (item) {
+          Object.assign(item, {
+            quantity,
+            calories,
+            protein_g: proteinG,
+            carbs_g: carbsG,
+            fat_g: fatG,
+            fiber_g: fiberG,
+            sugar_g: sugarG,
+            saturated_fat_g: saturatedFatG,
+            sodium_mg: sodiumMg,
+            is_deleted: 0,
+            deleted_at: null,
+            sync_status: 'pending',
+            updated_at: updatedAt,
+          });
+        }
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update meal_items_local') &&
+        normalized.includes('set is_deleted = 1')
+      ) {
+        const [deletedAt, updatedAt, localId] = params;
+        const item = store.meal_items_local.find((row) => row.local_id === localId);
+        if (item) {
+          item.is_deleted = 1;
+          item.deleted_at = deletedAt;
+          item.sync_status = 'pending';
+          item.updated_at = updatedAt;
+        }
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update meal_logs_local') &&
+        normalized.includes("set sync_status = 'pending'") &&
+        normalized.includes('updated_at = ?')
+      ) {
+        const [updatedAt, localId, userId] = params;
+        const mealLog = store.meal_logs_local.find(
+          (row) => row.local_id === localId && String(row.user_id) === String(userId)
+        );
+        if (mealLog) {
+          mealLog.sync_status = 'pending';
+          mealLog.updated_at = updatedAt;
+        }
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update meal_logs_local') &&
+        normalized.includes('set is_deleted = 1')
+      ) {
+        const [deletedAt, updatedAt, localId, userId] = params;
+        const mealLog = store.meal_logs_local.find(
+          (row) => row.local_id === localId && String(row.user_id) === String(userId)
+        );
+        if (mealLog) {
+          mealLog.is_deleted = 1;
+          mealLog.deleted_at = deletedAt;
+          mealLog.sync_status = 'pending';
+          mealLog.updated_at = updatedAt;
+        }
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update water_logs_local') &&
+        normalized.includes('set is_deleted = 1')
+      ) {
+        const [deletedAt, updatedAt, userId, localId] = params;
+        const waterLog = store.water_logs_local.find(
+          (row) => row.local_id === localId && String(row.user_id) === String(userId)
+        );
+        if (waterLog) {
+          waterLog.is_deleted = 1;
+          waterLog.deleted_at = deletedAt;
+          waterLog.sync_status = 'pending';
+          waterLog.updated_at = updatedAt;
+        }
+        writeWebStore(store);
+        return;
+      }
+
+      if (
+        normalized.startsWith('update mood_logs_local') &&
+        normalized.includes('set is_deleted = 1')
+      ) {
+        const [deletedAt, updatedAt, localId, userId] = params;
+        const checkIn = store.mood_logs_local.find(
+          (row) => row.local_id === localId && String(row.user_id) === String(userId)
+        );
+        if (checkIn) {
+          checkIn.is_deleted = 1;
+          checkIn.deleted_at = deletedAt;
+          checkIn.sync_status = 'pending';
+          checkIn.updated_at = updatedAt;
+        }
+        writeWebStore(store);
+        return;
+      }
+
+      if (
         normalized.startsWith('update meal_logs_local') &&
         normalized.includes("set sync_status = 'failed'")
       ) {
@@ -1126,6 +1509,8 @@ function createWebDbAdapter(): DbAdapter {
           checkIn.stress_score = stressScore;
           checkIn.energy_score = energyScore;
           checkIn.steps = steps;
+          checkIn.is_deleted = 0;
+          checkIn.deleted_at = null;
           checkIn.sync_status = 'pending';
           checkIn.updated_at = updatedAt;
         }
@@ -1173,6 +1558,138 @@ function createWebDbAdapter(): DbAdapter {
     getAllSync<T = unknown>(sql: string, params: SQLiteBindValue[] = []) {
       const normalized = normalizeSql(sql);
       const store = readWebStore();
+
+      if (
+        normalized.includes('from workout_sessions_local') &&
+        normalized.includes('server_id = ?')
+      ) {
+        const [userId, serverId] = params;
+        return store.workout_sessions_local
+          .filter(
+            (session) =>
+              String(session.user_id) === String(userId) &&
+              String(session.server_id ?? '') === String(serverId)
+          )
+          .slice(0, 1) as T[];
+      }
+
+      if (
+        normalized.includes('from workout_sets_local ws') &&
+        normalized.includes('join workout_sessions_local s') &&
+        normalized.includes('ws.server_id = ?')
+      ) {
+        const [userId, serverId] = params;
+        const set = store.workout_sets_local.find(
+          (item) => String(item.server_id ?? '') === String(serverId)
+        );
+        const session = set
+          ? store.workout_sessions_local.find(
+              (item) =>
+                item.local_id === set.session_local_id &&
+                String(item.user_id) === String(userId)
+            )
+          : null;
+        return set && session ? ([set] as T[]) : ([] as T[]);
+      }
+
+      if (
+        normalized.includes('from meal_logs_local') &&
+        normalized.includes('local_id = ?') &&
+        !normalized.includes('join meal_logs_local')
+      ) {
+        const hasOwnerFilter = normalized.includes('user_id = ?');
+        const userId = hasOwnerFilter ? params[0] : null;
+        const localId = hasOwnerFilter ? params[1] : params[0];
+        return store.meal_logs_local
+          .filter(
+            (row) =>
+              String(row.local_id) === String(localId) &&
+              (!hasOwnerFilter || String(row.user_id) === String(userId))
+          )
+          .slice(0, 1) as T[];
+      }
+
+      if (
+        normalized.includes('from meal_items_local mi') &&
+        normalized.includes('join meal_logs_local ml') &&
+        normalized.includes('mi.local_id = ?')
+      ) {
+        const [userId, localId] = params;
+        const item = store.meal_items_local.find(
+          (row) => String(row.local_id) === String(localId)
+        );
+        const meal = item
+          ? store.meal_logs_local.find(
+              (row) =>
+                row.local_id === item.meal_log_local_id &&
+                String(row.user_id) === String(userId)
+            )
+          : null;
+        return item && meal ? ([item] as T[]) : ([] as T[]);
+      }
+
+      if (
+        normalized.includes('from water_logs_local') &&
+        normalized.includes('local_id = ?')
+      ) {
+        const hasOwnerFilter = normalized.includes('user_id = ?');
+        const userId = hasOwnerFilter ? params[0] : null;
+        const localId = hasOwnerFilter ? params[1] : params[0];
+        return store.water_logs_local
+          .filter(
+            (row) =>
+              String(row.local_id) === String(localId) &&
+              (!hasOwnerFilter || String(row.user_id) === String(userId))
+          )
+          .slice(0, 1) as T[];
+      }
+
+      if (
+        normalized.includes('from meal_logs_local') &&
+        normalized.includes('server_id = ?')
+      ) {
+        const [userId, serverId] = params;
+        return store.meal_logs_local
+          .filter(
+            (mealLog) =>
+              String(mealLog.user_id) === String(userId) &&
+              String(mealLog.server_id ?? '') === String(serverId)
+          )
+          .slice(0, 1) as T[];
+      }
+
+      if (
+        normalized.includes('from meal_items_local mi') &&
+        normalized.includes('join meal_logs_local ml') &&
+        normalized.includes('mi.server_id = ?')
+      ) {
+        const [userId, serverId] = params;
+        const item = store.meal_items_local.find(
+          (row) => String(row.server_id ?? '') === String(serverId)
+        );
+        const meal = item
+          ? store.meal_logs_local.find(
+              (row) =>
+                row.local_id === item.meal_log_local_id &&
+                String(row.user_id) === String(userId)
+            )
+          : null;
+        return item && meal ? ([item] as T[]) : ([] as T[]);
+      }
+
+      if (
+        normalized.includes('from water_logs_local') &&
+        normalized.includes('server_id = ?')
+      ) {
+        const [userId, serverId] = params;
+        return store.water_logs_local
+          .filter(
+            (row) =>
+              String(row.user_id) === String(userId) &&
+              String(row.server_id ?? '') === String(serverId)
+          )
+          .slice(0, 1) as T[];
+      }
 
       if (
         normalized.includes('from workout_session_exercises_local') &&
@@ -1349,11 +1866,13 @@ function createWebDbAdapter(): DbAdapter {
         const userId = hasUserFilter ? String(params[0] ?? '') : null;
         const limit = hasUserFilter ? params[1] ?? 5 : params[0] ?? 5;
         const completedOnly = normalized.includes('completed_at is not null');
+        const activeOnly = normalized.includes('completed_at is null');
         const excludeDeleted = queryExcludesDeleted(normalized);
 
         return [...store.workout_sessions_local]
           .filter((session) => !userId || String(session.user_id) === userId)
           .filter((session) => !completedOnly || Boolean(session.completed_at))
+          .filter((session) => !activeOnly || !session.completed_at)
           .filter((session) => !excludeDeleted || !isDeletedRecord(session))
           .sort(
             (a, b) =>
@@ -1497,12 +2016,14 @@ function createWebDbAdapter(): DbAdapter {
         const startIso = hasOwnerFilter ? params[1] : params[0];
         const endIso = hasOwnerFilter ? params[2] : params[1];
 
+        const excludeDeleted = queryExcludesDeleted(normalized);
         return store.meal_logs_local
           .filter(
             (mealLog) =>
               (!hasOwnerFilter || String(mealLog.user_id) === String(userId)) &&
               String(mealLog.logged_at) >= String(startIso) &&
-              String(mealLog.logged_at) < String(endIso)
+              String(mealLog.logged_at) < String(endIso) &&
+              (!excludeDeleted || !isDeletedRecord(mealLog))
           )
           .sort(
             (a, b) =>
@@ -1516,8 +2037,13 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const mealLogIds = new Set(params.map((param) => String(param)));
 
+        const excludeDeleted = queryExcludesDeleted(normalized);
         return store.meal_items_local
-          .filter((item) => mealLogIds.has(String(item.meal_log_local_id)))
+          .filter(
+            (item) =>
+              mealLogIds.has(String(item.meal_log_local_id)) &&
+              (!excludeDeleted || !isDeletedRecord(item))
+          )
           .sort(
             (a, b) =>
               Date.parse(String(a.updated_at)) - Date.parse(String(b.updated_at))
@@ -1539,8 +2065,13 @@ function createWebDbAdapter(): DbAdapter {
           return [] as T[];
         }
 
+        const excludeDeleted = queryExcludesDeleted(normalized);
         return store.meal_items_local
-          .filter((item) => item.meal_log_local_id === mealLogLocalId)
+          .filter(
+            (item) =>
+              item.meal_log_local_id === mealLogLocalId &&
+              (!excludeDeleted || !isDeletedRecord(item))
+          )
           .sort(
             (a, b) =>
               Date.parse(String(a.updated_at)) - Date.parse(String(b.updated_at))
@@ -1641,12 +2172,14 @@ function createWebDbAdapter(): DbAdapter {
         const startIso = hasOwnerFilter ? params[1] : params[0];
         const endIso = hasOwnerFilter ? params[2] : params[1];
 
+        const excludeDeleted = queryExcludesDeleted(normalized);
         return store.water_logs_local
           .filter(
             (waterLog) =>
               (!hasOwnerFilter || String(waterLog.user_id) === String(userId)) &&
               String(waterLog.logged_at) >= String(startIso) &&
-              String(waterLog.logged_at) < String(endIso)
+              String(waterLog.logged_at) < String(endIso) &&
+              (!excludeDeleted || !isDeletedRecord(waterLog))
           )
           .sort(
             (a, b) =>
@@ -1697,12 +2230,29 @@ function createWebDbAdapter(): DbAdapter {
       if (
         normalized.includes('from body_measurements_local') &&
         normalized.includes('user_id = ?') &&
+        !normalized.includes('order by measured_at') &&
+        !normalized.includes('sync_status')
+      ) {
+        const [userId] = params;
+        return store.body_measurements_local.filter(
+          (measurement) => String(measurement.user_id) === String(userId)
+        ) as T[];
+      }
+
+      if (
+        normalized.includes('from body_measurements_local') &&
+        normalized.includes('user_id = ?') &&
         normalized.includes('order by measured_at desc')
       ) {
         const [userId] = params;
 
+        const excludeDeleted = queryExcludesDeleted(normalized);
         return store.body_measurements_local
-          .filter((measurement) => String(measurement.user_id) === String(userId))
+          .filter(
+            (measurement) =>
+              String(measurement.user_id) === String(userId) &&
+              (!excludeDeleted || !isDeletedRecord(measurement))
+          )
           .sort((a, b) => {
             const measuredDifference =
               Date.parse(String(b.measured_at)) - Date.parse(String(a.measured_at));
@@ -1723,8 +2273,13 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const [userId] = params;
 
+        const excludeDeleted = queryExcludesDeleted(normalized);
         return store.body_measurements_local
-          .filter((measurement) => String(measurement.user_id) === String(userId))
+          .filter(
+            (measurement) =>
+              String(measurement.user_id) === String(userId) &&
+              (!excludeDeleted || !isDeletedRecord(measurement))
+          )
           .sort((a, b) => {
             const measuredDifference =
               Date.parse(String(a.measured_at)) - Date.parse(String(b.measured_at));
@@ -1767,11 +2322,13 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const [userId, checkInDate] = params;
 
+        const excludeDeleted = queryExcludesDeleted(normalized);
         return store.mood_logs_local
           .filter(
             (checkIn) =>
               String(checkIn.user_id) === String(userId) &&
-              String(checkIn.check_in_date) === String(checkInDate)
+              String(checkIn.check_in_date) === String(checkInDate) &&
+              (!excludeDeleted || !isDeletedRecord(checkIn))
           )
           .sort(
             (a, b) =>
@@ -1787,8 +2344,13 @@ function createWebDbAdapter(): DbAdapter {
       ) {
         const [userId] = params;
 
+        const excludeDeleted = queryExcludesDeleted(normalized);
         return store.mood_logs_local
-          .filter((checkIn) => String(checkIn.user_id) === String(userId))
+          .filter(
+            (checkIn) =>
+              String(checkIn.user_id) === String(userId) &&
+              (!excludeDeleted || !isDeletedRecord(checkIn))
+          )
           .sort((a, b) => {
             const dateDifference = String(b.check_in_date).localeCompare(
               String(a.check_in_date)
@@ -2083,6 +2645,154 @@ function migrateExerciseTargetsToOwnerScope() {
   `);
 }
 
+export const LOCAL_DB_SCHEMA_VERSION = 3;
+
+function getLocalDbSchemaVersion() {
+  if (Platform.OS === 'web') {
+    return Number(readWebStore().schema_version ?? 0);
+  }
+
+  return Number(db.getAllSync<{ user_version: number }>('pragma user_version;')[0]?.user_version ?? 0);
+}
+
+function setLocalDbSchemaVersion(version: number) {
+  if (Platform.OS === 'web') {
+    const store = readWebStore();
+    store.schema_version = version;
+    writeWebStore(store);
+    return;
+  }
+
+  db.execSync(`pragma user_version = ${version};`);
+}
+
+function migrateLocalDbV1() {
+  migrateExerciseTargetsToOwnerScope();
+  addMissingLocalColumn('workout_sessions_local', 'is_deleted integer not null default 0');
+  addMissingLocalColumn('workout_sessions_local', 'deleted_at text');
+  addMissingLocalColumn('workout_sets_local', 'is_deleted integer not null default 0');
+  addMissingLocalColumn('workout_sets_local', 'deleted_at text');
+  addMissingLocalColumn('meal_items_local', 'food_source text');
+  addMissingLocalColumn('meal_items_local', 'source_food_id text');
+  addMissingLocalColumn('meal_items_local', 'fdc_id integer');
+  addMissingLocalColumn('meal_items_local', 'fiber_g real');
+  addMissingLocalColumn('meal_items_local', 'sugar_g real');
+  addMissingLocalColumn('meal_items_local', 'saturated_fat_g real');
+  addMissingLocalColumn('meal_items_local', 'sodium_mg real');
+  addMissingLocalColumn(
+    'food_cache_local',
+    "user_id text not null default 'local-dev-user'"
+  );
+  addMissingLocalColumn('food_cache_local', 'nutrition_basis_size real');
+  addMissingLocalColumn('food_cache_local', 'nutrition_basis_unit text');
+  addMissingLocalColumn('food_cache_local', 'details_complete integer not null default 1');
+  addMissingLocalColumn('food_cache_local', 'publication_date text');
+  addMissingLocalColumn('mood_logs_local', 'check_in_date text');
+  addMissingLocalColumn('mood_logs_local', 'sleep_start text');
+  addMissingLocalColumn('mood_logs_local', 'sleep_end text');
+  addMissingLocalColumn('mood_logs_local', 'steps integer not null default 0');
+}
+
+function migrateLocalDbV2() {
+  addMissingLocalColumn('meal_logs_local', 'is_deleted integer not null default 0');
+  addMissingLocalColumn('meal_logs_local', 'deleted_at text');
+  addMissingLocalColumn('meal_items_local', 'is_deleted integer not null default 0');
+  addMissingLocalColumn('meal_items_local', 'deleted_at text');
+  addMissingLocalColumn('water_logs_local', 'is_deleted integer not null default 0');
+  addMissingLocalColumn('water_logs_local', 'deleted_at text');
+  addMissingLocalColumn('mood_logs_local', 'sleep_server_id text');
+  addMissingLocalColumn('mood_logs_local', 'is_deleted integer not null default 0');
+  addMissingLocalColumn('mood_logs_local', 'deleted_at text');
+  addMissingLocalColumn('body_measurements_local', 'is_deleted integer not null default 0');
+  addMissingLocalColumn('body_measurements_local', 'deleted_at text');
+}
+
+function migrateLocalDbV3() {
+  if (Platform.OS === 'web') {
+    const store = readWebStore();
+    const seenWellness = new Map<string, Record<string, unknown>>();
+
+    for (const row of [...store.mood_logs_local].sort((a, b) =>
+      Date.parse(String(b.updated_at ?? 0)) - Date.parse(String(a.updated_at ?? 0)))) {
+      const key = `${String(row.user_id)}:${String(row.check_in_date)}`;
+      if (!seenWellness.has(key)) seenWellness.set(key, row);
+    }
+    store.mood_logs_local = Array.from(seenWellness.values());
+    writeWebStore(store);
+    return;
+  }
+
+  db.execSync(`
+    update workout_sessions_local
+    set is_deleted = 1
+    where deleted_at is not null
+      and coalesce(is_deleted, 0) = 0;
+
+    update workout_sets_local
+    set is_deleted = 1
+    where deleted_at is not null
+      and coalesce(is_deleted, 0) = 0;
+
+    delete from mood_logs_local
+    where rowid in (
+      select rowid
+      from (
+        select rowid,
+               row_number() over (
+                 partition by user_id, check_in_date
+                 order by updated_at desc, rowid desc
+               ) as duplicate_rank
+        from mood_logs_local
+      )
+      where duplicate_rank > 1
+    );
+
+    create index if not exists idx_exercise_targets_owner_exercise
+    on exercise_targets_local(user_id, exercise_id);
+
+    create unique index if not exists idx_mood_logs_user_date
+    on mood_logs_local(user_id, check_in_date);
+
+    create index if not exists idx_workout_sessions_owner_updated
+    on workout_sessions_local(user_id, updated_at desc);
+
+    create index if not exists idx_workout_sessions_owner_active_started
+    on workout_sessions_local(user_id, is_deleted, started_at desc);
+
+    create index if not exists idx_meal_logs_owner_updated
+    on meal_logs_local(user_id, updated_at desc);
+
+    create index if not exists idx_water_logs_owner_updated
+    on water_logs_local(user_id, updated_at desc);
+
+    create index if not exists idx_wellness_owner_updated
+    on mood_logs_local(user_id, updated_at desc);
+  `);
+}
+
+const LOCAL_DB_MIGRATIONS = [
+  { version: 1, migrate: migrateLocalDbV1 },
+  { version: 2, migrate: migrateLocalDbV2 },
+  { version: 3, migrate: migrateLocalDbV3 },
+] as const;
+
+function runLocalDbMigrations() {
+  let currentVersion = getLocalDbSchemaVersion();
+
+  if (currentVersion > LOCAL_DB_SCHEMA_VERSION) {
+    throw new Error(
+      `Local database schema ${currentVersion} is newer than supported schema ${LOCAL_DB_SCHEMA_VERSION}.`
+    );
+  }
+
+  for (const migration of LOCAL_DB_MIGRATIONS) {
+    if (migration.version <= currentVersion) continue;
+    migration.migrate();
+    setLocalDbSchemaVersion(migration.version);
+    currentVersion = migration.version;
+  }
+}
+
 export function initializeLocalDb() {
   db.execSync(`
     create table if not exists workout_sessions_local (
@@ -2145,6 +2855,8 @@ export function initializeLocalDb() {
       user_id text not null,
       logged_at text not null,
       meal_type text not null,
+      is_deleted integer not null default 0,
+      deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
     );
@@ -2168,6 +2880,8 @@ export function initializeLocalDb() {
       sugar_g real,
       saturated_fat_g real,
       sodium_mg real,
+      is_deleted integer not null default 0,
+      deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
     );
@@ -2207,6 +2921,8 @@ export function initializeLocalDb() {
       user_id text not null,
       logged_at text not null,
       amount_ml integer not null,
+      is_deleted integer not null default 0,
+      deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
     );
@@ -2224,6 +2940,8 @@ export function initializeLocalDb() {
       arm_cm real,
       thigh_cm real,
       notes text,
+      is_deleted integer not null default 0,
+      deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
     );
@@ -2231,6 +2949,7 @@ export function initializeLocalDb() {
     create table if not exists mood_logs_local (
       local_id text primary key,
       server_id text,
+      sleep_server_id text,
       user_id text not null,
       check_in_date text not null,
       logged_at text not null,
@@ -2241,6 +2960,8 @@ export function initializeLocalDb() {
       energy_score integer,
       steps integer not null default 0,
       notes text,
+      is_deleted integer not null default 0,
+      deleted_at text,
       sync_status text not null default 'pending',
       updated_at text not null
     );
@@ -2280,54 +3001,204 @@ export function initializeLocalDb() {
 
   `);
 
-  migrateExerciseTargetsToOwnerScope();
+  runLocalDbMigrations();
+}
 
-  db.execSync(`
-    create index if not exists idx_exercise_targets_owner_exercise
-    on exercise_targets_local(user_id, exercise_id);
-  `);
+export type LocalUserDataSnapshot = {
+  workouts: {
+    sessions: LocalWorkoutSession[];
+    exercises: LocalWorkoutSessionExercise[];
+    sets: LocalWorkoutSet[];
+    targets: ExerciseTargetLocal[];
+  };
+  nutrition: {
+    meals: LocalMealLog[];
+    items: LocalMealItem[];
+    water: LocalWaterLog[];
+    foods: LocalFoodCache[];
+  };
+  wellness: LocalWellnessCheckIn[];
+  measurements: LocalBodyMeasurement[];
+};
 
-  addMissingLocalColumn('workout_sessions_local', 'is_deleted integer not null default 0');
-  addMissingLocalColumn('workout_sessions_local', 'deleted_at text');
-  addMissingLocalColumn('workout_sets_local', 'is_deleted integer not null default 0');
-  addMissingLocalColumn('workout_sets_local', 'deleted_at text');
-  addMissingLocalColumn('meal_items_local', 'food_source text');
-  addMissingLocalColumn('meal_items_local', 'source_food_id text');
-  addMissingLocalColumn('meal_items_local', 'fdc_id integer');
-  addMissingLocalColumn('meal_items_local', 'fiber_g real');
-  addMissingLocalColumn('meal_items_local', 'sugar_g real');
-  addMissingLocalColumn('meal_items_local', 'saturated_fat_g real');
-  addMissingLocalColumn('meal_items_local', 'sodium_mg real');
-  addMissingLocalColumn(
-    'food_cache_local',
-    "user_id text not null default 'local-dev-user'"
+export function getLocalUserDataSnapshot(userId: string): LocalUserDataSnapshot {
+  if (Platform.OS === 'web') {
+    const store = readWebStore();
+    const sessions = store.workout_sessions_local.filter(
+      (row) => String(row.user_id) === userId
+    ) as LocalWorkoutSession[];
+    const sessionIds = new Set(sessions.map((row) => row.local_id));
+    const meals = store.meal_logs_local.filter(
+      (row) => String(row.user_id) === userId
+    ) as LocalMealLog[];
+    const mealIds = new Set(meals.map((row) => row.local_id));
+
+    return {
+      workouts: {
+        sessions,
+        exercises: store.workout_session_exercises_local.filter((row) =>
+          sessionIds.has(String(row.session_local_id))
+        ) as LocalWorkoutSessionExercise[],
+        sets: store.workout_sets_local.filter((row) =>
+          sessionIds.has(String(row.session_local_id))
+        ) as LocalWorkoutSet[],
+        targets: store.exercise_targets_local.filter(
+          (row) => String(row.user_id) === userId
+        ) as ExerciseTargetLocal[],
+      },
+      nutrition: {
+        meals,
+        items: store.meal_items_local.filter((row) =>
+          mealIds.has(String(row.meal_log_local_id))
+        ) as LocalMealItem[],
+        water: store.water_logs_local.filter(
+          (row) => String(row.user_id) === userId
+        ) as LocalWaterLog[],
+        foods: store.food_cache_local.filter(
+          (row) => String(row.user_id) === userId
+        ) as LocalFoodCache[],
+      },
+      wellness: store.mood_logs_local.filter(
+        (row) => String(row.user_id) === userId
+      ) as LocalWellnessCheckIn[],
+      measurements: store.body_measurements_local.filter(
+        (row) => String(row.user_id) === userId
+      ) as LocalBodyMeasurement[],
+    };
+  }
+
+  const sessions = db.getAllSync<LocalWorkoutSession>(
+    'select * from workout_sessions_local where user_id = ? order by started_at asc',
+    [userId]
   );
-  addMissingLocalColumn('food_cache_local', 'nutrition_basis_size real');
-  addMissingLocalColumn('food_cache_local', 'nutrition_basis_unit text');
-  addMissingLocalColumn(
-    'food_cache_local',
-    'details_complete integer not null default 1'
+  const sessionIds = sessions.map((row) => row.local_id);
+  const meals = db.getAllSync<LocalMealLog>(
+    'select * from meal_logs_local where user_id = ? order by logged_at asc',
+    [userId]
   );
-  addMissingLocalColumn('food_cache_local', 'publication_date text');
-  addMissingLocalColumn('mood_logs_local', 'check_in_date text');
-  addMissingLocalColumn('mood_logs_local', 'sleep_start text');
-  addMissingLocalColumn('mood_logs_local', 'sleep_end text');
-  addMissingLocalColumn('mood_logs_local', 'steps integer not null default 0');
+  const mealIds = meals.map((row) => row.local_id);
+  const placeholders = (values: string[]) => values.map(() => '?').join(', ');
 
-  db.execSync(`
-    create unique index if not exists idx_mood_logs_user_date
-    on mood_logs_local(user_id, check_in_date);
-  `);
+  return {
+    workouts: {
+      sessions,
+      exercises:
+        sessionIds.length > 0
+          ? db.getAllSync<LocalWorkoutSessionExercise>(
+              `select * from workout_session_exercises_local where session_local_id in (${placeholders(sessionIds)}) order by session_local_id, sort_order`,
+              sessionIds
+            )
+          : [],
+      sets:
+        sessionIds.length > 0
+          ? db.getAllSync<LocalWorkoutSet>(
+              `select * from workout_sets_local where session_local_id in (${placeholders(sessionIds)}) order by session_local_id, exercise_id, set_number`,
+              sessionIds
+            )
+          : [],
+      targets: db.getAllSync<ExerciseTargetLocal>(
+        'select * from exercise_targets_local where user_id = ? order by exercise_id',
+        [userId]
+      ),
+    },
+    nutrition: {
+      meals,
+      items:
+        mealIds.length > 0
+          ? db.getAllSync<LocalMealItem>(
+              `select * from meal_items_local where meal_log_local_id in (${placeholders(mealIds)}) order by meal_log_local_id, updated_at`,
+              mealIds
+            )
+          : [],
+      water: db.getAllSync<LocalWaterLog>(
+        'select * from water_logs_local where user_id = ? order by logged_at asc',
+        [userId]
+      ),
+      foods: db.getAllSync<LocalFoodCache>(
+        'select * from food_cache_local where user_id = ? order by name asc',
+        [userId]
+      ),
+    },
+    wellness: db.getAllSync<LocalWellnessCheckIn>(
+      'select * from mood_logs_local where user_id = ? order by check_in_date asc',
+      [userId]
+    ),
+    measurements: db.getAllSync<LocalBodyMeasurement>(
+      'select * from body_measurements_local where user_id = ? order by measured_at asc',
+      [userId]
+    ),
+  };
+}
 
-  db.execSync(`
-    update workout_sessions_local
-    set is_deleted = 1
-    where deleted_at is not null
-      and coalesce(is_deleted, 0) = 0;
+export function clearLocalUserData(userId: string) {
+  if (Platform.OS === 'web') {
+    const store = readWebStore();
+    const sessionIds = new Set(
+      store.workout_sessions_local
+        .filter((row) => String(row.user_id) === userId)
+        .map((row) => String(row.local_id))
+    );
+    const mealIds = new Set(
+      store.meal_logs_local
+        .filter((row) => String(row.user_id) === userId)
+        .map((row) => String(row.local_id))
+    );
 
-    update workout_sets_local
-    set is_deleted = 1
-    where deleted_at is not null
-      and coalesce(is_deleted, 0) = 0;
-  `);
+    store.workout_sessions_local = store.workout_sessions_local.filter(
+      (row) => String(row.user_id) !== userId
+    );
+    store.workout_session_exercises_local = store.workout_session_exercises_local.filter(
+      (row) => !sessionIds.has(String(row.session_local_id))
+    );
+    store.workout_sets_local = store.workout_sets_local.filter(
+      (row) => !sessionIds.has(String(row.session_local_id))
+    );
+    store.exercise_targets_local = store.exercise_targets_local.filter(
+      (row) => String(row.user_id) !== userId
+    );
+    store.meal_logs_local = store.meal_logs_local.filter(
+      (row) => String(row.user_id) !== userId
+    );
+    store.meal_items_local = store.meal_items_local.filter(
+      (row) => !mealIds.has(String(row.meal_log_local_id))
+    );
+    store.water_logs_local = store.water_logs_local.filter(
+      (row) => String(row.user_id) !== userId
+    );
+    store.food_cache_local = store.food_cache_local.filter(
+      (row) => String(row.user_id) !== userId
+    );
+    store.mood_logs_local = store.mood_logs_local.filter(
+      (row) => String(row.user_id) !== userId
+    );
+    store.body_measurements_local = store.body_measurements_local.filter(
+      (row) => String(row.user_id) !== userId
+    );
+    writeWebStore(store);
+    return;
+  }
+
+  const sessions = db.getAllSync<{ local_id: string }>(
+    'select local_id from workout_sessions_local where user_id = ?',
+    [userId]
+  );
+  const meals = db.getAllSync<{ local_id: string }>(
+    'select local_id from meal_logs_local where user_id = ?',
+    [userId]
+  );
+
+  for (const session of sessions) {
+    db.runSync('delete from workout_sets_local where session_local_id = ?', [session.local_id]);
+    db.runSync('delete from workout_session_exercises_local where session_local_id = ?', [session.local_id]);
+  }
+  for (const meal of meals) {
+    db.runSync('delete from meal_items_local where meal_log_local_id = ?', [meal.local_id]);
+  }
+  db.runSync('delete from workout_sessions_local where user_id = ?', [userId]);
+  db.runSync('delete from exercise_targets_local where user_id = ?', [userId]);
+  db.runSync('delete from meal_logs_local where user_id = ?', [userId]);
+  db.runSync('delete from water_logs_local where user_id = ?', [userId]);
+  db.runSync('delete from food_cache_local where user_id = ?', [userId]);
+  db.runSync('delete from mood_logs_local where user_id = ?', [userId]);
+  db.runSync('delete from body_measurements_local where user_id = ?', [userId]);
 }

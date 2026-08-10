@@ -21,6 +21,8 @@ test('wellness screen loads and saves a complete dated daily check-in', () => {
   assert.match(screen, /sleepEnd: sleepWindow\.sleepEnd/);
   assert.match(screen, /steps: parsedSteps/);
   assert.match(screen, /syncPendingWellnessCheckIns\(\)/);
+  assert.match(screen, /deleteDailyWellnessCheckIn\(ownerId\)/);
+  assert.match(screen, /Delete today's check-in/);
   assert.match(screen, /label="Manual steps"/);
   assert.match(screen, /label="Bedtime"/);
   assert.match(screen, /label="Wake time"/);
@@ -40,6 +42,8 @@ test('wellness service persists one local row per user and date and notifies sub
   assert.match(service, /const wellnessListeners = new Set/);
   assert.match(service, /export function subscribeToWellnessChanges/);
   assert.match(service, /notifyWellnessChanged\(saved\)/);
+  assert.match(service, /export function deleteDailyWellnessCheckIn/);
+  assert.match(service, /set is_deleted = 1,[\s\S]*sync_status = 'pending'/);
 });
 
 test('wellness remote sync mirrors the local check-in to existing mood and sleep tables', () => {
@@ -65,6 +69,7 @@ test('local database and web adapter support persisted wellness records', () => 
   assert.match(localDb, /update mood_logs_local.*set logged_at = \?/);
   assert.match(localDb, /update mood_logs_local.*set sync_status = 'failed'/);
   assert.match(localDb, /update mood_logs_local.*set server_id = \?/);
+  assert.match(localDb, /update mood_logs_local.*set is_deleted = 1/);
   assert.match(localDb, /from mood_logs_local.*user_id = \?.*check_in_date = \?/);
   assert.match(localDb, /from mood_logs_local.*sync_status/);
   assert.match(localDb, /idx_mood_logs_user_date/);
