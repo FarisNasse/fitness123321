@@ -1,0 +1,37 @@
+--- /dev/null
++++ b/tests/account-lifecycle.test.mjs
+@@ -0,0 +1,23 @@
++import assert from 'node:assert/strict';
++import test from 'node:test';
++
++import { readProjectFile } from './helpers/project.mjs';
++
++test('settings exposes portable export, sign-out, and deliberate permanent deletion', () => {
++  const settings = readProjectFile('app/(tabs)/settings.tsx');
++  const service = readProjectFile('src/features/account/account-service.ts');
++  const edge = readProjectFile('supabase/functions/delete-account/index.ts');
++  const db = readProjectFile('src/lib/local-db.ts');
++
++  assert.match(settings, /Export my data/);
++  assert.match(settings, /Delete account permanently/);
++  assert.match(settings, /Final confirmation/);
++  assert.match(service, /getLocalUserDataSnapshot/);
++  assert.match(service, /dailyTargets/);
++  assert.match(service, /functions\.invoke\('delete-account'/);
++  assert.match(service, /clearLocalUserData\(userId\)/);
++  assert.match(db, /foods: LocalFoodCache\[\]/);
++  assert.match(edge, /SUPABASE_SERVICE_ROLE_KEY/);
++  assert.match(edge, /admin\.deleteUser/);
++  assert.match(edge, /confirmation !== 'DELETE'/);
++});
+--- a/tests/body-measurements-implementation.test.mjs
++++ b/tests/body-measurements-implementation.test.mjs
+@@ -8,7 +8,7 @@
+   const compact = normalizeWhitespace(localDb);
+ 
+   assert.match(localDb, /export type LocalBodyMeasurement/);
+-  assert.match(compact, /create table if not exists body_measurements_local \( local_id text primary key, server_id text, user_id text not null, measured_at text not null, weight_kg real not null, body_fat_percent real, waist_cm real, hips_cm real, chest_cm real, arm_cm real, thigh_cm real, notes text, sync_status text not null default 'pending', updated_at text not null \)/);
++  assert.match(compact, /create table if not exists body_measurements_local \( local_id text primary key, server_id text, user_id text not null, measured_at text not null, weight_kg real not null, body_fat_percent real, waist_cm real, hips_cm real, chest_cm real, arm_cm real, thigh_cm real, notes text, is_deleted integer not null default 0, deleted_at text, sync_status text not null default 'pending', updated_at text not null \)/);
+   assert.match(localDb, /idx_body_measurements_user_measured/);
+   assert.match(localDb, /body_measurements_local: \[\]/);
+   assert.match(localDb, /insert into body_measurements_local/);
