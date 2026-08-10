@@ -1,0 +1,278 @@
+--- a/src/lib/local-db.ts
++++ b/src/lib/local-db.ts
+@@ -1173,6 +1558,138 @@
+     getAllSync<T = unknown>(sql: string, params: SQLiteBindValue[] = []) {
+       const normalized = normalizeSql(sql);
+       const store = readWebStore();
++
++      if (
++        normalized.includes('from workout_sessions_local') &&
++        normalized.includes('server_id = ?')
++      ) {
++        const [userId, serverId] = params;
++        return store.workout_sessions_local
++          .filter(
++            (session) =>
++              String(session.user_id) === String(userId) &&
++              String(session.server_id ?? '') === String(serverId)
++          )
++          .slice(0, 1) as T[];
++      }
++
++      if (
++        normalized.includes('from workout_sets_local ws') &&
++        normalized.includes('join workout_sessions_local s') &&
++        normalized.includes('ws.server_id = ?')
++      ) {
++        const [userId, serverId] = params;
++        const set = store.workout_sets_local.find(
++          (item) => String(item.server_id ?? '') === String(serverId)
++        );
++        const session = set
++          ? store.workout_sessions_local.find(
++              (item) =>
++                item.local_id === set.session_local_id &&
++                String(item.user_id) === String(userId)
++            )
++          : null;
++        return set && session ? ([set] as T[]) : ([] as T[]);
++      }
++
++      if (
++        normalized.includes('from meal_logs_local') &&
++        normalized.includes('local_id = ?') &&
++        !normalized.includes('join meal_logs_local')
++      ) {
++        const hasOwnerFilter = normalized.includes('user_id = ?');
++        const userId = hasOwnerFilter ? params[0] : null;
++        const localId = hasOwnerFilter ? params[1] : params[0];
++        return store.meal_logs_local
++          .filter(
++            (row) =>
++              String(row.local_id) === String(localId) &&
++              (!hasOwnerFilter || String(row.user_id) === String(userId))
++          )
++          .slice(0, 1) as T[];
++      }
++
++      if (
++        normalized.includes('from meal_items_local mi') &&
++        normalized.includes('join meal_logs_local ml') &&
++        normalized.includes('mi.local_id = ?')
++      ) {
++        const [userId, localId] = params;
++        const item = store.meal_items_local.find(
++          (row) => String(row.local_id) === String(localId)
++        );
++        const meal = item
++          ? store.meal_logs_local.find(
++              (row) =>
++                row.local_id === item.meal_log_local_id &&
++                String(row.user_id) === String(userId)
++            )
++          : null;
++        return item && meal ? ([item] as T[]) : ([] as T[]);
++      }
++
++      if (
++        normalized.includes('from water_logs_local') &&
++        normalized.includes('local_id = ?')
++      ) {
++        const hasOwnerFilter = normalized.includes('user_id = ?');
++        const userId = hasOwnerFilter ? params[0] : null;
++        const localId = hasOwnerFilter ? params[1] : params[0];
++        return store.water_logs_local
++          .filter(
++            (row) =>
++              String(row.local_id) === String(localId) &&
++              (!hasOwnerFilter || String(row.user_id) === String(userId))
++          )
++          .slice(0, 1) as T[];
++      }
++
++      if (
++        normalized.includes('from meal_logs_local') &&
++        normalized.includes('server_id = ?')
++      ) {
++        const [userId, serverId] = params;
++        return store.meal_logs_local
++          .filter(
++            (mealLog) =>
++              String(mealLog.user_id) === String(userId) &&
++              String(mealLog.server_id ?? '') === String(serverId)
++          )
++          .slice(0, 1) as T[];
++      }
++
++      if (
++        normalized.includes('from meal_items_local mi') &&
++        normalized.includes('join meal_logs_local ml') &&
++        normalized.includes('mi.server_id = ?')
++      ) {
++        const [userId, serverId] = params;
++        const item = store.meal_items_local.find(
++          (row) => String(row.server_id ?? '') === String(serverId)
++        );
++        const meal = item
++          ? store.meal_logs_local.find(
++              (row) =>
++                row.local_id === item.meal_log_local_id &&
++                String(row.user_id) === String(userId)
++            )
++          : null;
++        return item && meal ? ([item] as T[]) : ([] as T[]);
++      }
++
++      if (
++        normalized.includes('from water_logs_local') &&
++        normalized.includes('server_id = ?')
++      ) {
++        const [userId, serverId] = params;
++        return store.water_logs_local
++          .filter(
++            (row) =>
++              String(row.user_id) === String(userId) &&
++              String(row.server_id ?? '') === String(serverId)
++          )
++          .slice(0, 1) as T[];
++      }
+ 
+       if (
+         normalized.includes('from workout_session_exercises_local') &&
+@@ -1349,11 +1866,13 @@
+         const userId = hasUserFilter ? String(params[0] ?? '') : null;
+         const limit = hasUserFilter ? params[1] ?? 5 : params[0] ?? 5;
+         const completedOnly = normalized.includes('completed_at is not null');
++        const activeOnly = normalized.includes('completed_at is null');
+         const excludeDeleted = queryExcludesDeleted(normalized);
+ 
+         return [...store.workout_sessions_local]
+           .filter((session) => !userId || String(session.user_id) === userId)
+           .filter((session) => !completedOnly || Boolean(session.completed_at))
++          .filter((session) => !activeOnly || !session.completed_at)
+           .filter((session) => !excludeDeleted || !isDeletedRecord(session))
+           .sort(
+             (a, b) =>
+@@ -1497,12 +2016,14 @@
+         const startIso = hasOwnerFilter ? params[1] : params[0];
+         const endIso = hasOwnerFilter ? params[2] : params[1];
+ 
++        const excludeDeleted = queryExcludesDeleted(normalized);
+         return store.meal_logs_local
+           .filter(
+             (mealLog) =>
+               (!hasOwnerFilter || String(mealLog.user_id) === String(userId)) &&
+               String(mealLog.logged_at) >= String(startIso) &&
+-              String(mealLog.logged_at) < String(endIso)
++              String(mealLog.logged_at) < String(endIso) &&
++              (!excludeDeleted || !isDeletedRecord(mealLog))
+           )
+           .sort(
+             (a, b) =>
+@@ -1516,8 +2037,13 @@
+       ) {
+         const mealLogIds = new Set(params.map((param) => String(param)));
+ 
++        const excludeDeleted = queryExcludesDeleted(normalized);
+         return store.meal_items_local
+-          .filter((item) => mealLogIds.has(String(item.meal_log_local_id)))
++          .filter(
++            (item) =>
++              mealLogIds.has(String(item.meal_log_local_id)) &&
++              (!excludeDeleted || !isDeletedRecord(item))
++          )
+           .sort(
+             (a, b) =>
+               Date.parse(String(a.updated_at)) - Date.parse(String(b.updated_at))
+@@ -1539,8 +2065,13 @@
+           return [] as T[];
+         }
+ 
++        const excludeDeleted = queryExcludesDeleted(normalized);
+         return store.meal_items_local
+-          .filter((item) => item.meal_log_local_id === mealLogLocalId)
++          .filter(
++            (item) =>
++              item.meal_log_local_id === mealLogLocalId &&
++              (!excludeDeleted || !isDeletedRecord(item))
++          )
+           .sort(
+             (a, b) =>
+               Date.parse(String(a.updated_at)) - Date.parse(String(b.updated_at))
+@@ -1641,12 +2172,14 @@
+         const startIso = hasOwnerFilter ? params[1] : params[0];
+         const endIso = hasOwnerFilter ? params[2] : params[1];
+ 
++        const excludeDeleted = queryExcludesDeleted(normalized);
+         return store.water_logs_local
+           .filter(
+             (waterLog) =>
+               (!hasOwnerFilter || String(waterLog.user_id) === String(userId)) &&
+               String(waterLog.logged_at) >= String(startIso) &&
+-              String(waterLog.logged_at) < String(endIso)
++              String(waterLog.logged_at) < String(endIso) &&
++              (!excludeDeleted || !isDeletedRecord(waterLog))
+           )
+           .sort(
+             (a, b) =>
+@@ -1697,12 +2230,29 @@
+       if (
+         normalized.includes('from body_measurements_local') &&
+         normalized.includes('user_id = ?') &&
++        !normalized.includes('order by measured_at') &&
++        !normalized.includes('sync_status')
++      ) {
++        const [userId] = params;
++        return store.body_measurements_local.filter(
++          (measurement) => String(measurement.user_id) === String(userId)
++        ) as T[];
++      }
++
++      if (
++        normalized.includes('from body_measurements_local') &&
++        normalized.includes('user_id = ?') &&
+         normalized.includes('order by measured_at desc')
+       ) {
+         const [userId] = params;
+ 
++        const excludeDeleted = queryExcludesDeleted(normalized);
+         return store.body_measurements_local
+-          .filter((measurement) => String(measurement.user_id) === String(userId))
++          .filter(
++            (measurement) =>
++              String(measurement.user_id) === String(userId) &&
++              (!excludeDeleted || !isDeletedRecord(measurement))
++          )
+           .sort((a, b) => {
+             const measuredDifference =
+               Date.parse(String(b.measured_at)) - Date.parse(String(a.measured_at));
+@@ -1723,8 +2273,13 @@
+       ) {
+         const [userId] = params;
+ 
++        const excludeDeleted = queryExcludesDeleted(normalized);
+         return store.body_measurements_local
+-          .filter((measurement) => String(measurement.user_id) === String(userId))
++          .filter(
++            (measurement) =>
++              String(measurement.user_id) === String(userId) &&
++              (!excludeDeleted || !isDeletedRecord(measurement))
++          )
+           .sort((a, b) => {
+             const measuredDifference =
+               Date.parse(String(a.measured_at)) - Date.parse(String(b.measured_at));
+@@ -1767,11 +2322,13 @@
+       ) {
+         const [userId, checkInDate] = params;
+ 
++        const excludeDeleted = queryExcludesDeleted(normalized);
+         return store.mood_logs_local
+           .filter(
+             (checkIn) =>
+               String(checkIn.user_id) === String(userId) &&
+-              String(checkIn.check_in_date) === String(checkInDate)
++              String(checkIn.check_in_date) === String(checkInDate) &&
++              (!excludeDeleted || !isDeletedRecord(checkIn))
+           )
+           .sort(
+             (a, b) =>
