@@ -32,7 +32,7 @@ export function BaseSheet({
           ref={modalRef}
           tabIndex={-1}
           onPress={(event) => event.stopPropagation()}
-          accessibilityRole="dialog"
+         
           accessibilityLabel={accessibilityLabel}
           accessibilityViewIsModal
           accessible={false}

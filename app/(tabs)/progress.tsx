@@ -458,7 +458,7 @@ export default function ProgressScreen() {
         visible={isMeasurementOpen}
         onRequestClose={() => setIsMeasurementOpen(false)}
       >
-        <View ref={measurementModalRef} tabIndex={-1} accessibilityRole="dialog" className="flex-1 bg-base-100" accessibilityViewIsModal>
+        <View ref={measurementModalRef} tabIndex={-1} className="flex-1 bg-base-100" accessibilityViewIsModal>
           <ScrollView
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="px-5 pt-5 pb-12"

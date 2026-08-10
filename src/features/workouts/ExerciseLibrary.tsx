@@ -427,7 +427,7 @@ export function ExerciseLibrary({
           <Pressable
             ref={filterModalRef}
             tabIndex={-1}
-            accessibilityRole="dialog"
+           
             accessibilityViewIsModal
             onPress={(event: GestureResponderEvent) => event.stopPropagation()}
             className="gap-4 rounded-t-card border border-base-300 bg-base-200 p-5 pb-7"
@@ -499,7 +499,7 @@ export function ExerciseLibrary({
           <Pressable
             ref={detailModalRef}
             tabIndex={-1}
-            accessibilityRole="dialog"
+           
             accessibilityViewIsModal
             onPress={(event: GestureResponderEvent) => event.stopPropagation()}
             className="gap-4 rounded-t-card border border-base-300 bg-base-200 p-5 pb-8"

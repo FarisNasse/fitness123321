@@ -758,7 +758,7 @@ export default function NutritionScreen() {
         visible={isAddFoodOpen}
         onRequestClose={() => setIsAddFoodOpen(false)}
       >
-        <View ref={addFoodModalRef} tabIndex={-1} accessibilityRole="dialog" className="flex-1 bg-base-100" accessibilityViewIsModal>
+        <View ref={addFoodModalRef} tabIndex={-1} className="flex-1 bg-base-100" accessibilityViewIsModal>
           <ScrollView
             keyboardShouldPersistTaps="handled"
             contentContainerClassName="px-5 pt-5 pb-12"
@@ -1065,7 +1065,7 @@ export default function NutritionScreen() {
         presentationStyle="fullScreen"
         onRequestClose={() => setIsBarcodeScannerOpen(false)}
       >
-        <View ref={barcodeModalRef} tabIndex={-1} accessibilityRole="dialog" className="flex-1 bg-base-100" accessibilityViewIsModal>
+        <View ref={barcodeModalRef} tabIndex={-1} className="flex-1 bg-base-100" accessibilityViewIsModal>
           <View className="flex-row items-center justify-between gap-3 px-5 pb-3 pt-6">
             <View className="flex-1">
               <Text className="text-xl font-bold text-base-content">Scan food barcode</Text>
