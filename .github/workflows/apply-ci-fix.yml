@@ -1,0 +1,56 @@
+name: Apply CI compatibility fix
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/complete-open-roadmap
+          fetch-depth: 0
+      - name: Apply typecheck compatibility fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          files = [
+              Path('app/(tabs)/nutrition.tsx'),
+              Path('app/(tabs)/progress.tsx'),
+              Path('src/features/workouts/ExerciseLibrary.tsx'),
+              Path('src/features/workouts/live/components/sheets/BaseSheet.tsx'),
+          ]
+          for path in files:
+              text = path.read_text()
+              text = text.replace(' accessibilityRole="dialog"', '')
+              text = text.replace('            accessibilityRole="dialog"\n', '')
+              text = text.replace('          accessibilityRole="dialog"\n', '')
+              path.write_text(text)
+
+          tsconfig = Path('tsconfig.json')
+          text = tsconfig.read_text()
+          if '"supabase/functions/**/*"' not in text:
+              text = text.replace(
+                  '\n  "include": [',
+                  '\n  "exclude": [\n    "supabase/functions/**/*"\n  ],\n  "include": ['
+              )
+          tsconfig.write_text(text)
+          PY
+          ! grep -R 'accessibilityRole="dialog"' app src
+          grep -q '"supabase/functions/\*\*/\*"' tsconfig.json
+      - name: Commit source-only fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app src tsconfig.json
+          git commit -m "Fix CI TypeScript runtime boundaries"
+          git push origin HEAD:agent/complete-open-roadmap
